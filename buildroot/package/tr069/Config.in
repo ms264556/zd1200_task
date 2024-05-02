@@ -1,0 +1,40 @@
+config BR2_PACKAGE_TR069
+	bool "tr069"
+	select BR2_PACKAGE_CA-CERTS
+	default n
+	help
+	DSL Forum TR069 plus related specs: TR098, TR104, TR106, WT107,
+	TR110, TR111, WT121, WT140, WT142, WT143, WT151, WT152, WT153,
+        or at least the subsets of these that make sense.
+        http://www.dslforum.org
+
+config BR2_PACKAGE_EXTRAS_TR069
+	bool "tr069 optional build support."
+	default n
+	depends on BR2_PACKAGE_TR069
+	help
+	TR069 package binaries to be optionally included in the image.
+	If yes, then tr069 binaries will be included in the "full" image but
+	not in the "normal(basic)" image.
+
+config BR2_PACKAGE_TR069_INTERNETGATEWAY
+	bool "br2_package_tr069_internetgateway"
+	default y
+	depends on BR2_PACKAGE_TR069
+	help
+	  Compiles as TR-111 Internet Gateway. Required.
+
+config BR2_PACKAGE_TR069_DEVICE
+        bool "br2_package_tr069_device"
+        default n
+        depends on BR2_PACKAGE_TR069
+        help
+          Compiles as TR-111 DEVICE
+
+config BR2_PACKAGE_TR069_4CTC
+        bool "enable features for Shanghai Research Institute of China Telecom"
+        default n
+        depends on BR2_PACKAGE_TR069
+        help
+          Enable features for Shanghai Research Institute of China Telecom
+

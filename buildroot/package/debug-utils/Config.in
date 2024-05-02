@@ -1,0 +1,4 @@
+config BR2_PACKAGE_DEBUG_UTILS
+	bool "debug-utils"
+	help
+	    System Debug utilities

@@ -1,0 +1,6 @@
+config BR2_PACKAGE_SMSD
+	bool "smsd"
+	default n
+	depends on BR2_PACKAGE_IPMIUTIL
+	help
+	  Ruckus smsd for ZD5K/WSG platform

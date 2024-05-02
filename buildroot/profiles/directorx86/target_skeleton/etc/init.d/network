@@ -1,0 +1,144 @@
+#!/bin/sh
+#
+# Start the network....
+#
+wait_for_bridge() {
+	# change br forwarding delay
+	brctl setfd br0 2
+	cont=1
+	i=0;
+	while [ x"$cont" = x1 ] && [ $i -le 30 ] ; do
+		rslt=`brctl showstp br0 | grep forwarding`
+		if [ x"$rslt" != x ] ; then
+			cont=0
+		fi
+		i=`expr $i + 1`
+		sleep 1
+	done
+}
+
+system_xml_file="/etc/airespider/system.xml"
+stp_cmd() {
+	if [ -f "$system_xml_file" ]; then
+		stp_enable=`cfg system.internal.stp | cut -d" " -f 2`
+	else
+		# default operation is stp disabled
+		stp_enable="disable"
+	fi
+	if [ "$stp_enable" = "disable" ]; then
+		echo "Spanning-tree protocol disabled"
+		brctl stp br0 off
+	else
+		echo "Spanning-tree protocol enabled"
+		brctl stp br0 on
+	fi
+}
+
+KERNEL_VERSION=`uname -r`
+start() {
+	echo "Starting network ..."
+#	if [ "$1" != "" ]; then
+#		opts="dev_per_mac=$1"
+#		ndev=$1
+#	else
+#		ndev=1
+#	fi
+#	insmod ae531x ${opts}
+
+	# set default IPv6 settings
+	# (1) disable accept_ra  
+	# (2) set router_solicitations to 0 to disable sending router solicit message
+	sysctl -w net.ipv6.conf.default.accept_ra=0
+	sysctl -w net.ipv6.conf.default.router_solicitations=0
+
+	# ZD-3000 use e1000e or e1000 driver
+	ETH_E1000E_DRIVER=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/e1000e/e1000e.ko
+	ETH_E1000_DRIVER=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/e1000/e1000.ko
+	ETH_IGB_DRIVER=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/igb/igb.ko
+
+	case `cat /proc/rks_hw_info/platform` in
+	"NAR5520")
+		if [ -f "${ETH_E1000_DRIVER}" ] ; then
+			insmod ${ETH_E1000_DRIVER}
+		elif [ -f "${ETH_E1000E_DRIVER}" ] ; then
+			insmod ${ETH_E1000E_DRIVER}
+		fi
+	;;
+	"T5520UR")
+		if [ -f "${ETH_IGB_DRIVER}" ]; then
+			insmod ${ETH_IGB_DRIVER}
+		fi
+	;;
+	esac
+#	if [ $? -ne 0 ]; then
+#		return
+#	fi
+
+	# set up bridge
+	iflist=`cat /proc/net/dev | grep eth | sed 's/[ ]*\(eth[0-9]\):.*/\1/'`
+
+	if [ -z "$iflist" ] ; then
+		echo "*** no ethernet devices found"
+		echo "*** Continue for now -- FIXME"
+		return
+	fi
+
+	for i in $iflist ; do
+		ifconfig $i 0.0.0.0
+	done
+	brctl addbr br0
+	for i in $iflist ; do
+		brctl addif br0 $i
+	done
+	brctl stp br0 off
+	brctl setbridgeprio br0 65520
+	ifconfig br0 up
+	ifconfig br0 0.0.0.0
+
+	wait_for_bridge
+
+#	if [ -e /usr/sbin/telnetd ]; then
+#		/usr/sbin/telnetd -l /bin/login
+#	fi
+	ifconfig lo up
+	stp_cmd
+
+#	/sbin/ifconfig eth0 up
+#	if [ $ndev -gt 1 ]; then
+#		/sbin/ifconfig eth1 up
+#	fi
+#	if [ $ndev -gt 2 ]; then
+#		/sbin/ifconfig eth2 up
+#	fi
+#	if [ $ndev -gt 3 ]; then
+#		/sbin/ifconfig eth3 up
+#	fi
+}
+
+stop() {
+	echo -n "Stopping network..."
+	/sbin/ifdown -a
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+start)
+	shift;
+	start $*
+	;;
+stop)
+	stop
+	;;
+restart|reload)
+	restart
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?

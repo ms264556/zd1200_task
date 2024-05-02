@@ -1,0 +1,38 @@
+# save version of current booted image
+#
+_save_image_version()
+{
+fwd=/writable/fw
+fl_vers=${fwd}/last_img_versions
+tmp_vers=/tmp/my_boot_versions
+
+my_ver=`cat /etc/version`
+rm -f ${tmp_vers}
+
+if [ -f ${fl_vers} ] ; then
+
+last_ver=`sed -n 1,1p ${fl_vers}`
+if [ "${my_ver}" != "${last_ver}" ] ; then
+echo  ${my_ver} > ${tmp_vers}
+l=9
+else
+l=10
+fi
+sed -n 1,${l}p ${fl_vers} >> ${tmp_vers}
+
+else
+# no preivous save_version file
+if [ ! -d ${fwd} ] ; then
+mkdir ${fwd}
+fi
+echo ${my_ver} > ${tmp_vers}
+
+fi
+
+mv -f ${tmp_vers} ${fl_vers}
+}
+
+_save_image_version
+
+# cleanup
+#rm -f ${tmp_vers}

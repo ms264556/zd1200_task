@@ -1,0 +1,14 @@
+config BR2_TARGET_ROOTFS_NFS
+	bool "Copy the rootfs to nfsdir"
+	default n
+	help
+	  Copy the rootfs to a path that can be exported mounting ROOTFS over NFS
+	  You need to have sudo previliges for running tar to do this so that the 
+	  dev nodes can be created
+
+config BR2_TARGET_ROOTFS_NFS_PATH
+	string "Path to the nfs export"
+	depends on BR2_TARGET_ROOTFS_NFS
+	default "/x"
+	help
+	   Specify the path to which to copy the entire rootfs to

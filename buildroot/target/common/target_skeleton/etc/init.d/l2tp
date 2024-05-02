@@ -1,0 +1,211 @@
+#!/bin/sh
+#
+# Start L2TP ...
+#
+
+kernel_ver=`uname -r`
+
+test_insmod() {
+  # Test the module: if not installed yet, install it
+  mod=$1
+  dir=/lib/modules/${kernel_ver}/kernel/drivers/net
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 1 ]; then
+	    #insmod $dir/$mod.ko > /dev/null 2>&1
+	    insmod $dir/$mod.ko
+  fi
+}
+
+test_rmmod() {
+  # Test the module: if not depended on, remove it
+  mod=$1
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 0 ]; then
+	    lsmod | grep ^$mod | grep "," > /dev/null 2>&1; mod_alone=$?
+	    if [ $mod_alone == 1 ]; then
+	        #rmmod $mod > /dev/null 2>&1
+	        rmmod $mod > /dev/null 2>&1
+	    fi
+  fi
+}
+
+install_modules() {
+  test_insmod slhc
+  if [ $kernel_ver == 2.6.15 ]; then
+    test_insmod ppp_bcp_generic      
+  elif [ $kernel_ver == 2.6.32.24 ];then
+    test_insmod ppp_generic
+  fi    
+  test_insmod ppp_async
+  test_insmod ppp_synctty
+  test_insmod ppp_deflate
+  test_insmod bsd_comp
+  test_insmod pppox
+  test_insmod pppol2tp
+}
+
+remove_modules() {
+  test_rmmod pppol2tp
+  test_rmmod pppox
+  test_rmmod bsd_comp
+  test_rmmod ppp_deflate
+  test_rmmod ppp_synctty
+  test_rmmod ppp_async
+  if [ $kernel_ver == 2.6.15 ]; then
+    test_rmmod ppp_bcp_generic      
+  elif [ $kernel_ver == 2.6.32.24 ];then
+    test_rmmod ppp_generic
+  fi   
+  test_rmmod slhc
+}
+
+
+start_l2tp() {
+  if [ -e /sbin/setkey ]; then
+	set - `rkscli -c "get ipsec" | grep "IPsec state"`; IPSEC_STATE=$4
+	set - `rkscli -c "get ipsec" | grep "IPsec connection status"`; IPSEC_STATUS=$5
+	if [ "$IPSEC_STATE" = "enabled" -a "$IPSEC_STATUS" = "down" ] ; then
+	  exit 255
+	fi
+  fi 
+
+  export LD_LIBRARY_PATH=/usr/lib/pppd/2.4.4:$LD_LIBRARY_PATH
+  export PPP_OPTFILE=/tmp/options.openl2tpd
+  # Collect needed env variables
+  set - `ifconfig eth0 2>/dev/null | grep "HWaddr"`; L2TP_BCP_MACLOCAL=$5
+  if [ "$L2TP_BCP_MACLOCAL" = "" ]; then
+	set - `ifconfig eth1 2>/dev/null | grep "HWaddr"`; L2TP_BCP_MACLOCAL=$5
+  fi
+  set - `rkscli -c "get l2tp" | grep "L2TP lns status"`; LNS_STATE=$5
+  set - `rkscli -c "get l2tp" | grep "L2TP server IP address"`; L2TP_DEST_IPADDR=$6
+  set - `rkscli -c "get l2tp" | grep "L2TP server secret"`; L2TP_AUTH_SECRET=$5
+  set - `rkscli -c "get l2tp" | grep "L2TP PPP username"`
+  set - `echo $5 | sed "s|/| |"`; L2TP_PPP_USER=$1; L2TP_PPP_PASS=$2
+  
+  if [ "$L2TP_DEST_IPADDR" == "0.0.0.0" -o "$L2TP_DEST_IPADDR" == "::" ]; then
+  	echo "L2TP server $L2TP_DEST_IPADDR is zero,not reachable..."
+	exit 255
+  fi
+
+  ipaddr=`echo $L2TP_DEST_IPADDR | grep ":"`
+
+  if [ -z "$ipaddr" ]; then
+  	set - `rkscli -c "get ipaddr wan"`; L2TP_SRC_IPADDR=$7
+  else
+	for var in `rkscli -c "get ipv6addr wan" | sed -n 's/.*IP: \(.*\)/\1/p'`; do
+            ipv6addr=`echo $var | grep "fe80"`
+            if [ -z "$ipv6addr" ]; then
+            	set - `echo $var | sed "s|/| |"`; L2TP_SRC_IPADDR=$1; L2TP_SRC_PREFIX=$2
+            fi
+        done  	
+  fi
+  
+  if [ $LNS_STATE = "enabled" ]; then
+  	/bin/cp -f /etc/openl2tpd.conf.template_lns /tmp/openl2tpd.conf
+  else
+  	/bin/cp -f /etc/openl2tpd.conf.template /tmp/openl2tpd.conf
+  fi
+  
+    
+  /bin/cp -f /etc/ppp/options.openl2tpd.template /tmp/options.openl2tpd
+  if [ "$L2TP_PPP_USER" != "" ]; then
+	sed -i s/\$USER/"user $L2TP_PPP_USER"/ /tmp/options.openl2tpd
+	sed -i s/\$PASSWORD/"password $L2TP_PPP_PASS"/ /tmp/options.openl2tpd
+  else
+	sed -i s/\$USER/"#user $L2TP_PPP_USER"/ /tmp/options.openl2tpd
+	sed -i s/\$PASSWORD/"#password $L2TP_PPP_PASS"/ /tmp/options.openl2tpd
+  fi
+  sed -i s/\$MACLOCAL/"maclocal $L2TP_BCP_MACLOCAL"/ /tmp/options.openl2tpd
+  
+  sed -i s/\$DEST_IPADDR/"$L2TP_DEST_IPADDR"/g /tmp/openl2tpd.conf
+  sed -i s/\$SRC_IPADDR/"$L2TP_SRC_IPADDR"/g /tmp/openl2tpd.conf
+  if [ "$L2TP_AUTH_SECRET" != "" ]; then
+	sed -i s/\$SECRET/"secret=$L2TP_AUTH_SECRET"/ /tmp/openl2tpd.conf
+  else
+	sed -i s/\$SECRET// /tmp/openl2tpd.conf
+  fi
+
+  # Depending on IPsec enabled or not, decide IPsec plugin for OpenL2TP
+  if [ -e /sbin/setkey ]; then
+	if [ "$IPSEC_STATE" = "disabled" ] ; then
+          /sbin/setkey -FP; /sbin/setkey -F
+	fi
+	IPSEC_PLUGIN="-p ipsec.so"
+  else
+	IPSEC_PLUGIN=""
+  fi
+  
+  if [ "$L2TP_DEST_IPADDR" = "0.0.0.0" -o "$L2TP_DEST_IPADDR" = "" ]; then
+  	echo "L2TP server $L2TP_DEST_IPADDR is undefined..."
+	exit 255
+  fi
+
+  # Check reachability to LNS before starting LAC daemon
+  if [ $LNS_STATE != "enabled" ]; then
+	  ping -c 1 $L2TP_DEST_IPADDR > /dev/null 2>&1
+	  flag=$?	  
+	  if [ $flag != "0" ] ; then
+		echo "L2TP server $L2TP_DEST_IPADDR is not reachable..."
+		exit 255
+	  fi
+  fi
+
+  /usr/sbin/openl2tpd -c /tmp/openl2tpd.conf $IPSEC_PLUGIN
+}
+
+stop_l2tp() {
+  OPENL2TPD_PID=`cat /var/run/openl2tpd.pid 2> /dev/null`
+  if [ "$OPENL2TPD_PID" != "" ]; then
+	# SIGTERM is more gracefully handled in OpenL2TP; SIGKILL is not
+	kill -15 $OPENL2TPD_PID
+	rm -f /var/run/openl2tpd.pid
+  fi
+  # Wait for 5 seconds for dust to settle down
+  sleep 5
+}
+
+start() {
+  OPENL2TPD_PID=`cat /var/run/openl2tpd.pid 2> /dev/null`
+  if [ "$OPENL2TPD_PID" != "" ]; then
+	exit 0
+  fi
+  echo "Starting L2TP..."
+  start_l2tp
+}
+
+stop() {
+  echo "L2tp will be stopped!"
+  OPENL2TPD_PID=`cat /var/run/openl2tpd.pid 2> /dev/null`
+  if [ "$OPENL2TPD_PID" = "" ]; then
+        remove_modules
+	exit 0
+  fi
+  echo "Stopping L2TP..."
+  stop_l2tp
+}
+
+restart() {
+  stop_l2tp
+  install_modules
+  start_l2tp
+}
+
+case "$1" in
+  start)
+        install_modules
+	start
+	;;
+  stop)
+        stop
+        remove_modules
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

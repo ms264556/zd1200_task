@@ -1,0 +1,10 @@
+(C) Ruckus Wireless, Inc 2006.  All Rights Reserved
+For successful logins, you must use 
+ssh -l cli <target>
+(where <target> represents the target device's IP address),
+
+Recommended:
+
+ssh -l cli -o StrictHostKeyChecking=yes -o PasswordAuthentication=no $target
+
+then use correct login procedures for successful session initiation.

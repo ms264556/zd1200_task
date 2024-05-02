@@ -1,0 +1,9 @@
+#!/bin/sh
+
+echo "Set Simulator Environment"
+echo "-->Start codump_client"
+/usr/sbin/codump_client -m `cat /proc/v54bsp/MACbase` &
+echo "-->Start telnetd"
+/usr/sbin/telnetd -l /bin/sh &
+
+

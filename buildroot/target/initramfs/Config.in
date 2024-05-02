@@ -1,0 +1,6 @@
+config BR2_TARGET_ROOTFS_INITRAMFS
+	bool "create /tftpboot/initramfs.gz"
+	default n
+	help
+	  Build a initramfs.gz (cpio.gz) which can be used with bzImage straight
+

@@ -1,0 +1,5 @@
+config BR2_PACKAGE_IPMIUTIL
+	bool "ipmiutil"
+	default n
+	help
+	  Install ipmiutil tool

@@ -1,0 +1,29 @@
+#!/bin/sh
+
+IMGDIR=/etc/airespider-images
+DUPLICATE_FLAG=$IMGDIR/duplicate
+PRE_VERSION=$IMGDIR/upgraded.fromver
+
+if [ -f $DUPLICATE_FLAG ]; then
+    new_pat=`cat $DUPLICATE_FLAG`
+    mount | grep "$new_pat" >/dev/null
+    if [ $? -eq 0 ]; then
+        /etc/init.d/chk_integrity.sh check-ap-image;
+        if [ $? -eq 0 ]; then
+            #new rootfs good, ap image good
+            if [ -f $PRE_VERSION ]; then
+                # do migration
+                path=/etc/migrate
+                prever=`cat $PRE_VERSION`
+                curver=`cat /bin/VERSION`
+                folder=`/bin/sys_wrapper.sh find-migrate-folder $path $prever $curver`
+                if [ "$folder" != "none" ] ; then
+                     echo "[CONFIG] Migrate configuration from $prever to $curver"
+                     $folder/migrate.sh
+                elif [ "`/bin/sys_wrapper.sh check-samever $prever $curver`" = "no" ] ; then
+                     echo "[CONFIG] no migration scripts available && not the same version"
+                fi
+            fi
+        fi
+    fi
+fi

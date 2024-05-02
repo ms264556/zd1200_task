@@ -1,0 +1,6 @@
+config BR2_PACKAGE_TOOL4TPM
+	bool "tool4tpm"
+	default n
+	help
+	    Infineon tool4tpm
+

@@ -1,0 +1,13 @@
+config BR2_TARGET_ISO_INSTALLER
+	bool "Enable ISO Installer"
+	depends on BR2_TARGET_USBTOOL_KIT
+	default n
+	help
+	  Build ISO image installer
+
+config BR2_ISO_INSTALLER_TARGET_DIR
+	string "ISO installer output path"
+	depends on BR2_TARGET_ISO_INSTALLER
+	default "$(TFTPBOOT)"
+	help
+	  Output path of ISO installer

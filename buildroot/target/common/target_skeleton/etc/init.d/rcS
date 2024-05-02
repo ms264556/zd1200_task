@@ -1,0 +1,72 @@
+#!/bin/sh
+
+
+# Start all init scripts in /etc/init.d
+# executing them in numerical order.
+#
+
+# start rsmd
+normal_startup () {
+    /usr/sbin/rsmd start
+
+    #
+    # manufacturing support
+    # test to see if we want to run delta MAC
+    deltamac=/writable/deltamac
+    if [ -f ${deltamac} ]; then
+        /usr/sbin/delta
+        if [ $? -eq 0 ]; then
+            rm -f ${deltamac}
+        fi
+    fi
+
+    for i in /etc/init.d/S??* ;do
+        # Ignore dangling symlinks (if any).
+        [ ! -f "$i" ] && continue
+
+        case "$i" in
+	    *.sh)
+	        # Source shell script for speed.
+	        (
+		     trap - INT QUIT TSTP
+		     . $i start
+	        )
+	        ;;
+	    *)
+	        # No sh extension, so fork subprocess.
+	        $i start
+	        ;;
+        esac
+    done
+
+    for i in /writable/data/scripts/start/* ; do
+        # Ignore dangling symlinks (if any).
+        [ ! -f "$i" ] && continue
+        [ ! -x "$i" ] && continue
+
+        $i start
+    done
+}
+
+
+#set `cat /proc/cmdline`
+if test $RUNART ;
+then
+    echo "Running ART" 
+    /etc/init.d/sys_init start ;
+    echo -n ZZ > /dev/watchdog
+    /etc/init.d/art
+elif [ "$INIT" != "" ];
+then
+    /etc/init.d/sys_init start
+    echo -n ZZ > /dev/watchdog
+    /etc/init.d/network start
+else
+    normal_startup
+fi
+
+KERNEL_VER=`uname -r`
+if [ "$KERNEL_VER" != "2.6.15" ] ; then
+    sysctl -w vm.drop_caches=3
+fi
+

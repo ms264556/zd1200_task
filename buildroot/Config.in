@@ -1,0 +1,536 @@
+#
+
+mainmenu "Buildroot2 Configuration"
+
+config BR2_HAVE_DOT_CONFIG
+	bool
+	default y
+
+choice
+        prompt "Select Build Type Debug/Release"
+        default BR2_BUILD_RELEASE
+config BR2_BUILD_DEBUG
+        bool "debug"
+config BR2_BUILD_RELEASE
+        bool "release"
+endchoice
+
+config BR2_BUILD_TYPE
+        string
+        default "release" if BR2_BUILD_RELEASE
+        default "debug" if BR2_BUILD_DEBUG
+
+
+source package/release/Config.in
+
+# Build Version in form a.b.c.d.e - where e is an incremental perforce counter
+#               and d is the specified by BR2_BUILD_VARIANT
+# or the build date and time
+# to do - handle major/minor revs
+
+config BR2_BUILD_VERSION
+        string "Build Version (a.b.c.)"
+        default "0.0.0"
+        help
+            3-digit Software Branch Numbering
+
+config BR2_BUILD_VARIANT
+        string "build variant / customer special"
+        default "0"
+        help
+            Variant number for build, default 0
+
+menu "Target System/Board options"
+
+menu "Target Board options"
+
+choice
+        prompt "Ruckus Board Type"
+        default BR2_RKS_BOARD_GD6-5
+        help
+          Select the board type that you want to build for 
+
+        config BR2_RKS_BOARD_DF1
+                bool "df1 (11n)"
+
+        config BR2_RKS_BOARD_HUSKY
+                bool "husky"
+
+        config BR2_RKS_BOARD_RETRIEVER
+                bool "retriever"
+
+        config BR2_RKS_BOARD_GD6-5
+                bool "gd6-5"
+
+        config BR2_RKS_BOARD_GD6-1
+                bool "gd6-1"
+
+        config BR2_RKS_BOARD_AP51
+                bool "ap51"
+
+        config BR2_RKS_BOARD_GD4
+                bool "gd4"
+
+        config BR2_RKS_BOARD_GD7
+                bool "gd7 (11A)"
+
+        config BR2_RKS_BOARD_GD8
+                bool "gd8"
+
+        config BR2_RKS_BOARD_GD12
+                bool "gd12"
+
+        config BR2_RKS_BOARD_NAR5520
+                bool "nar5520"
+	config BR2_RKS_BOARD_ZD1200
+                bool "zd1200"
+
+        config BR2_RKS_BOARD_GD26
+                bool "gd26 (wasp)"
+
+        config BR2_RKS_BOARD_GD28
+                bool "gd28 (snoop dogg)"
+
+        config BR2_RKS_BOARD_GD34
+                bool "gd34 (cyprus2)"
+endchoice
+
+choice
+        prompt "Ruckus Board Class"
+        default BR2_RKS_BOARD_CLASS_AP43     if BR2_RKS_BOARD_GD4 || BR2_RKS_BOARD_GD7
+        default BR2_RKS_BOARD_CLASS_AP51        if BR2_RKS_BOARD_GD6-5 || BR2_RKS_BOARD_HUSKY
+        default BR2_RKS_BOARD_CLASS_AP71        if BR2_RKS_BOARD_RETRIEVER || BR2_RKS_BOARD_DF1 || BR2_RKS_BOARD_GD8
+        default BR2_RKS_BOARD_CLASS_P10XX        if BR2_RKS_BOARD_GD28 || BR2_RKS_BOARD_GD34
+
+        default BR2_RKS_BOARD_CLASS_UNKNOWN
+        help
+          Select the class of boards that you want to build for 
+
+        config BR2_RKS_BOARD_CLASS_AP43
+                bool "ap43"
+
+        config BR2_RKS_BOARD_CLASS_AP51
+                bool "ap51"
+
+        config BR2_RKS_BOARD_CLASS_AP71
+                bool "ap71"
+
+        config BR2_RKS_BOARD_CLASS_AP83
+                bool "ap83"
+
+        config BR2_RKS_BOARD_CLASS_UNKNOWN
+                bool "generic"
+
+        config BR2_RKS_BOARD_CLASS_P10XX
+                bool "p10xx"
+endchoice
+
+endmenu
+
+choice 
+        prompt "Ruckus Antenna Model"
+        default BR2_RKS_ANTMODEL_HEX
+        help
+          Select the board Antenna Model that you want to build for 
+
+        config BR2_RKS_ANTMODEL_HEX
+                bool "HEX (6 element hex antenna)"
+
+        config BR2_RKS_ANTMODEL_5V
+                bool "5V  (5 element hex antenna)"
+
+        config BR2_RKS_ANTMODEL_QUAD
+                bool "QUAD (4 element hex antenna)"
+
+        config BR2_RKS_ANTMODEL_GD5
+                bool "GD5 (8 element hex antenna)"
+
+        config BR2_RKS_ANTMODEL_GD2
+                bool "GD2 (7 element Netgear with integrated antennae)"
+
+        config BR2_RKS_ANTMODEL_824v2
+                bool "GD2 (7 element Netgear with integrated antennae)"
+
+        config BR2_RKS_ANTMODEL_834
+                bool "834 (6 element Netgear with integrated antennae)"
+
+        config BR2_RKS_ANTMODEL_OMNI
+                bool "OMNI (Default one element omni antenna)"
+
+        config BR2_RKS_ANTMODEL_DUALOMNI
+                bool "DUALOMNI (two element omni antenna)"
+
+endchoice
+
+config BR2_RKS_VOICEFLEX
+	bool "Voice Flex"
+	default n
+
+config BR2_FAST_DIVERSITY
+	bool "fast diversity"
+	default n
+
+config BR2_TARGET_SOC_QCA955x
+	bool "QCA955x"
+	default n
+
+choice 
+	prompt "Target Flash Size"
+	default BR2_TARGET_FLASH_4MB if BR2_RKS_BOARD_GD4
+	default BR2_TARGET_FLASH_32MB if BR2_RKS_BOARD_GD28 || BR2_RKS_BOARD_GD34
+	default BR2_TARGET_FLASH_8MB
+	help 
+	    Select the Flash size to use  on the target board
+
+config BR2_TARGET_FLASH_2MB
+        bool "2MB"
+
+config BR2_TARGET_FLASH_4MB
+        bool "4MB"
+
+config BR2_TARGET_FLASH_8MB
+        bool "8MB"
+
+config BR2_TARGET_FLASH_16MB
+        bool "16MB"
+
+config BR2_TARGET_FLASH_32MB
+        bool "32MB"
+
+config BR2_TARGET_FLASH_64MB
+        bool "64MB"
+
+endchoice
+
+config BR2_TARGET_FLASH_SYMMETRY
+	bool "symmetric flash image (upgrade flip-flops between slots)"
+	default n
+	help
+		Select if the images run in (as opposed to main vs.backup) flip-flop upgrade order
+
+choice 
+	prompt "Target DRAM Size"
+	default BR2_TARGET_DRAM_16MB if BR2_RKS_BOARD_GD4 || BR2_RKS_BOARD_AP51 || BR2_RKS_BOARD_GD6-1 || BR2_RKS_BOARD_GD7 
+	default BR2_TARGET_DRAM_32MB if BR2_RKS_BOARD_GD6-5
+	default BR2_TARGET_DRAM_32MB if BR2_RKS_BOARD_HUSKY
+	default BR2_TARGET_DRAM_64MB if BR2_RKS_BOARD_RETRIEVER || BR2_RKS_BOARD_DF1
+	default BR2_TARGET_DRAM_128MB if BR2_RKS_BOARD_28 || BR2_RKS_BOARD_34
+	help 
+	    Select the DRAM size to use  on the target board
+
+config BR2_TARGET_DRAM_8MB
+	bool "8MB"
+
+config BR2_TARGET_DRAM_16MB
+	bool "16MB"
+
+config BR2_TARGET_DRAM_32MB
+	bool "32MB"
+	
+config BR2_TARGET_DRAM_64MB
+	bool "64MB"
+	
+config BR2_TARGET_DRAM_128MB
+	bool "128MB"
+
+config BR2_TARGET_DRAM_256MB
+	bool "256MB"
+
+endchoice
+
+config BR2_RKS_TARGET_SYSTEM
+        string
+        default "df1"       if BR2_RKS_BOARD_DF1
+        default "husky"     if BR2_RKS_BOARD_HUSKY
+        default "retriever" if BR2_RKS_BOARD_RETRIEVER
+        default "gd6-5"     if BR2_RKS_BOARD_GD6-5
+        default "gd6-1"     if BR2_RKS_BOARD_GD6-1
+        default "ap51"      if BR2_RKS_BOARD_AP51
+        default "gd4"       if BR2_RKS_BOARD_GD4
+        default "gd7"       if BR2_RKS_BOARD_GD7
+        default "gd8"       if BR2_RKS_BOARD_GD8
+        default "gd8"       if BR2_RKS_BOARD_GD12
+        default "gd26"      if BR2_RKS_BOARD_GD26
+        default "gd28"      if BR2_RKS_BOARD_GD28
+        default "gd34"      if BR2_RKS_BOARD_GD34
+        default "director"  if BR2_RKS_BOARD_NAR5520
+
+config BR2_RKS_TARGET_SYSTEM_CLASS
+        string
+        default "unknown"  if BR2_RKS_BOARD_CLASS_UNKNOWN
+        default "ap43"     if BR2_RKS_BOARD_CLASS_AP43
+        default "ap51"     if BR2_RKS_BOARD_CLASS_AP51
+        default "ap71"     if BR2_RKS_BOARD_CLASS_AP71
+        default "ap71"     if BR2_RKS_BOARD_CLASS_AP83
+        default "p10xx"     if BR2_RKS_BOARD_CLASS_P10XX
+
+choice
+        prompt "Chipset Maker"
+
+        config  BR2_WL_CHIPSET_BROADCOM
+                bool "Broadcom"
+
+endchoice
+
+config  BR2_RKS_WL_CHIPSET
+        string
+        default "broadcom"   if BR2_WL_CHIPSET_BROADCOM
+
+choice
+	prompt "Target Architecture"
+	default BR2_mips if BR2_RKS_BOARD_GD6-1 || BR2_RKS_BOARD_GD6-5 || BR2_RKS_BOARD_GD4 || BR2_RKS_BOARD_834PN || BR2_RKS_BOARD_TELSEY || BR2_RKS_BOARD_AP51 || BR2_RKS_BOARD_DF1
+	default BR2_i386 if BR2_RKS_BOARD_X86SDK || BR2_RKS_BOARD_NAR5520
+	default BR2_powerpc if BR2_RKS_BOARD_GD28 || BR2_RKS_BOARD_GD34
+	help
+	  Stuff
+
+config BR2_alpha
+	bool "alpha"
+config BR2_arm
+	bool "arm"
+config BR2_armeb
+	bool "armeb"
+config BR2_cris
+	bool "cris"
+config BR2_i386
+	bool "i386"
+config BR2_m68k
+	bool "m68k"
+config BR2_mips
+	bool "mips"
+config BR2_mipsel
+	bool "mipsel"
+config BR2_powerpc
+	bool "powerpc"
+config BR2_sh
+	bool "sh"
+config BR2_sparc
+	bool "sparc"
+config BR2_x86_64
+	bool "x86_64"
+endchoice
+
+#
+# Keep the variants seperate, there's no need to clutter everything else.
+# sh is fairly "special" in this regard, as virtually everyone else has
+# things kept down to a _sensible_ number of target variants. No such
+# luck for sh..
+#
+choice
+	prompt "Target Architecture Variant"
+	depends BR2_sh
+	default BR2_sh4
+config BR2_sh2a_nofpueb
+	bool "sh2a_nofpueb"
+config BR2_sh2eb
+	bool "sh2eb"
+config BR2_sh3
+	bool "sh3"
+config BR2_sh3eb
+	bool "sh3eb"
+config BR2_sh4
+	bool "sh4"
+config BR2_sh4eb
+	bool "sh4eb"
+endchoice
+
+#
+# gcc builds libstdc++ differently depending on the
+# host tuplet given to it, so let people choose
+#
+choice
+	prompt "Target Architecture Variant"
+	depends BR2_i386
+	default BR2_x86_i686
+config BR2_x86_i386
+	bool "i386"
+config BR2_x86_i486
+	bool "i486"
+config BR2_x86_i586
+	bool "i586"
+config BR2_x86_i686
+	bool "i686"
+endchoice
+
+config BR2_ARCH
+	string
+	default "alpha"		if BR2_alpha
+	default "arm"		if BR2_arm
+	default "armeb"		if BR2_armeb
+	default "cris"		if BR2_cris
+	default "i386"		if BR2_x86_i386
+	default "i486"		if BR2_x86_i486
+	default "i586"		if BR2_x86_i586
+	default "i686"		if BR2_x86_i686
+	default "m68k"		if BR2_m68k
+	default "mips"		if BR2_mips
+	default "mipsel"	if BR2_mipsel
+	default "powerpc"	if BR2_powerpc
+	default "sh2a_nofpueb"	if BR2_sh2a_nofpueb
+	default "sh2eb"		if BR2_sh2eb
+	default "sh3"		if BR2_sh3
+	default "sh3eb"		if BR2_sh3eb
+	default "sh4"		if BR2_sh4
+	default "sh4eb"		if BR2_sh4eb
+	default "sparc"		if BR2_sparc
+	default "x86_64"	if BR2_x86_64
+
+config BR2_ENDIAN
+	string
+	default "LITTLE" if BR2_arm || BR2_cris || BR2_i386 || BR2_mipsel || \
+	                    BR2_sh3 || BR2_sh4 || BR2_x86_64
+	default "BIG"    if BR2_alpha || BR2_armeb || BR2_m68k || BR2_mips || \
+	                    BR2_powerpc || BR2_sh2a_nofpueb || BR2_sh2eb || \
+	                    BR2_sh3eb || BR2_sh4eb || BR2_sparc
+
+config BR2_ENDIAN_LITTLE
+	bool
+	default y if BR2_arm || BR2_cris || BR2_i386 || BR2_mipsel || \
+	                    BR2_sh3 || BR2_sh4 || BR2_x86_64
+	default n    if BR2_alpha || BR2_armeb || BR2_m68k || BR2_mips || \
+	                    BR2_powerpc || BR2_sh2a_nofpueb || BR2_sh2eb || \
+	                    BR2_sh3eb || BR2_sh4eb || BR2_sparc
+config BR2_ENDIAN_BIG
+	bool
+	default n if BR2_arm || BR2_cris || BR2_i386 || BR2_mipsel || \
+	                    BR2_sh3 || BR2_sh4 || BR2_x86_64
+	default y    if BR2_alpha || BR2_armeb || BR2_m68k || BR2_mips || \
+	                    BR2_powerpc || BR2_sh2a_nofpueb || BR2_sh2eb || \
+	                    BR2_sh3eb || BR2_sh4eb || BR2_sparc
+
+endmenu
+
+menu "Product Type"
+
+config BR2_PRODUCT_TYPE
+	string "Ruckus Product Type"
+	default "vf2825"
+	help
+	  Product type string (15 chars). e.g. vf2825, vf2811,
+	    vf2111, vf2825-bare, director
+
+config BR2_BUILD_METROFLEX
+	bool "MetroFlex Profile"
+	default "n"
+	help
+	  MetroFlex Profile
+
+config BR2_BUILD_WBRIDGE
+	bool "Wireless Bridge Profile"
+	default "n"
+	help
+	  Wireless Bridge Profile
+
+config BR2_BUILD_WSG
+	bool "WSG Profile"
+	default "n"
+	help
+	  WSG Profile
+
+endmenu
+
+menu "Build options"
+
+config BR2_WGET
+	string "Wget command"
+	default "wget --passive-ftp -nd"
+
+config BR2_SVN
+	string "Subversion (svn) checkout command"
+	default "svn co"
+
+config BR2_TAR_VERBOSITY
+	bool "Tar verbose"
+	default n
+
+config BR2_DL_DIR
+	string "Download dir"
+	default "$(BASE_DIR)/dl"
+	help
+	  Directory to store all the source files that we need to fetch.
+
+config BR2_SOURCEFORGE_MIRROR
+	string "Sourceforge mirror site"
+	default "easynews"
+	help
+	    Sourceforge has a system of mirror sites.  Some sites may be closer
+	    to your location, and sometimes mirror sites go down and are no longer
+	    available.  This option allows you to select your preferred Sourceforge
+	    mirror site.
+
+	    The list of mirrors is available here:
+	    http://prdownloads.sourceforge.net/index-sf.html?download
+
+config BR2_TOOLCHAIN_ID
+	string "Toolchain Identifier"
+	default "$(PROFILE)"
+	help
+	    This is used to identify the toolchain.
+		The toolchiain will be built in the directory
+	    "$(BUILD_DIR)/$(BR2_TOOLCHAIN_ID)/toolchain_build_$(ARCH)$(ARCH_FPU_SUFFIX)$(strip $(subst ",, $(BR2_TOPDIR_SUFFIX)))".
+
+config BR2_STAGING_DIR
+	string "Toolchain and header file location?"
+	default "$(BUILD_DIR)/staging_dir"
+	help
+	    This is the location where the toolchain will be installed.  The
+	    toolchain will not work if it is moved from this location.
+	    Therefore, if you wish to package up a uClibc toolchain, it is
+	    important that is is set to the final location where the toolchain
+	    will be used.
+
+	    Most people will leave this set to the default value of
+	    "$(BUILD_DIR)/staging_dir".
+
+config BR2_TOPDIR_PREFIX
+	string "Custom build dir prefix"
+	default "build/$(PROFILE)"
+	help
+	    Add a custom string to the beginning of the build directories.
+
+	    build_ARCH -> [PREFIX]_build_ARCH
+	    toolchain_build_ARCH -> [PREFIX]_toolchain_build_ARCH
+
+config BR2_TOPDIR_SUFFIX
+	string "Custom build dir suffix"
+        default "$(BR2_BUILD_TYPE)"
+	help
+	    Add a custom string to the end of the build directories.
+
+	    build_ARCH -> build_ARCH_[SUFFIX]
+	    toolchain_build_ARCH -> toolchain_build_ARCH_[SUFFIX] 
+
+config BR2_USBTOOL_DIR
+	string "USB tool kits build dir"
+	depends on BR2_TARGET_USBTOOL_KIT
+	default "$(BUILD_DIR)/usbtool"
+	help
+	    This is the location where the usb tool kits build.
+
+	    Most people will leave this et to the default value of
+	    "$(BUILD_DIR)/usbtool"
+
+config BR2_RESTORETOOL_DIR
+	string "System restore tool kits build dir"
+	depends on BR2_TARGET_RESTORETOOL_KIT
+	default "$(BUILD_DIR)/restoretool"
+	help
+	    This is the location where the system restore tool kits build.
+
+	    Most people will leave this et to the default value of
+	    "$(BUILD_DIR)/restoretool"
+
+config BR2_JLEVEL
+	int "Number of jobs to run simultaneously"
+	default "1"
+	help
+	    Number of jobs to run simultanesouly
+
+endmenu
+
+source "toolchain/Config.in"
+
+source "package/Config.in"
+
+source "target/Config.in"
+

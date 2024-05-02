@@ -1,0 +1,7 @@
+config BR2_PACKAGE_RKSCONFIG
+	bool "rksconfig"
+	default y
+	depends on BR2_PACKAGE_MADWIFI_SMARTCAST && BR2_PACKAGE_LIBCCL
+	help
+	  Ruckus Configuration Utility.
+

@@ -1,0 +1,51 @@
+--- libnl-1.1/lib/utils.c	2008-01-14 23:48:46.000000000 +0800
++++ libnl-1.1/lib/utils.c.new	2011-04-07 14:24:43.862589000 +0800
+@@ -381,9 +381,6 @@ static void __init get_psched_settings(v
+ 		}
+ 	}
+ 
+-	if (!got_hz)
+-		user_hz = sysconf(_SC_CLK_TCK);
+-
+ 	if (getenv("TICKS_PER_USEC")) {
+ 		double t = strtod(getenv("TICKS_PER_USEC"), NULL);
+ 
+@@ -401,14 +398,24 @@ static void __init get_psched_settings(v
+ 		strncpy(name, "/proc/net/psched", sizeof(name) - 1);
+ 
+ 	if ((fd = fopen(name, "r"))) {
+-		uint32_t tick, us, nom;
+-		int r = fscanf(fd, "%08x%08x%08x%*08x", &tick, &us, &nom);
++		uint32_t tick, us, nom, denom;
++		int r = fscanf(fd, "%08x%08x%08x%08x", &tick, &us, &nom, &denom);
+ 
+ 		if (4 == r && nom == 1000000 && !got_tick)
+ 			ticks_per_usec = (double)tick/(double)us;
+-			
++
++		if (4 == r && nom == 1000000 && !got_hz) {
++			user_hz = denom;
++			got_hz = 1;
++        }
++		
+ 		fclose(fd);
+ 	}
++
++
++	if (!got_hz)
++		user_hz = sysconf(_SC_CLK_TCK);
++
+ }
+ 
+ 
+--- libnl-1.1/lib/route/tc.c	2008-01-14 23:48:46.000000000 +0800
++++ libnl-1.1/lib/route/tc.c.new	2011-04-07 14:25:44.982791000 +0800
+@@ -386,7 +386,7 @@ int rtnl_tc_calc_txtime(int bufsize, int
+ 	
+ 	tx_time_secs = (double) bufsize / (double) rate;
+ 
+-	return tx_time_secs * 1000000.;
++	return nl_us2ticks(tx_time_secs * 1000000.);
+ }
+ 
+ /**

@@ -1,0 +1,44 @@
+diff -Nuar vsftpd-2.0.5/ftpdataio.c vsftpd-2.0.5-new/ftpdataio.c
+--- vsftpd-2.0.5/ftpdataio.c	2005-03-12 10:00:00.000000000 +0800
++++ vsftpd-2.0.5-new/ftpdataio.c	2012-03-13 11:14:18.419154000 +0800
+@@ -207,6 +207,8 @@
+    * more accurate transfer rates.
+    */
+   vsf_sysutil_activate_linger(sock_fd);
++  /* set packet can fragment */
++  vsf_sysutil_setflag_fragment(sock_fd);
+   /* Start the timeout monitor */
+   vsf_sysutil_install_io_handler(handle_io, p_sess);
+   start_data_alarm(p_sess);
+diff -Nuar vsftpd-2.0.5/sysutil.c vsftpd-2.0.5-new/sysutil.c
+--- vsftpd-2.0.5/sysutil.c	2012-03-08 09:23:53.220003000 +0800
++++ vsftpd-2.0.5-new/sysutil.c	2012-03-13 11:14:48.074140000 +0800
+@@ -685,6 +685,17 @@
+ }
+ 
+ void
++vsf_sysutil_setflag_fragment(int fd)
++{
++  int val = IP_PMTUDISC_DONT;
++  int retval = setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val));
++  if (retval != 0)
++  {
++    die("setsockopt: donot frangement");
++  }
++}
++
++void
+ vsf_sysutil_activate_linger(int fd)
+ {
+   int retval;
+diff -Nuar vsftpd-2.0.5/sysutil.h vsftpd-2.0.5-new/sysutil.h
+--- vsftpd-2.0.5/sysutil.h	2006-01-08 04:01:41.000000000 +0800
++++ vsftpd-2.0.5-new/sysutil.h	2012-03-13 11:14:30.505623000 +0800
+@@ -256,6 +256,7 @@
+ void vsf_sysutil_set_nodelay(int fd);
+ void vsf_sysutil_activate_sigurg(int fd);
+ void vsf_sysutil_activate_oobinline(int fd);
++void vsf_sysutil_setflag_fragment(int fd);
+ void vsf_sysutil_activate_linger(int fd);
+ void vsf_sysutil_deactivate_linger_failok(int fd);
+ void vsf_sysutil_activate_noblock(int fd);

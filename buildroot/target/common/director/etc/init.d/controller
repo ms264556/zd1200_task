@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Start Controller components
+#
+
+
+echo "Initializing ZoneDirector..."
+export RUCKUS=1
+
+wait_for_bridge() {
+        # change br forwarding delay
+        brctl setfd br0 2
+        cont=1
+        i=0;
+        while [ x"$cont" = x1 ] && [ $i -le 10 ] ; do
+           rslt=`brctl showstp br0 | grep 8004 | grep forwarding`
+           if [ x"$rslt" != x ] ; then
+              cont=0
+           fi
+           i=`expr $i + 1`
+           sleep 1
+        done
+        # change led 
+        # Now let sys_wrapper to handle all system state and led
+}
+
+. /etc/rc.pre_ac_init
+/etc/ac_init.sh start
+
+wait_for_bridge

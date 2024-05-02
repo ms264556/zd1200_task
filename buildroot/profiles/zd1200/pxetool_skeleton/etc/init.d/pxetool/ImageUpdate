@@ -1,0 +1,253 @@
+#!/bin/sh
+
+. /etc/init.d/usbtool/subfunction/DefConfig
+. /etc/init.d/usbtool/subfunction/Error
+
+#update partition table
+UpdatePartitionTable () {
+  ret=0
+  echo "=== Update partition table ===" >> $LOG
+
+  #lipe < parttition table
+  echo $MSG_UPDATE_PARTITION_TABLE "($_CFCARD -> $_PARTITION)"
+  if [ -f /mnt/$_PARTITION ]; then
+    lipe --pump readable --device /dev/$_CFCARD < /mnt/$_PARTITION >> $LOG 2>&1
+  else
+    lipe --pump readable --device /dev/$_CFCARD < /default/$_PARTITION >> $LOG 2>&1
+  fi
+
+  if [ $? -ne 0 ]; then
+    ret=$ERR_CODE_UPD_PARTITION
+  fi
+
+  #tell BIOS we are bootable
+  lipe --pump readable --device /dev/$_CFCARD < /default/partition.empty.img >> $LOG 2>&1
+
+  return $ret
+}
+
+FormatBootfs () {
+  mkfs.ext2 /dev/$1 >> $LOG 2>&1
+  return $?
+}
+
+FormatRootfs () {
+  mkfs.ext2 /dev/$1 >> $LOG 2>&1
+  return $?
+}
+
+FormatDatafs () {
+  mkreiserfs --format 3.6 -f /dev/$1 >> $LOG 2>&1
+  return $?
+}
+
+#format partition
+FormatPartitions () {
+  ret=0
+  echo "=== Format partitions ===" >> $LOG
+
+  echo $MSG_FORMAT_BOOTFS "($_BOOTFS)"
+  #bootfs
+  FormatBootfs $_BOOTFS
+  if [ $? -ne 0 ]; then
+    ret=`$ERR_CODE_FMT_PARTITION + $ERR_CODE_IDT_BOOTFS`
+    return $ret
+  fi
+
+  #rootfs
+  echo $MSG_FORMAT_ROOTFS "($_ROOTFS)"
+  for d in $_ROOTFS; do
+    FormatRootfs $d
+    if [ $? -ne 0 ]; then
+      ret=`expr $ERR_CODE_FMT_PARTITION + $ERR_CODE_IDT_ROOTFS`
+      return $ret
+    fi
+  done
+
+  #datafs (mkreiserfs)
+  echo $MSG_FORMAT_DATAFS "($_DATAFS)"
+  FormatDatafs $_DATAFS
+  if [ $? -ne 0 ]; then
+    ret=`expr $ERR_CODE_FMT_PARTITION + $ERR_CODE_IDT_DATAFS`
+  fi
+
+  return $ret
+}
+
+#update image
+UpdateImages_rootfs () {
+  ret=0
+  echo "=== Update rootfs ===" >> $LOG
+
+  if [ ! -f /mnt/$_ROOTFSIMG ]; then
+    echo $MSG_WARNF_FILE "($_ROOTFSIMG)"
+  else
+    for d in $_ROOTFS; do
+      echo $MSG_UPDATE_IMG "($d -> $_ROOTFSIMG)"
+      gunzip -f -t /mnt/$_ROOTFSIMG >> $LOG 2>&1
+      #dd rootfs
+      if [ $? -eq 0 ]; then
+        zcat /mnt/$_ROOTFSIMG | dd of=/dev/$d >> $LOG 2>&1
+      else
+        dd if=/mnt/$_ROOTFSIMG of=/dev/$d >> $LOG 2>&1
+      fi
+
+      if [ $? -ne 0 ]; then
+        ret=$ERR_CODE_UPD_ROOTFS_IMG
+        return $ret
+      fi
+
+      echo $MSG_RESIZE_PARTITION "($d)"
+      #resize2fs
+      resize2fs /dev/$d >> $LOG 2>&1 
+      if [ $? -ne 0 ]; then
+        ret=$ERR_CODE_UPD_ROOTFS_RSZ
+        return $ret
+      fi
+
+    done
+
+  fi
+
+  return $ret
+}
+
+#update kernel
+UpdateKernel () {
+  ret=0
+  echo "=== Update kernel ===" >> $LOG
+
+  if [ ! -f /mnt/$_KERNELIMG ]; then
+    echo $MSG_WARNF_FILE "($_KERNELIMG)"
+  else
+    mkdir -p $TMPDIR/work
+
+    for d in $_ROOTFS; do
+      echo $MSG_UPDATE_KERNEL "($d -> $_KERNELIMG)"
+      #mount
+      mount /dev/$d $TMPDIR/work >> $LOG 2>&1
+
+      if [ $? -ne 0 ]; then
+        ret=$ERR_CODE_UPD_KERNEL_MNT
+        return $ret
+      fi
+
+      #cp bzImage
+      cp -f /mnt/$_KERNELIMG $TMPDIR/work >> $LOG 2>&1
+      if [ $? -ne 0 ]; then
+        ret=$ERR_CODE_UPD_KERNEL_IMG
+        return $ret
+      fi
+      echo "cp $_KERNELIMG -> /dev/$d" >>$LOG 2>&1
+
+      #umount
+      umount $TMPDIR/work > /dev/null 2>&1
+    done
+
+    rm -rf $TMPDIR/work > /dev/null 2>&1
+  fi
+
+  return $ret
+}
+
+#update image
+UpdateImages_datafs () {
+  ret=0
+
+  if [ ! -f /mnt/$_DATAFSIMG ]; then
+    echo $MSG_WARNF_FILE "($_DATAFSIMG)"
+  else
+    echo "=== Update datafs ===" >> $LOG
+    echo $MSG_UPDATE_IMG "($_DATAFS -> $_DATAFSIMG)"
+    mkdir -p $TMPDIR/work
+    mount /dev/$_DATAFS $TMPDIR/work >> $LOG 2>&1
+    if [ $? -ne 0 ]; then
+      FormatDatafs $_DATAFS
+      mount /dev/$_DATAFS $TMPDIR/work >> $LOG 2>&1
+    fi
+
+    if [ $? -ne 0 ]; then
+      ret=$ERR_CODE_UPD_DATAFS_MNT
+    else
+      cd $TMPDIR/work >>$LOG 2>&1 
+      rm -rf $TMPDIR/work/* $TMPDIR/work/.* >>$LOG 2>&1
+      tar -xvf /mnt/$_DATAFSIMG >> $LOG 2>&1
+      if [ $? -ne 0 ]; then
+        ret=$ERR_CODE_UPD_DATAFS_TAR
+      fi
+      #do crazy sync.....:((
+      sync;sync;sync;sync;
+      ls -la >>$LOG 2>&1
+      sync;sync;sync;
+    fi
+
+    cd / 2>&1
+    umount $TMPDIR/work > /dev/null 2>&1
+    rm -rf $TMPDIR/work > /dev/null 2>&1
+  fi
+
+  return $ret
+}
+
+#update bootloader
+UpdateBootfs () {
+  ret=0
+  echo "=== Update bootloader ===" >> $LOG
+
+  if [ ! -f /mnt/$_BOOTFSIMG ]; then
+    echo $MSG_WARNF_FILE "($_BOOTFSIMG)"
+  else
+    #dd bootloader
+    echo $MSG_UPDATE_IMG "($_BOOTFS -> $_BOOTFSIMG)"
+    gunzip -f -t /mnt/$_BOOTFSIMG >>$LOG 2>&1
+    if [ $? -eq 0 ]; then
+      zcat /mnt/$_BOOTFSIMG | dd of=/dev/$_BOOTFS >> $LOG 2>&1
+    else
+      dd if=/mnt/$_BOOTFSIMG of=/dev/$_BOOTFS >> $LOG 2>&1
+    fi
+
+    if [ $? -ne 0 ]; then
+      ret=$ERR_CODE_UPD_BOOTFS_IMG
+      return $ret
+    fi
+
+    #resize2fs
+    echo $MSG_RESIZE_PARTITION "($_BOOTFS)"
+    resize2fs /dev/$_BOOTFS >> $LOG 2>&1
+    if [ $? -ne 0 ]; then
+      ret=$ERR_CODE_UPD_BOOTFS_RSZ
+      return $ret
+    fi
+  
+    #grub
+    echo $MSG_UPDATE_BOOTLOADER_CFG
+grub --batch <<EOT 1>>$LOG 2>&1 
+  device (hd0) /dev/$_CFCARD
+  root (hd0,0) 
+  setup --prefix=/lib/grub/i386-pc (hd0)
+  quit
+EOT
+  
+    if [ $? -ne 0 ]; then
+      ret=$ERR_CODE_UPD_BOOTFS_BLD
+    fi
+
+  fi
+
+  if [ ! -f /mnt/$_RESTOREIMG ]; then
+    echo $MSG_WARNF_FILE "($_RESTOREIMG)"
+  else
+    echo $MSG_UPDATE_IMG "($_BOOTFS -> $_RESTOREIMG)"
+    mount /dev/$_BOOTFS /sys
+    cp -f /mnt/$_KERNELIMG /sys
+    cp -f /mnt/$_RESTOREIMG /sys
+    cp -f /mnt/$_RESTOREVER /sys
+    if [ "$PLATFORMINFO" = "T5520UR" ]; then
+       sed -i -e 's/hda/sda/' /sys/$_BOOTMENU
+    fi
+    umount /sys
+  fi
+
+  return $ret
+}
+

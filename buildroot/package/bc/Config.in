@@ -1,0 +1,9 @@
+config BR2_PACKAGE_BC
+	bool "bc"
+	default n
+	help
+          bc is an arbitrary precision numeric processing language.
+
+          http://www.gnu.org/software/bc/
+
+

@@ -1,0 +1,300 @@
+#!/bin/sh
+#
+# USB 3G/WiMAX/4G/LTE network settings
+#
+
+TMP_USB_DIR=/tmp/usb
+MNT_USB_DIR=/mnt/usb
+
+# The USB VID/PID package extracted to tmpfs
+TMP_VID=
+TMP_PID=
+
+# The USB VID/PID currently detected
+USB_VID=
+USB_PID=
+
+ARCH=`uname -m`
+
+retrieve_tmpfs_vid_pid() {
+    # Retrive USB VID/PID pair from tmpfs directory/file name
+    TMP_VID=
+    TMP_PID=
+
+    ID=`cat $TMP_USB_DIR/id 2>/dev/null`
+
+    TMP_VID=`echo $ID | awk -F "-" '{ print $1 }'`
+    TMP_PID=`echo $ID | awk -F "-" '{ print $2 }'`
+
+    #echo "tmpfs USB device VID-PID=$TMP_VID-$TMP_PID"
+
+    if [ "$TMP_VID" != "" -a "$TMP_PID" != "" ] ; then
+        return 0
+    else 
+        return 255
+    fi
+}
+
+retrieve_usbfs_vid_pid() {
+    # Retrive USB VID/PID pair from usbfs in proc
+    USB_VID=
+    USB_PID=
+
+    PROC_USB=/proc/bus/usb/devices
+
+    VENDOR="Vendor="
+    PRODID="ProdID="
+
+    KERNEL_VER=`uname -r`
+    if [ "$KERNEL_VER" == "2.6.32.24" ] ; then
+        VENDOR_LINUX=1d6b
+    elif [ "$KERNEL_VER" == "2.6.15" ] ; then
+        VENDOR_LINUX=0000
+    fi
+    LINE=`cat $PROC_USB | grep "$VENDOR" | grep -v "$VENDOR_LINUX"`
+    if [ "$LINE" != "" ] ; then
+        USB_VID=`echo $LINE | awk -F "$VENDOR" '{ print substr($2,0,4) }'`
+        USB_PID=`echo $LINE | awk -F "$PRODID" '{ print substr($2,0,4) }'`
+    fi
+
+    #echo "usbfs USB device VID-PID=$USB_VID-$USB_PID"
+
+    if [ "$USB_VID" != "" -a "$USB_PID" != "" ] ; then
+        return 0
+    else 
+        return 255
+    fi
+}
+
+check_integrity() {
+    # Check the integrity of the tar ball file
+
+    MNT_PKG_FILE=$MNT_USB_DIR/$USB_VID-$USB_PID-$ARCH.tar.bz2
+    MNT_PKG_MD5_FILE=$MNT_PKG_FILE.md5
+    if [ ! -e $MNT_PKG_FILE -o ! -e $MNT_PKG_MD5_FILE ] ; then
+        return 255
+    fi
+
+    cd $MNT_USB_DIR
+    md5sum -c $MNT_PKG_MD5_FILE > /dev/null 2>&1
+    return $?
+}
+
+extract_package() {
+    # Extract the provisioned USB software to tmpfs
+
+    MNT_PKG_FILE=$MNT_USB_DIR/$USB_VID-$USB_PID-$ARCH.tar.bz2
+    if [ ! -e $MNT_PKG_FILE ] ; then
+        return 255
+    fi
+
+    cd $TMP_USB_DIR
+    tar xjfm $MNT_PKG_FILE
+    chown -R root:root $TMP_USB_DIR
+
+    echo $USB_VID-$USB_PID > $TMP_USB_DIR/id
+    
+    return 0
+}
+
+check_package() {
+    # USB VID/PID should have been set by here
+    if [ "$USB_VID" == "" -o "$USB_PID" == "" ] ; then
+        return 255
+    fi
+
+    MNT_PKG_FILE=$MNT_USB_DIR/$USB_VID-$USB_PID-$ARCH.tar.bz2
+    MNT_PKG_MD5_FILE=$MNT_PKG_FILE.md5
+    
+    #echo $MNT_PKG_FILE
+    #echo $MNT_PKG_MD5_FILE
+    
+    if [ ! -e $MNT_PKG_FILE -o ! -e $MNT_PKG_MD5_FILE ] ; then
+        return 0
+    else
+        return 255
+    fi        
+}
+
+start() {
+    # USB VID/PID should have been set by here
+    if [ "$USB_VID" == "" -o "$USB_PID" == "" ] ; then
+        return 255
+    fi
+
+    SUBCMD=$1
+
+    # Check integrity of the tar ball
+    check_integrity
+    if [ "$?" != "0" ] ; then
+        return 255
+    fi
+
+    # Extract it to tmpfs
+    extract_package
+    if [ "$?" != "0" ] ; then
+        return 255
+    fi
+
+    # Start the provisioned USB software
+    if [ -e $TMP_USB_DIR/$USB_VID-$USB_PID/start ] ; then
+        $TMP_USB_DIR/$USB_VID-$USB_PID/start $SUBCMD
+        return $?
+    else
+        return 255
+    fi
+}
+
+stop() {
+    # USB VID/PID should have been set by here
+    if [ "$TMP_VID" == "" -o "$TMP_PID" == "" ] ; then
+        return 255
+    fi
+
+    SUBCMD=$1
+
+    # Stop it and remove it
+    if [ -e $TMP_USB_DIR/$TMP_VID-$TMP_PID/stop ] ; then
+        $TMP_USB_DIR/$TMP_VID-$TMP_PID/stop $SUBCMD
+        return $?
+    else
+        return 255
+    fi
+}
+
+status() {
+    # USB VID/PID should have been set by here
+    if [ "$TMP_VID" == "" -o "$TMP_PID" == "" ] ; then
+        return 255
+    fi
+
+    SUBCMD=$1
+
+    if [ -e $TMP_USB_DIR/$USB_VID-$USB_PID/status ] ; then
+        $TMP_USB_DIR/$USB_VID-$USB_PID/status $SUBCMD
+        return $?
+    else
+        return 255
+    fi
+}
+
+monitor() {
+
+    # Ping Google DNS server, 3 times
+    ifconfig usb0 > /dev/null 2>&1
+    if [ "$?" == "0" ] ; then
+        GOOG_DNS=8.8.8.8
+        for COUNT in 0 1 2 
+        do
+            ping -W 1 -c 1 $GOOG_DNS > /dev/null 2>&1
+            if [ "$?" == "0" ] ; then
+                return 0
+            fi
+        done
+    fi
+
+    if [ "$USB_VID" == "" -a "$USB_PID" == "" ] ; then
+        # If no present USB plugged, do nothing
+        return 0
+    fi
+
+    if [ "$TMP_VID" == "" -a "$TMP_PID" == "" ] ; then
+        # If no previous USB plugged, add the detected
+        start
+        return $?
+    fi
+
+    # Compare the plugged USB with the extracted USB package
+    if [ "$TMP_VID" == "$USB_VID" -a "$TMP_PID" == "$USB_PID" ] ; then
+        # If identical, check link status. If not okay, reconnect
+        status link_status
+        if [ "$?" != "0" ] ; then
+            start connect_network
+        fi
+        return $? 
+    else 
+        # If diffenent, remove old and add new
+        stop
+        start
+        return $? 
+    fi
+}
+
+# Create directory in tmpfs if not yet
+if [ ! -e $TMP_USB_DIR ] ; then
+    mkdir -p $TMP_USB_DIR
+fi
+
+# Uptime semaphore file to guard against multiple instances
+UPTIME_SEM_FILE=uptime_sem
+UPTIME_THRESHOLD=60
+UPTIME_CURR=`cat /proc/uptime | cut -d. -f1`
+if [ -e $TMP_USB_DIR/$UPTIME_SEM_FILE ] ; then
+    # Previous instance still running
+    UPTIME_PREV=`cat $TMP_USB_DIR/$UPTIME_SEM_FILE`
+    if [ $(($UPTIME_CURR-$UPTIME_PREV)) -lt $UPTIME_THRESHOLD ] ; then 
+        # Still within grace period and do not disturb
+        exit 0
+    fi
+fi 
+echo $UPTIME_CURR > $TMP_USB_DIR/$UPTIME_SEM_FILE
+
+CMD=$1
+SUBCMD=$2
+case "$CMD" in
+  add)
+        USB_VID=$2; USB_PID=$3
+        start
+        ;;
+  start)
+        retrieve_usbfs_vid_pid
+        start $SUBCMD
+        ;;
+  compare)
+        retrieve_usbfs_vid_pid
+        check_package
+        ;;
+  check)
+        retrieve_usbfs_vid_pid 
+        ;;                      
+  remove)
+        TMP_VID=$2; TMP_PID=$3
+        stop
+        ;;
+  stop)
+        retrieve_tmpfs_vid_pid
+        stop $SUBCMD
+        ;;
+  status)
+        retrieve_tmpfs_vid_pid
+        status $SUBCMD
+        ;;
+  debug)
+        retrieve_tmpfs_vid_pid
+        debug $SUBCMD
+        ;;
+  monitor)
+        retrieve_usbfs_vid_pid
+        retrieve_tmpfs_vid_pid
+        monitor
+        ;;
+  *)
+        echo "Usage: $0 [add | remove | start | stop | status | debug | monitor | check] <argument> ..."
+        echo "       add <vid> <pid>"
+        echo "       remove <vid> <pid>"
+        echo "       status [rssi | link_status | link_type | sim_info | device_info]"
+        echo "       start [load_drivers | connect_network]"
+        echo "       stop [unload_drivers | disconnect_network]"
+        echo "       debug [enable | disable]"
+        echo "       monitor"
+        echo "       check"        
+        exit 1
+esac
+RET=$?
+
+# Delete semaphore file to allow next run
+rm -f $TMP_USB_DIR/$UPTIME_SEM_FILE
+
+exit $RET
+
+

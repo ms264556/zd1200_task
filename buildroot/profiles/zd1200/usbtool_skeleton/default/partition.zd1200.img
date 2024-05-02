@@ -1,0 +1,9 @@
+# Partition Table Number 0's Data for device /dev/sdc at sector 0
+;3927001
+# Boot Type ST_c ST_h ST_s EN_c EN_h EN_s   ST_sector   TT_Sector
+    80   83    0    1    1   21   61   62          62       84506
+    00   83   22    0    1  129   61   62       84568      415152
+    00   83  130    0    1  237   61   62      499720      415152
+    00   83  238    0    1 1019   61   62      914872     3006008
+# This is a valid Partition Table.
+

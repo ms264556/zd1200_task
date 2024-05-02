@@ -1,0 +1,15 @@
+#!/bin/sh
+
+AP_SDK_VER=`cat /etc/ap-sdk.ver`
+
+echo -n ZZ > /dev/watchdog
+/etc/init.d/sys_init start
+/etc/init.d/network start
+/etc/init.d/sample-mips
+echo -n "0">/proc/v54bsp/himem
+
+/usr/sbin/telnetd -l /bin/sh
+
+echo "************************************"
+echo "* Welcome to Ruckus AP SDK $AP_SDK_VER *"
+echo "************************************"

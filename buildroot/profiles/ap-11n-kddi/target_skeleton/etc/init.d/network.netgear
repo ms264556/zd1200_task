@@ -1,0 +1,88 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+KERNEL_VERSION=`uname -r`
+start() {
+ 	echo "Starting network..."
+#	if [ "$1" != "" ]; then
+#		opts="dev_per_mac=$1"
+#		ndev=$1
+#	else
+#		ndev=1
+#	fi
+#	insmod ae531x ${opts}
+    num_eth_devs=1
+    if [ -f "/writable/data/persist-stg/numeth" ]; then
+        num_eth_devs=`cat /writable/data/persist-stg/numeth`
+    fi
+
+	insmod /lib/modules/${KERNEL_VERSION}/kernel/drivers/net/ag7100/ag7100_mod.ko dev_per_mac=$num_eth_devs
+	if [ $? -ne 0 ]; then
+		return
+		
+	fi
+
+    brctl addbr br0
+    if [ "$num_eth_devs" = "1" ]; then
+	    ifconfig eth0 up
+        brctl addif br0 eth0
+    fi;
+
+    if [ "$num_eth_devs" = "2" ]; then
+	    ifconfig eth0 up
+	    ifconfig eth1 up
+        brctl addif br0 eth0
+        brctl addif br0 eth1
+    fi;
+
+    ip_addr=192.168.1.87
+    if [ -f "/writable/data/persist-stg/ipaddr" ]; then
+        ip_addr=`cat /writable/data/persist-stg/ipaddr`  
+    fi;
+    ifconfig br0 $ip_addr netmask 255.255.255.0
+    ifconfig br0 up
+    brctl setfd br0 1
+
+    if [ -e /usr/sbin/telnetd ]; then
+        /usr/sbin/telnetd -l /bin/ash
+    fi
+#	/sbin/ifconfig eth0 up
+#	if [ $ndev -gt 1 ]; then
+#		/sbin/ifconfig eth1 up
+#	fi
+#	if [ $ndev -gt 2 ]; then
+#		/sbin/ifconfig eth2 up
+#	fi
+#	if [ $ndev -gt 3 ]; then
+#		/sbin/ifconfig eth3 up
+#	fi
+}	
+stop() {
+	echo -n "Stopping network..."
+	/sbin/ifdown -a
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+start)
+	shift;
+	start $*
+	;;
+stop)
+	stop
+	;;
+restart|reload)
+	restart
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

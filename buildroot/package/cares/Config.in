@@ -1,0 +1,7 @@
+config BR2_PACKAGE_CARES
+	bool "cares"
+	default n
+	help
+	  for resolving host name asynchronously
+	  http://http://c-ares.haxx.se/
+

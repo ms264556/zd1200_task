@@ -1,0 +1,14 @@
+echo "Starting tftpd ..."
+
+if [ ! -w /etc/passwd ]; then
+  mkdir -p /writable/etc/config
+  touch /writable/etc/config/passwd
+  echo "nobody:x:99:99:Nobody:/:/sbin/nologin" >/etc/passwd
+fi
+
+/usr/sbin/in.tftpd -l -u nobody -s /etc/airespider-images/firmwares
+
+err=$?
+if [ $err -ne 0 ]; then
+  echo "[$0] start tftpd failed code [$err] -- FIXME"
+fi

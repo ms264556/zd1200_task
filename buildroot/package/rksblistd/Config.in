@@ -1,0 +1,7 @@
+config BR2_PACKAGE_RKSBLISTD
+	bool "rksblistd"
+	default n
+	help
+          Ruckus daemon to support wireless non-root bridges to inform root bridge of 
+          interference
+

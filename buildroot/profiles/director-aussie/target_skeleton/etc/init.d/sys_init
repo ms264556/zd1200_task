@@ -1,0 +1,167 @@
+#!/bin/sh
+
+# NOTE
+#
+# sys_init should prepare the file system to a ready state
+# i.e. after sys_init, it can be running for all platforms
+
+kernel_ver=`uname -r`
+
+_sys_start()
+{
+mount -o remount,rw /
+mount -a
+
+# adjust buffer cache behavior
+echo 15 > /proc/sys/vm/dirty_ratio
+echo 10 > /proc/sys/vm/dirty_background_ratio
+echo 6144 > /proc/sys/vm/min_free_kbytes 
+
+# load RTC module
+if [ $kernel_ver == 2.6.15 ]; then
+  insmod /lib/modules/2.6.15/kernel/drivers/i2c/chips/m41t00.ko
+fi
+if [ $kernel_ver == 2.6.32.24 ];then
+   insmod /lib/modules/2.6.32.24/kernel/drivers/rtc/rtc-m41t00.ko
+fi
+echo "date: (before RTC startup)"
+/bin/date
+echo "hwclock: RTC startup"
+/sbin/hwclock
+/sbin/hwclock -s
+echo "date: should be the same as hwclock"
+/bin/date
+
+# start led, blinking red
+/bin/led.sh red blink
+
+# mount datafs
+dev_datafs=0
+_check_datafs()
+{
+    while read pn sz name others; do
+        case "${name}" in
+        *sda4* )  
+            dev_datafs="1"
+            echo "Found USB storage on /dev/sda4"
+            break ;;
+        *) ;; 
+        esac
+    done < /proc/diskstats
+}
+
+_mount_datafs()
+{
+    while [ ${dev_datafs} -ne "1" ]; do
+        echo "Waiting for USB storage connected"
+        _check_datafs
+        sleep 1
+    done
+
+    mount -o rw,noatime -t reiserfs /dev/sda4 /writable
+    if [ ! -d /writable/etc ]; then
+        mkdir -p /writable/etc
+    fi
+}
+
+_mount_datafs
+
+mkdir -p /writable/etc/airespider-image
+
+# mount supportxt/ as tmpfs
+# this is a tricky arrangement to satisfy:
+# - tftp cannot follow links to a different rooted directory
+#   (i.e. create a /path/to/tftproot/ ->/tmp/supportxt/ won't work)
+# - it's preferred to use RAM to store the data rather than flash
+#   (as periodically supportxt retrieval from AP is implemented, this is a must)
+mkdir -p /writable/etc/airespider-images/firmwares/supportxt
+
+# change kernel parameters
+sysctl -w net.unix.max_dgram_qlen=5000
+sysctl -w net.core.rmem_default=524288
+sysctl -w net.core.rmem_max=1048576
+sysctl -w net.core.wmem_default=524288
+sysctl -w net.core.wmem_max=1048576
+sysctl -w kernel.shmmax=100663296
+
+#to defend DDOS attack+SYN Flooding
+echo 1 > /proc/sys/net/ipv4/tcp_syncookies
+
+#Mitigate TCP:time wait bucket table overflow issue
+echo 8192 > /proc/sys/net/ipv4/tcp_max_tw_buckets
+
+# set up /tmp directories
+if [ ! -d /tmp/non_persist ]; then
+    mkdir /tmp/non_persist
+fi
+
+# fix links for /var
+vardirs="run log spool lock ftp"
+for d in ${vardirs}; do
+    #rm -f /var/${d}
+    mkdir -p /tmp/var/${d}
+    # symlink for these are already in target_skeleton
+    #ln -fs /tmp/var/${d} /var/${d}
+done
+
+# urandom
+/etc/init.d/urandom start
+
+# random seed
+mkdir -p /writable/etc/system
+
+if [ -d /proc/v54bsp ]; then
+    # see if reset to factory should be performed
+    # /proc/v54bsp/factory should be non-zero
+    restore_factory="no"
+
+    # /proc/v54bsp/factory will be set to 0 if the restore-factory button is triggered
+    # or set by scripts
+    factory=`cat /proc/v54bsp/factory`
+    if [ "$factory" != "0" ]; then
+        restore_factory="yes"
+    fi
+
+    # because of #5056, we cannot trust the /proc/v54bsp/factory for certain versions
+    fromver=`cat /etc/airespider-images/upgraded.fromver 2>/dev/null`
+    BADVERS="2.0.0.0 2.0.1.0 2.0.1.1 3.0.0.0 3.0.1.0 3.0.2.0 3.0.3.0"
+    if [ "$fromver" != "" ]; then
+         if [ "`echo $BADVERS | grep $fromver`" != "" ]; then
+             restore_factory="no"
+         fi
+    fi
+
+    if [ "${restore_factory}" = "yes" ]; then
+       echo -n "[CONFIG] Restore to factory default ..."
+       sh /bin/sys_wrapper.sh restore-default 2> /dev/null
+       echo "Done"
+    fi
+    # always reset the flag
+    echo -n 0 > /proc/v54bsp/factory
+else
+    # BSP doesn't exists. Platform porting needed
+    echo "[sys_init] /proc/v54bsp/ doesn't exist"
+    echo "[sys_init] fake /bin/MODEL and /bin/SERIAL -- FIXME"
+    rm -f /bin/MODEL /bin/SERIAL
+    echo "ZD-3000" > /bin/MODEL
+    echo "SNFAKE3000" > /bin/SERIAL
+fi
+
+mount -o remount,ro /
+mount
+}
+
+_sys_stop()
+{
+    mount -o remount,rw /
+    /etc/init.d/urandom stop
+    mount -o remount,ro /
+}
+
+case "$1" in
+start | "")
+    _sys_start ;;
+stop)
+    _sys_stop ;;
+*) ;;
+esac

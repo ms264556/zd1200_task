@@ -1,0 +1,6 @@
+config BR2_PACKAGE_SCAND
+	bool "scand"
+	default n
+	help
+          Ruckus daemon to run on scan radio
+

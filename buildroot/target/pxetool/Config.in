@@ -1,0 +1,12 @@
+config BR2_TARGET_PXETOOL_KIT
+	bool "Enable system pxe tool kits"
+	default n
+	help
+	  Create system pxe tool kits for system rescue.
+
+config BR2_PXE_TOOL_TARGET_DIR
+	string "System pxe initramfs output path"
+	depends on BR2_TARGET_PXETOOL_KIT
+	default "$(TFTPBOOT)/$(PROFILE)/usbtool"
+	help
+	  Output path to the initramfs of system pxe tool kit

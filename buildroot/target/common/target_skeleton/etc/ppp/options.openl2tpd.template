@@ -1,0 +1,27 @@
+#debug
+
+unit 7
+
+$USER
+$PASSWORD
+
+nodetach
+local
+noaccomp
+nopcomp
+nobsdcomp
+nodeflate
+nopredictor1
+novj
+novjccomp
+#+mppe
+
+noip
+
+#The "bcp" interface needs MTU of 1500 for bridging
+mru 1500
+mtu 1500
+
+#nobcp
+$MACLOCAL
+

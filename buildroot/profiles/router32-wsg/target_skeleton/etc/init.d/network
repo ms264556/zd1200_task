@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+#eth_mod=ae531x
+#eth_mod=ag7100_mod
+KERNEL_VERSION=`cat /proc/sys/kernel/osrelease`
+eth_mod=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/ae531x/ae531x.ko
+
+start() {
+	ifconfig lo up
+	echo -n "Starting network..."
+        echo " $*"
+	if [ "$1" != "" ]; then
+		opts="dev_per_mac=$1"
+		ndev=$1
+		if [ "$2" != "" ]; then
+			opts="dev_per_mac=$1 ethnames=$2"
+		fi
+	else
+		ndev=1
+	fi
+	insmod $eth_mod ${opts}
+	if [ $? -ne 0 ]; then
+		return
+	fi
+
+}	
+stop() {
+	echo -n "Stopping network..."
+	echo    " $*"
+	if [ "$1" != "" -a "$2" != "" ]; then
+            shift;
+            IFS=' @'
+            for ii in $* ; do
+                /sbin/ifconfig ${ii} down
+            done
+	else
+		/sbin/ifconfig eth0 down 2>/dev/null
+		/sbin/ifconfig eth1 down 2>/dev/null
+	fi
+
+}
+
+restart() {
+	stop $*
+	start $*
+}	
+
+
+op=$1
+shift
+case "${op}" in
+start)
+	start $*
+	;;
+stop)
+	stop $*
+	;;
+restart|reload)
+	restart $*
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

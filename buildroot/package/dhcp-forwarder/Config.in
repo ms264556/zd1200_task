@@ -1,0 +1,7 @@
+config BR2_PACKAGE_DHCP-FORWARDER
+	bool "dhcp-forwarder"
+	default n
+	help
+	  This program forwards DHCP messages between subnets with different sublayer broadcast domains.
+
+	  http://www.nongnu.org/dhcp-fwd/

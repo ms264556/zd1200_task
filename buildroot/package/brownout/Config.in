@@ -1,0 +1,12 @@
+config BR2_PACKAGE_BROWNOUT
+	bool "brownout"
+	default n
+	help
+	  brownout.
+
+config BR2_PACKAGE_CYPRUS2_BROWNOUT
+	bool "cyprus2 brownout"
+	default n
+	help
+	  brownout.
+

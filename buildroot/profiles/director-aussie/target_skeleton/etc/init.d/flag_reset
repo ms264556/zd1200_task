@@ -1,0 +1,23 @@
+#!/bin/sh
+
+fromver=`cat /etc/airespider-images/upgraded.fromver 2>/dev/null`
+if [ "$fromver" != "" ] ; then
+    frombld=`cat /etc/airespider-images/upgraded.frombld`
+    if [ -f /etc/airespider-images/rootfs_upgraded ]; then
+        /etc/init.d/chk_integrity.sh check-ap-image
+        if [ $? -eq 0 ]; then
+            echo "[INFO  ] Just upgraded from $fromver.$frombld"
+            /bin/sys_wrapper.sh "upgrade-done" "success"
+        else
+            echo "[INFO  ] Upgraded from $fromver.$frombld failed, AP image is corrupted"
+            /bin/sys_wrapper.sh "upgrade-done" "fail"
+        fi
+        rm -f /etc/airespider-images/rootfs_upgraded
+    else
+        echo "[INFO  ] Upgraded from $fromver.$frombld failed, system is corrupted"
+        /bin/sys_wrapper.sh "upgrade-done" "fail"
+    fi
+fi
+rm -f /etc/airespider-images/upgraded.fromver
+rm -f /etc/airespider-images/upgraded.frombld
+

@@ -1,0 +1,50 @@
+#!/bin/sh
+
+params="zdaddr1 zdaddr2 devname fmaddr"
+rkscli_cmd="/usr/bin/rkscli"
+
+echo "Set RPM Key"
+for param in $params; do
+        value=`eval echo "$""$param"`
+        if [ -n $value ]; then
+                case $param in
+                "zdaddr1")
+                        zd1=`$rkscli_cmd -c "get rpmkey apmgr/apmgr-primary-ac-ip-addr"`
+                        if [ -z "$zd1" ]; then
+                                $rkscli_cmd -c "set rpmkey apmgr/apmgr-primary-ac-ip-addr $value"
+                                echo "--->RPM: ZD 1st ip => [$value]"
+                        fi
+                        ;;
+                "zdaddr2")
+                        zd2=`$rkscli_cmd -c "get rpmkey apmgr/apmgr-secondary-ac-ip-addr"`
+                        if [ -z "$zd2" ]; then
+                                $rkscli_cmd -c "set rpmkey apmgr/apmgr-secondary-ac-ip-addr $value"
+                                echo "--->RPM: ZD 2nd ip => [$value]"
+                        fi
+                        ;;
+                "fmaddr")
+                        current_url=`$rkscli_cmd -c "get rpmkey tr069/current_server_url"`
+                        if [ -z "$current_url" ]; then
+                                $rkscli_cmd -c "set rpmkey tr069/current_server_url https://$value/intune/server"
+                                echo "--->RPM: FM ip => [$value]"
+                        fi
+                        ;;
+                "devname")
+                        devname=`$rkscli_cmd -c "get rpmkey device-name"`
+                        if [ "$devname" = "device-name = RuckusAP" ]; then
+                                $rkscli_cmd -c "set rpmkey device-name $value"
+                                echo "--->RPM: Device name => [$value]"
+                        fi
+                        ;;
+                *)
+                        echo "$value" > /proc/v54bsp/$param
+                        echo "--->RBD: /proc/v54bsp/$param => [$value]"
+                        ;;
+                esac
+        fi
+done
+
+#if [ "$zd1" != "" -o "$zd2" != "" ]; then
+#	/usr/bin/rkscli -c "set director ip $zd1 $zd2"
+#	echo "--->Set AC ip P:$zd1 S:$zd2"
+#fi

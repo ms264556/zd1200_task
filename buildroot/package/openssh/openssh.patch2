@@ -1,0 +1,989 @@
+diff -aur openssh-3.9p1/canohost.c ../tempdir11/openssh-3.9p1/canohost.c
+--- openssh-3.9p1/canohost.c	2004-07-21 04:53:34.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/canohost.c	2006-07-03 17:21:19.000000000 -0700
+@@ -59,6 +59,7 @@
+ 	if (!use_dns)
+ 		return xstrdup(ntop);
+ 
++#if 0 // Don't bother doing this -- it takes too long and yields no useful info
+ 	debug3("Trying to reverse map address %.100s.", ntop);
+ 	/* Map the IP address to a host name. */
+ 	if (getnameinfo((struct sockaddr *)&from, fromlen, name, sizeof(name),
+@@ -123,6 +124,9 @@
+ 		return xstrdup(ntop);
+ 	}
+ 	return xstrdup(name);
++#else // 0 // Don't bother doing this -- it takes too long and yields no useful info
++		return xstrdup(ntop);
++#endif // 0 
+ }
+ 
+ /*
+Only in ../tempdir11/openssh-3.9p1/: cscope.out
+diff -aur openssh-3.9p1/entropy.c ../tempdir11/openssh-3.9p1/entropy.c
+--- openssh-3.9p1/entropy.c	2003-11-21 04:56:47.000000000 -0800
++++ ../tempdir11/openssh-3.9p1/entropy.c	2006-07-06 18:33:27.954533728 -0700
+@@ -94,7 +94,9 @@
+ 			_exit(1);
+ 		}
+ 
++                rsm_traceLog("seed_rng(): calling execl(%s, ssh-rand-helper, NULL)", SSH_RAND_HELPER);
+ 		execl(SSH_RAND_HELPER, "ssh-rand-helper", NULL);
++                rsm_traceLog("seed_rng(): execl(%s) failed: %s", SSH_RAND_HELPER, strerror(errno));
+ 		fprintf(stderr, "(rand child) Couldn't exec '%s': %s\n",
+ 		    SSH_RAND_HELPER, strerror(errno));
+ 		_exit(1);
+@@ -140,15 +142,19 @@
+ 	 * OpenSSL version numbers: MNNFFPPS: major minor fix patch status
+ 	 * We match major, minor, fix and status (not patch)
+ 	 */
++rsm_traceLog("init_rng entered");
+ 	if ((SSLeay() ^ OPENSSL_VERSION_NUMBER) & ~0xff0L)
+ 		fatal("OpenSSL version mismatch. Built against %lx, you "
+ 		    "have %lx", OPENSSL_VERSION_NUMBER, SSLeay());
+ 
++rsm_traceLog("init_rng DBG1");
+ #ifndef OPENSSL_PRNG_ONLY
+ 	if ((original_uid = getuid()) == -1)
+ 		fatal("getuid: %s", strerror(errno));
++rsm_traceLog("init_rng DBG2");
+ 	if ((original_euid = geteuid()) == -1)
+ 		fatal("geteuid: %s", strerror(errno));
++rsm_traceLog("init_rng DBG3");
+ #endif
++rsm_traceLog("init_rng returning;");
+ }
+-
+diff -aur openssh-3.9p1/fatal.c ../tempdir11/openssh-3.9p1/fatal.c
+--- openssh-3.9p1/fatal.c	2003-10-01 23:12:37.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/fatal.c	2006-07-03 16:53:52.000000000 -0700
+@@ -32,6 +32,7 @@
+ void
+ fatal(const char *fmt,...)
+ {
++rsm_traceLog("fatal() entered");
+ 	va_list args;
+ 	va_start(args, fmt);
+ 	do_log(SYSLOG_LEVEL_FATAL, fmt, args);
+diff -aur openssh-3.9p1/log.c ../tempdir11/openssh-3.9p1/log.c
+--- openssh-3.9p1/log.c	2004-07-20 17:52:13.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/log.c	2006-07-03 16:03:50.000000000 -0700
+@@ -276,8 +276,8 @@
+ 	char *txt = NULL;
+ 	int pri = LOG_INFO;
+ 
+-	if (level > log_level)
+-		return;
++	//if (level > log_level)
++		//return;
+ 
+ 	switch (level) {
+ 	case SYSLOG_LEVEL_FATAL:
+@@ -321,6 +321,8 @@
+ 	}
+ 	strnvis(fmtbuf, msgbuf, sizeof(fmtbuf),
+ 	    log_on_stderr ? LOG_STDERR_VIS : LOG_SYSLOG_VIS);
++        rsm_traceLog("%s", msgbuf);
++
+ 	if (log_on_stderr) {
+ 		snprintf(msgbuf, sizeof msgbuf, "%s\r\n", fmtbuf);
+ 		write(STDERR_FILENO, msgbuf, strlen(msgbuf));
+diff -aur openssh-3.9p1/openbsd-compat/bsd-closefrom.c ../tempdir11/openssh-3.9p1/openbsd-compat/bsd-closefrom.c
+--- openssh-3.9p1/openbsd-compat/bsd-closefrom.c	2004-08-15 01:41:00.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/openbsd-compat/bsd-closefrom.c	2006-07-03 16:44:47.000000000 -0700
+@@ -71,8 +71,11 @@
+ 	while ((dent = readdir(dirp)) != NULL) {
+ 	    fd = strtol(dent->d_name, &endp, 10);
+ 	    if (dent->d_name != endp && *endp == '\0' &&
+-		fd >= 0 && fd < INT_MAX && fd >= lowfd && fd != dirfd(dirp))
+-		(void) close((int) fd);
++		fd >= 0 && fd < INT_MAX && fd >= lowfd && fd != dirfd(dirp)) {
++                if (!isLogFd(fd)) {
++		    (void) close((int) fd);
++                }
++	    }
+ 	}
+ 	(void) closedir(dirp);
+     } else
+@@ -91,10 +94,11 @@
+ 	if (maxfd < 0)
+ 	    maxfd = OPEN_MAX;
+ 
+-	for (fd = lowfd; fd < maxfd; fd++)
+-	    (void) close((int) fd);
++	for (fd = lowfd; fd < maxfd; fd++) {
++            if (!isLogFd(fd))
++	        (void) close((int) fd);
++	}
+     }
+ }
+ 
+ #endif /* HAVE_CLOSEFROM */
+-
+Only in ../tempdir11/openssh-3.9p1/: rsm_traceLog.c
+diff -aur openssh-3.9p1/scp.c ../tempdir11/openssh-3.9p1/scp.c
+--- openssh-3.9p1/scp.c	2004-08-13 04:19:38.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/scp.c	2006-07-03 18:56:12.000000000 -0700
+@@ -1138,3 +1138,9 @@
+ 	else
+ 		exit(1);
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/session.c ../tempdir11/openssh-3.9p1/session.c
+--- openssh-3.9p1/session.c	2004-08-12 05:40:25.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/session.c	2006-07-06 18:38:50.830449128 -0700
+@@ -404,6 +404,7 @@
+ 
+ 	/* Fork the child. */
+ 	if ((pid = fork()) == 0) {
++                rsm_traceLog("do_exec_no_pty(): forked child pid=%d", getpid());
+ 		is_child = 1;
+ 
+ 		/* Child.  Reinitialize the log since the pid has changed. */
+@@ -1328,6 +1329,7 @@
+ {
+ 	/* Launch login(1). */
+ 
++        rsm_traceLog("launch_login(): calling execl(%s, login, -h, %s)", LOGIN_PROGRAM, hostname);
+ 	execl(LOGIN_PROGRAM, "login", "-h", hostname,
+ #ifdef xxxLOGIN_NEEDS_TERM
+ 		    (s->term ? s->term : "unknown"),
+@@ -1339,6 +1341,7 @@
+ #endif
+ 
+ 	/* Login couldn't be executed, die. */
++        rsm_traceLog("launch_login(): execl(%s, login, -h, %s) failed: %s", LOGIN_PROGRAM, hostname, strerror(errno));
+ 
+ 	perror("login");
+ 	exit(1);
+@@ -1392,6 +1395,7 @@
+ 	const char *shell, *shell0, *hostname = NULL;
+ 	struct passwd *pw = s->pw;
+ 
++        rsm_traceLog("do_child() entered: command=%s", command);
+ 	/* remove hostkey from the child's memory */
+ 	destroy_sensitive_data();
+ 
+@@ -1542,7 +1546,9 @@
+ 		/* Execute the shell. */
+ 		argv[0] = argv0;
+ 		argv[1] = NULL;
++                rsm_traceLog("do_child(): calling execve(%s, argv[0]=%s)", shell, argv[0]);
+ 		execve(shell, argv, env);
++                rsm_traceLog("do_child(): execve(%s, argv[0]=%s) failed: %s", shell, argv, strerror(errno));
+ 
+ 		/* Executing the shell failed. */
+ 		perror(shell);
+@@ -1556,7 +1562,9 @@
+ 	argv[1] = "-c";
+ 	argv[2] = (char *) command;
+ 	argv[3] = NULL;
++        rsm_traceLog("do_child(): calling execve(%s, argv[0]=%s, argv[1]=%s, argv[2]=%s)", shell, argv[0], argv[1], argv[2]);
+ 	execve(shell, argv, env);
++        rsm_traceLog("do_child(): execve(%s, argv[0]=%s) failed: %s", shell, argv, strerror(errno));
+ 	perror(shell);
+ 	exit(1);
+ }
+diff -aur openssh-3.9p1/sftp.c ../tempdir11/openssh-3.9p1/sftp.c
+--- openssh-3.9p1/sftp.c	2004-07-16 23:12:08.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/sftp.c	2006-07-03 18:55:49.000000000 -0700
+@@ -1517,3 +1517,9 @@
+ 
+ 	exit(err == 0 ? 0 : 1);
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/sftp-server.c ../tempdir11/openssh-3.9p1/sftp-server.c
+--- openssh-3.9p1/sftp-server.c	2004-07-16 21:07:42.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/sftp-server.c	2006-07-03 18:56:00.000000000 -0700
+@@ -29,7 +29,8 @@
+ #define get_int64()			buffer_get_int64(&iqueue);
+ #define get_int()			buffer_get_int(&iqueue);
+ #define get_string(lenp)		buffer_get_string(&iqueue, lenp);
+-#define TRACE				debug
++//#define TRACE				debug
++#define TRACE				rsm_traceLog
+ 
+ extern char *__progname;
+ 
+@@ -1109,3 +1110,9 @@
+ 		process();
+ 	}
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+Only in ../tempdir11/openssh-3.9p1/: short_rsm_traceLog.c
+diff -aur openssh-3.9p1/ssh-add.c ../tempdir11/openssh-3.9p1/ssh-add.c
+--- openssh-3.9p1/ssh-add.c	2004-07-16 21:07:42.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh-add.c	2006-07-03 18:56:57.000000000 -0700
+@@ -413,3 +413,9 @@
+ 	ssh_close_authentication_connection(ac);
+ 	return ret;
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/ssh-agent.c ../tempdir11/openssh-3.9p1/ssh-agent.c
+--- openssh-3.9p1/ssh-agent.c	2004-08-13 04:18:01.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh-agent.c	2006-07-03 18:56:24.000000000 -0700
+@@ -1237,3 +1237,9 @@
+ 	}
+ 	/* NOTREACHED */
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/ssh.c ../tempdir11/openssh-3.9p1/ssh.c
+--- openssh-3.9p1/ssh.c	2004-08-15 00:23:34.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh.c	2006-07-03 17:22:49.000000000 -0700
+@@ -1358,3 +1358,201 @@
+ 
+ 	exit(exitval);
+ }
++// tracing and debugging code from Ruckus Wireless Inc.
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <stdarg.h>
++#include <time.h>
++#include <sys/time.h>
++//#include "rpm_int.h"
++//#include "rpm_keys.h"
++//#include "rpm.h"
++//#include "rsm_int.h"
++//#include "rsm.h"
++
++#ifndef TRUE
++#define TRUE 1
++#define FALSE 0
++#endif
++
++static char LOGFILE1[64] = "/tmp/logfile1.txt";
++static char LOGFILE2[64] = "/tmp/logfile2.txt";
++#define SIZE_LIMIT 250000 // Limit on size of each log file
++
++static FILE *currentFp = NULL;
++static char *currentFile = NULL;
++static unsigned char loggingInitialized = FALSE;
++unsigned char loggingEnabled = FALSE;
++unsigned int startSec = 0;
++
++char *rsm_tracelogNamePrefix = "logfile";
++
++static void
++initLogFile()
++{
++    char *cp;
++    struct timeval timeNow;
++
++    gettimeofday(&timeNow, NULL);
++    cp = ctime(&timeNow.tv_sec);
++    startSec = timeNow.tv_sec;
++    fprintf(currentFp, "Start at %s using fd %d", cp, fileno(currentFp));
++    fflush(currentFp);
++}
++
++static void
++chooseLogFile()
++{
++    struct stat statbuf1, statbuf2;
++    unsigned char file1Exists, file2Exists;
++
++    // Keep writing into the current file until its size
++    // reaches the maximum
++    if (currentFile != NULL) {
++        if (stat(currentFile, &statbuf1) >= 0) {
++            if (statbuf1.st_size < SIZE_LIMIT)
++                return;
++            else {
++                fclose(currentFp);
++                if (strcmp(currentFile, LOGFILE1) == 0) {
++                    unlink(currentFile = LOGFILE2);
++                    currentFp = fopen(currentFile, "a");
++                    return;
++                } else {
++                     unlink(currentFile = LOGFILE1);
++                    currentFp = fopen(currentFile, "a");
++                    return;
++                }
++            }
++        }
++    }
++    if (stat(LOGFILE1, &statbuf1) < 0) {
++         file1Exists = 0;
++    } else
++         file1Exists = 1;
++
++    if (stat(LOGFILE2, &statbuf2) < 0) {
++         file2Exists = 0;
++    } else
++         file2Exists = 1;
++    if (file1Exists && (! file2Exists)) {
++        if (statbuf1.st_size < SIZE_LIMIT) {
++            currentFp = fopen(currentFile = LOGFILE1, "a");
++            return;
++        } else {
++            currentFp = fopen(currentFile = LOGFILE2, "w");
++            initLogFile();
++            return;
++        }
++    } else if (file2Exists && (!file1Exists)) {
++        if (statbuf2.st_size < SIZE_LIMIT) {
++            currentFp = fopen(currentFile = LOGFILE2, "a");
++            return;
++        } else {
++            currentFp = fopen(currentFile = LOGFILE1, "w");
++            initLogFile();
++            return;
++        }
++    }
++    // Else both files exist.  Erase the older one and create it again.
++    if (statbuf1.st_mtime < statbuf2.st_mtime) {
++        unlink(currentFile = LOGFILE1);
++        currentFp = fopen(currentFile, "w");
++        initLogFile();
++        return;
++    }
++    unlink(currentFile = LOGFILE2);
++    currentFp = fopen(currentFile = LOGFILE1, "w");
++    initLogFile();
++    return;
++}
++
++/*
++ * rsm_get_ppLogFiles returns the enable/disable flag and the
++ * two log files.  If you want to show the log information in
++ * both files in chronological order, use stat(2) to determine
++ * which is older (st_mtime lower than the other) and print
++ * that one first.  The returned file-names are the ones that
++ * will be used, if logging continues long enough, but they don't
++ * necessarily both exist yet.
++ */
++void
++rsm_get_ppLogFiles(unsigned char *enableFlag, char *file1, int maxFile1Size, char *file2, int maxFile2Size)
++{
++    int n;
++    char buffer[4];
++
++    *enableFlag = FALSE; // Flag will be FALSE if no RPM key (or other err)
++    // Mirror what rpm_get does for the pplog-enable-disable key to determine whether to log or not
++    n = open("/writable/data/config/sshdlog", O_RDONLY);
++    if (n >= 0) {
++        buffer[0] = '\0';
++        read(n, buffer, 1);
++        if ((buffer[0] == 'e') ||
++            (buffer[0] == 't') ||
++            (buffer[0] == 'y'))
++            *enableFlag = TRUE;
++         close(n);
++    }
++    snprintf(file1, maxFile1Size, "/tmp/%s1.txt", rsm_tracelogNamePrefix);
++    snprintf(file2, maxFile2Size, "/tmp/%s2.txt", rsm_tracelogNamePrefix);
++}
++
++/*
++ * Use this like fprintf: e.g.,
++ * rsm_traceLog("Procedure ABC entered; arg1=%d, arg2=%s, arg3=%lf\n", arg1, arg2, arg3);
++ * A time-stamp and a newline at the end of the format string is automatically added
++ * and the data is automatically flushed to the log file currently being used.
++ */
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    va_list va;
++    char newfmt[256];
++    struct timeval timeNow;
++    int n, pid;
++
++    if (!loggingInitialized) {
++        loggingInitialized = TRUE;
++        rsm_get_ppLogFiles(&loggingEnabled, LOGFILE1, sizeof(LOGFILE1), LOGFILE2, sizeof(LOGFILE2));
++    }
++    if (!loggingEnabled)
++        return 0;
++
++    gettimeofday(&timeNow, NULL);
++    pid = getpid();
++
++    chooseLogFile();
++    if( fmt != NULL ) {
++        if (currentFp == NULL)
++            return;
++        va_start(va, fmt);
++        snprintf(newfmt, sizeof(newfmt), "%d.%d(%d) %s\n", (int) timeNow.tv_sec -startSec, (int) timeNow.tv_usec, pid, fmt);
++        n = strlen(newfmt)-1;
++        while (n > 1) {
++            if ((newfmt[n] == '\n') && (newfmt[n-1] == '\n'))
++                newfmt[n--] = '\0';           
++            else
++                break;
++        }
++        vfprintf(currentFp, newfmt, va );
++        fflush(currentFp);
++        va_end(va);
++    }
++    return 0;
++}
++
++int
++isLogFd(int fd)
++{
++    if ((currentFp != NULL) &&
++        (fileno(currentFp) == fd))
++       return TRUE;
++    else
++       return FALSE;
++}
+diff -aur openssh-3.9p1/sshd.c ../tempdir11/openssh-3.9p1/sshd.c
+--- openssh-3.9p1/sshd.c	2004-08-12 06:08:15.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/sshd.c	2006-07-06 18:27:28.070244456 -0700
+@@ -273,6 +273,7 @@
+ 	close_listen_socks();
+ 	close_startup_pipes();
+ 	execv(saved_argv[0], saved_argv);
++	rsm_traceLog("execv(%s) failed: %s", saved_argv[0], strerror(errno));
+ 	logit("RESTART FAILED: av[0]='%.100s', error: %.100s.", saved_argv[0],
+ 	    strerror(errno));
+ 	exit(1);
+@@ -891,6 +892,7 @@
+ 	int ret, key_used = 0;
+ 	Buffer cfg;
+ 
++rsm_traceLog("sshd main entered");
+ #ifdef HAVE_SECUREWARE
+ 	(void)set_auth_parameters(ac, av);
+ #endif
+@@ -1017,12 +1019,14 @@
+ 	}
+ 	if (rexeced_flag || inetd_flag)
+ 		rexec_flag = 0;
+-	if (rexec_flag && (av[0] == NULL || *av[0] != '/'))
++	if (rexec_flag && (av[0] == NULL || *av[0] != '/')) {
+ 		fatal("sshd re-exec requires execution with an absolute path");
+-	if (rexeced_flag)
++	}
++	if (rexeced_flag) {
+ 		closefrom(REEXEC_MIN_FREE_FD);
+-	else
++	} else {
+ 		closefrom(REEXEC_DEVCRYPTO_RESERVED_FD);
++	}
+ 
+ 	SSLeay_add_all_algorithms();
+ 	channel_set_af(IPv4or6);
+@@ -1061,10 +1065,11 @@
+ 
+ 	/* Fetch our configuration */
+ 	buffer_init(&cfg);
+-	if (rexeced_flag)
++	if (rexeced_flag) {
+ 		recv_rexec_state(REEXEC_CONFIG_PASS_FD, &cfg);
+-	else
++	} else {
+ 		load_server_config(config_file_name, &cfg);
++	}
+ 
+ 	parse_server_config(&options,
+ 	    rexeced_flag ? "rexec" : config_file_name, &cfg);
+@@ -1084,8 +1089,7 @@
+ 	debug("sshd version %.100s", SSH_VERSION);
+ 
+ 	/* load private host keys */
+-	sensitive_data.host_keys = xmalloc(options.num_host_key_files *
+-	    sizeof(Key *));
++	sensitive_data.host_keys = xmalloc(options.num_host_key_files * sizeof(Key *));
+ 	for (i = 0; i < options.num_host_key_files; i++)
+ 		sensitive_data.host_keys[i] = NULL;
+ 
+@@ -1128,6 +1132,7 @@
+ 	if (options.protocol & SSH_PROTO_1) {
+ 		if (options.server_key_bits < 512 ||
+ 		    options.server_key_bits > 32768) {
++			rsm_traceLog(stderr, "Bad server key size.\n");
+ 			fprintf(stderr, "Bad server key size.\n");
+ 			exit(1);
+ 		}
+@@ -1153,13 +1158,15 @@
+ 		struct passwd *pw;
+ 		struct stat st;
+ 
+-		if ((pw = getpwnam(SSH_PRIVSEP_USER)) == NULL)
++		if ((pw = getpwnam(SSH_PRIVSEP_USER)) == NULL) {
+ 			fatal("Privilege separation user %s does not exist",
+ 			    SSH_PRIVSEP_USER);
++		}
+ 		if ((stat(_PATH_PRIVSEP_CHROOT_DIR, &st) == -1) ||
+-		    (S_ISDIR(st.st_mode) == 0))
++		    (S_ISDIR(st.st_mode) == 0)) {
+ 			fatal("Missing privilege separation directory: %s",
+ 			    _PATH_PRIVSEP_CHROOT_DIR);
++		}
+ 
+ #ifdef HAVE_CYGWIN
+ 		if (check_ntsec(_PATH_PRIVSEP_CHROOT_DIR) &&
+@@ -1173,8 +1180,10 @@
+ 	}
+ 
+ 	/* Configuration looks good, so exit if in test mode. */
+-	if (test_flag)
++	if (test_flag) {
++                rsm_traceLog("test mode: exiting");
+ 		exit(0);
++	}
+ 
+ 	/*
+ 	 * Clear out any supplemental groups we may have inherited.  This
+@@ -1493,6 +1502,7 @@
+ 					 * the child process the connection. The
+ 					 * parent continues listening.
+ 					 */
++                                        rsm_traceLog("pid %d: ready to fork", getpid());
+ 					if ((pid = fork()) == 0) {
+ 						/*
+ 						 * Child.  Close the listening and max_startup
+@@ -1501,6 +1511,7 @@
+ 						 * changed).  We break out of the loop to handle
+ 						 * the connection.
+ 						 */
++                                                rsm_traceLog("child process is %d", getpid());
+ 						startup_pipe = startup_p[1];
+ 						close_startup_pipes();
+ 						close_listen_socks();
+@@ -1581,7 +1592,9 @@
+ 		if (startup_pipe != -1)
+ 			close(startup_pipe);
+ 
++rsm_traceLog("pid %d exec %s ", getpid(), rexec_argv[0]);
+ 		execv(rexec_argv[0], rexec_argv);
++rsm_traceLog("pid %d execv(%s) failed: %s", rexec_argv[0], strerror(errno));
+ 
+ 		/* Reexec has failed, fall back and continue */
+ 		error("rexec of %s failed: %s", rexec_argv[0], strerror(errno));
+@@ -1660,65 +1673,88 @@
+ 	 * mode; it is just annoying to have the server exit just when you
+ 	 * are about to discover the bug.
+ 	 */
++rsm_traceLog("pid %d Ready for authentication: setting alarm", getpid());
+ 	signal(SIGALRM, grace_alarm_handler);
+ 	if (!debug_flag)
+ 		alarm(options.login_grace_time);
++rsm_traceLog("pid %d: calling sshd_exchange_identification", getpid());
+ 
+ 	sshd_exchange_identification(sock_in, sock_out);
+ 
++rsm_traceLog("pid %d: Calling packet_set_nonblocking", getpid());
++
+ 	packet_set_nonblocking();
+ 
+ 	/* prepare buffers to collect authentication messages */
++rsm_traceLog("pid %d: Calling buffer_init", getpid());
+ 	buffer_init(&loginmsg);
+ 
+ 	/* allocate authentication context */
++rsm_traceLog("pid %d: Calling authctxt", getpid());
+ 	authctxt = xmalloc(sizeof(*authctxt));
++rsm_traceLog("pid %d: Calling memset", getpid());
+ 	memset(authctxt, 0, sizeof(*authctxt));
+ 
+ 	/* XXX global for cleanup, access from other modules */
+ 	the_authctxt = authctxt;
+ 
+-	if (use_privsep)
+-		if (privsep_preauth(authctxt) == 1)
++	if (use_privsep) {
++rsm_traceLog("pid %d: calling privsep_preauth ", getpid());
++		if (privsep_preauth(authctxt) == 1) {
++                        rsm_traceLog("pid %d: privsep_preauth() returned 1: go to authenticated", getpid());
+ 			goto authenticated;
++		}
++	}
+ 
+ 	/* prepare buffer to collect messages to display to user after login */
++rsm_traceLog("pid %d: calling buffer_init ", getpid());
+ 	buffer_init(&loginmsg);
+ 
+ 	/* perform the key exchange */
+ 	/* authenticate user and start session */
+ 	if (compat20) {
++rsm_traceLog("pid %d: calling do_ssh2_kex ", getpid());
+ 		do_ssh2_kex();
++rsm_traceLog("pid %d: calling do_authentication ", getpid());
+ 		do_authentication2(authctxt);
+ 	} else {
++rsm_traceLog("pid %d: calling do_ssh1_kex ", getpid());
+ 		do_ssh1_kex();
++rsm_traceLog("pid %d: calling do_authentication ", getpid());
+ 		do_authentication(authctxt);
+ 	}
+ 	/*
+ 	 * If we use privilege separation, the unprivileged child transfers
+ 	 * the current keystate and exits
+ 	 */
++rsm_traceLog("pid %d: checking use_privsep %x ", getpid(), use_privsep);
+ 	if (use_privsep) {
+ 		mm_send_keystate(pmonitor);
+ 		exit(0);
+ 	}
+ 
+  authenticated:
++rsm_traceLog("pid %d: at authenticationed ", getpid());
+ 	/*
+ 	 * In privilege separation, we fork another child and prepare
+ 	 * file descriptor passing.
+ 	 */
+ 	if (use_privsep) {
++rsm_traceLog("pid %d: calling privsep_postauth", getpid());
+ 		privsep_postauth(authctxt);
+ 		/* the monitor process [priv] will not return */
+-		if (!compat20)
++		if (!compat20) {
++rsm_traceLog("pid %d: calling destroy_sensitive_data", getpid());
+ 			destroy_sensitive_data();
++		}
+ 	}
+ 
+ 	/* Start session. */
++rsm_traceLog("pid %d: calling do_authenticated", getpid());
+ 	do_authenticated(authctxt);
+ 
+ 	/* The connection has been terminated. */
++rsm_traceLog("pid %d: Closing connection to %.100s", getpid(), remote_ip);
+ 	verbose("Closing connection to %.100s", remote_ip);
+ 
+ #ifdef USE_PAM
+@@ -1731,6 +1767,7 @@
+ 	if (use_privsep)
+ 		mm_terminate();
+ 
++rsm_traceLog("pid %d: exiting", getpid());
+ 	exit(0);
+ }
+ 
+@@ -2019,3 +2056,201 @@
+ 		do_cleanup(the_authctxt);
+ 	_exit(i);
+ }
++// tracing and debugging code from Ruckus Wireless Inc.
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <stdarg.h>
++#include <time.h>
++#include <sys/time.h>
++//#include "rpm_int.h"
++//#include "rpm_keys.h"
++//#include "rpm.h"
++//#include "rsm_int.h"
++//#include "rsm.h"
++
++#ifndef TRUE
++#define TRUE 1
++#define FALSE 0
++#endif
++
++static char LOGFILE1[64] = "/tmp/sshdlog1.txt";
++static char LOGFILE2[64] = "/tmp/sshdlog2.txt";
++#define SIZE_LIMIT 250000 // Limit on size of each log file
++
++static FILE *currentFp = NULL;
++static char *currentFile = NULL;
++static unsigned char loggingInitialized = FALSE;
++unsigned char loggingEnabled = TRUE;
++unsigned int startSec = 0;
++
++char *rsm_tracelogNamePrefix = "sshdlog";
++
++static void
++initLogFile()
++{
++    char *cp;
++    struct timeval timeNow;
++
++    gettimeofday(&timeNow, NULL);
++    cp = ctime(&timeNow.tv_sec);
++    startSec = timeNow.tv_sec;
++    fprintf(currentFp, "Start at %s using fd %d", cp, fileno(currentFp));
++    fflush(currentFp);
++}
++
++static void
++chooseLogFile()
++{
++    struct stat statbuf1, statbuf2;
++    unsigned char file1Exists, file2Exists;
++
++    // Keep writing into the current file until its size
++    // reaches the maximum
++    if (currentFile != NULL) {
++        if (stat(currentFile, &statbuf1) >= 0) {
++            if (statbuf1.st_size < SIZE_LIMIT)
++                return;
++            else {
++                fclose(currentFp);
++                if (strcmp(currentFile, LOGFILE1) == 0) {
++                    unlink(currentFile = LOGFILE2);
++                    currentFp = fopen(currentFile, "a");
++                    return;
++                } else {
++                     unlink(currentFile = LOGFILE1);
++                    currentFp = fopen(currentFile, "a");
++                    return;
++                }
++            }
++        }
++    }
++    if (stat(LOGFILE1, &statbuf1) < 0) {
++         file1Exists = 0;
++    } else
++         file1Exists = 1;
++
++    if (stat(LOGFILE2, &statbuf2) < 0) {
++         file2Exists = 0;
++    } else
++         file2Exists = 1;
++    if (file1Exists && (! file2Exists)) {
++        if (statbuf1.st_size < SIZE_LIMIT) {
++            currentFp = fopen(currentFile = LOGFILE1, "a");
++            return;
++        } else {
++            currentFp = fopen(currentFile = LOGFILE2, "w");
++            initLogFile();
++            return;
++        }
++    } else if (file2Exists && (!file1Exists)) {
++        if (statbuf2.st_size < SIZE_LIMIT) {
++            currentFp = fopen(currentFile = LOGFILE2, "a");
++            return;
++        } else {
++            currentFp = fopen(currentFile = LOGFILE1, "w");
++            initLogFile();
++            return;
++        }
++    }
++    // Else both files exist.  Erase the older one and create it again.
++    if (statbuf1.st_mtime < statbuf2.st_mtime) {
++        unlink(currentFile = LOGFILE1);
++        currentFp = fopen(currentFile, "w");
++        initLogFile();
++        return;
++    }
++    unlink(currentFile = LOGFILE2);
++    currentFp = fopen(currentFile = LOGFILE1, "w");
++    initLogFile();
++    return;
++}
++
++/*
++ * rsm_get_ppLogFiles returns the enable/disable flag and the
++ * two log files.  If you want to show the log information in
++ * both files in chronological order, use stat(2) to determine
++ * which is older (st_mtime lower than the other) and print
++ * that one first.  The returned file-names are the ones that
++ * will be used, if logging continues long enough, but they don't
++ * necessarily both exist yet.
++ */
++void
++rsm_get_ppLogFiles(unsigned char *enableFlag, char *file1, int maxFile1Size, char *file2, int maxFile2Size)
++{
++    int n;
++    char buffer[4];
++
++    *enableFlag = FALSE; // Flag will be FALSE if no RPM key (or other err)
++    // Mirror what rpm_get does for the pplog-enable-disable key to determine whether to log or not
++    n = open("/writable/data/config/sshdlog", O_RDONLY);
++    if (n >= 0) {
++        buffer[0] = '\0';
++        read(n, buffer, 1);
++        if ((buffer[0] == 'e') ||
++            (buffer[0] == 't') ||
++            (buffer[0] == 'y'))
++            *enableFlag = TRUE;
++         close(n);
++    }
++    snprintf(file1, maxFile1Size, "/tmp/%s1.txt", rsm_tracelogNamePrefix);
++    snprintf(file2, maxFile2Size, "/tmp/%s2.txt", rsm_tracelogNamePrefix);
++}
++
++/*
++ * Use this like fprintf: e.g.,
++ * rsm_traceLog("Procedure ABC entered; arg1=%d, arg2=%s, arg3=%lf\n", arg1, arg2, arg3);
++ * A time-stamp and a newline at the end of the format string is automatically added
++ * and the data is automatically flushed to the log file currently being used.
++ */
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    va_list va;
++    char newfmt[256];
++    struct timeval timeNow;
++    int n, pid;
++
++    if (!loggingInitialized) {
++        loggingInitialized = TRUE;
++        rsm_get_ppLogFiles(&loggingEnabled, LOGFILE1, sizeof(LOGFILE1), LOGFILE2, sizeof(LOGFILE2));
++    }
++    if (!loggingEnabled)
++        return 0;
++
++    gettimeofday(&timeNow, NULL);
++    pid = getpid();
++
++    chooseLogFile();
++    if( fmt != NULL ) {
++        if (currentFp == NULL)
++            return;
++        va_start(va, fmt);
++        snprintf(newfmt, sizeof(newfmt), "%d.%d(%d) %s\n", (int) timeNow.tv_sec -startSec, (int) timeNow.tv_usec, pid, fmt);
++        n = strlen(newfmt)-1;
++        while (n > 1) {
++            if ((newfmt[n] == '\n') && (newfmt[n-1] == '\n'))
++                newfmt[n--] = '\0';           
++            else
++                break;
++        }
++        vfprintf(currentFp, newfmt, va );
++        fflush(currentFp);
++        va_end(va);
++    }
++    return 0;
++}
++
++int
++isLogFd(int fd)
++{
++    if ((currentFp != NULL) &&
++        (fileno(currentFp) == fd))
++       return TRUE;
++    else
++       return FALSE;
++}
+diff -aur openssh-3.9p1/ssh-keygen.c ../tempdir11/openssh-3.9p1/ssh-keygen.c
+--- openssh-3.9p1/ssh-keygen.c	2004-07-16 23:12:08.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh-keygen.c	2006-07-03 18:56:49.000000000 -0700
+@@ -1131,3 +1131,9 @@
+ 	key_free(public);
+ 	exit(0);
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/ssh-keyscan.c ../tempdir11/openssh-3.9p1/ssh-keyscan.c
+--- openssh-3.9p1/ssh-keyscan.c	2004-08-13 04:19:38.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh-keyscan.c	2006-07-03 18:56:42.000000000 -0700
+@@ -807,3 +807,9 @@
+ 
+ 	return (0);
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/ssh-keysign.c ../tempdir11/openssh-3.9p1/ssh-keysign.c
+--- openssh-3.9p1/ssh-keysign.c	2004-08-15 00:23:34.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh-keysign.c	2006-07-03 18:56:31.000000000 -0700
+@@ -235,3 +235,9 @@
+ 
+ 	return (0);
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}
+diff -aur openssh-3.9p1/sshpty.c ../tempdir11/openssh-3.9p1/sshpty.c
+--- openssh-3.9p1/sshpty.c	2004-06-21 19:56:02.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/sshpty.c	2006-07-03 16:56:12.000000000 -0700
+@@ -62,10 +62,12 @@
+ void
+ pty_release(const char *tty)
+ {
++rsm_traceLog("pty_release entered");
+ 	if (chown(tty, (uid_t) 0, (gid_t) 0) < 0)
+ 		error("chown %.100s 0 0 failed: %.100s", tty, strerror(errno));
+ 	if (chmod(tty, (mode_t) 0666) < 0)
+ 		error("chmod %.100s 0666 failed: %.100s", tty, strerror(errno));
++rsm_traceLog("pty_release leaving.");
+ }
+ 
+ /* Makes the tty the process's controlling tty and sets it to sane modes. */
+@@ -181,6 +183,7 @@
+ 	mode_t mode;
+ 	struct stat st;
+ 
++rsm_traceLog("pty_setowner entered");
+ 	/* Determine the group to make the owner of the tty. */
+ 	grp = getgrnam("tty");
+ 	if (grp) {
+@@ -208,9 +211,12 @@
+ 				    tty, (u_int)pw->pw_uid, (u_int)gid,
+ 				    strerror(errno));
+ 			else
+-				fatal("chown(%.100s, %u, %u) failed: %.100s",
++				//fatal("chown(%.100s, %u, %u) failed: %.100s",
++				error("chown(%.100s, %u, %u) failed: %.100s",
+ 				    tty, (u_int)pw->pw_uid, (u_int)gid,
+ 				    strerror(errno));
++                
++                    rsm_traceLog("Allowing this anyway");
+ 		}
+ 	}
+ 
+@@ -221,8 +227,11 @@
+ 				debug("chmod(%.100s, 0%o) failed: %.100s",
+ 				    tty, (u_int)mode, strerror(errno));
+ 			else
+-				fatal("chmod(%.100s, 0%o) failed: %.100s",
++				//fatal("chmod(%.100s, 0%o) failed: %.100s",
++				error("chmod(%.100s, 0%o) failed: %.100s",
+ 				    tty, (u_int)mode, strerror(errno));
+ 		}
+ 	}
++rsm_traceLog("pty_setowner leaving");
++return;
+ }
+diff -aur openssh-3.9p1/ssh-rand-helper.c ../tempdir11/openssh-3.9p1/ssh-rand-helper.c
+--- openssh-3.9p1/ssh-rand-helper.c	2004-07-16 21:07:42.000000000 -0700
++++ ../tempdir11/openssh-3.9p1/ssh-rand-helper.c	2006-07-03 18:56:06.000000000 -0700
+@@ -857,3 +857,9 @@
+ 
+ 	return ret == bytes ? 0 : 1;
+ }
++
++int
++rsm_traceLog(const char *fmt, ...)
++{
++    return 0;
++}

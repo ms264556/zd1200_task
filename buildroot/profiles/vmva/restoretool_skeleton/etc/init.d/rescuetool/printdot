@@ -1,0 +1,11 @@
+#!/bin/sh
+
+_sleep=2
+if [ "$1" != "" ]; then
+  _sleep=$1
+fi
+
+while [ 1 ]; do
+  echo -n "."
+  sleep $_sleep
+done

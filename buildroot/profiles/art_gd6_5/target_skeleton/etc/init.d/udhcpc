@@ -1,0 +1,69 @@
+#!/bin/sh
+#
+# This is caled by udhcpc on various dhcp events
+#
+
+bound() {
+ 	echo "dhcp bound event for interface $interface ip=$ip subnet:$subnet routers= $router dns=$dns hostname=$hostname"
+	RESOLV_CONF="/etc/resolv.conf"
+
+	[ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
+	[ -n "$subnet" ] && NETMASK="netmask $subnet"
+
+	/sbin/ifconfig $interface $ip $BROADCAST $NETMASK
+
+	if [ -n "$router" ]
+	then
+    	echo "deleting routers"
+    	while /sbin/route del default gw 0.0.0.0 dev $interface
+    	do :
+    	done
+
+    for i in $router
+    do
+        /sbin/route add default gw $i dev $interface
+    done
+fi
+
+echo -n > $RESOLV_CONF
+[ -n "$domain" ] && echo domain $domain >> $RESOLV_CONF
+for i in $dns
+do
+    echo adding dns $i
+    echo nameserver $i >> $RESOLV_CONF
+done
+
+}	
+deconfig() {
+ 	echo "dhcp bound event for interface $interface "
+	/sbin/ifconfig $interface 0.0.0.0
+	/sbin/ifconfig $interface up
+}
+renew() {
+ 	echo "dhcp renew event for interface $interface ip=$ip subnet:$subnet routers= $router dns=$dns hostname=$hostname"
+	bound
+}	
+nak() {
+ 	echo "dhcp nak event for interface $interface "
+}
+
+case "$1" in
+  deconfig)
+  	deconfig
+	;;
+  bound)
+  	bound
+	;;
+  renew)
+  	renew
+	;;
+  nak)
+  	nak
+	;;
+  *)
+	echo $"Usage: $0 {deconfig|bound|renew|nak}"
+	exit 1
+esac
+
+exit $?
+

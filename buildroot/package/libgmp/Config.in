@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBGMP
+	bool "libgmp"
+	default n
+	help
+	  GNU Multiple Precision Arithmetic Library
+
+	  http://www.swox.com/gmp/

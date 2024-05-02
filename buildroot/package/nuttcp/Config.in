@@ -1,0 +1,7 @@
+config BR2_PACKAGE_NUTTCP
+	bool "nuttcp"
+	default n
+	help
+	  An implementation of the network performance measurement tool .
+
+	  http://sd.wareonearth.com/~phil/net/ttcp/

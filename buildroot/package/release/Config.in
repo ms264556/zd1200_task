@@ -1,0 +1,4 @@
+config BR2_BUILD_MULTI_IMAGES
+        bool "build both a basic image and a full (including extras) "
+        default n
+

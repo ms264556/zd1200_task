@@ -1,0 +1,14 @@
+config BR2_PACKAGE_ARUBA_REMOTE_AP
+	bool "aruba-rap"
+	default n
+	help
+	  Enables Aruba Remote Access Point features
+
+	  http://aruba.com/
+
+config BR2_PACKAGE_ARUBA_PROVISION
+	bool "aruba-provision"
+	default n
+	depends on BR2_PACKAGE_ARUBA_REMOTE_AP
+	help
+	    aruba provision parsing utilities

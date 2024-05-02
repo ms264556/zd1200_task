@@ -1,0 +1,251 @@
+#!/bin/sh
+
+image_folder="/tmp/director-image"
+image_path="${image_folder}/kernel-vmlinux"
+
+boot_status="/mnt/boot-status"
+imgdir="/mnt/etc/airespider-images"
+
+rescue_mode=0
+
+check_v54himem_miniboot()
+{
+    cat /proc/v54bsp/himem | grep "miniboot" -A2 | grep "reboot_cnt" | sed 's/.*reboot_cnt: \([0-9]\+\).*/\1/g'
+}
+
+mount_usb_datafs()
+{
+    datafs=`cat /proc/partitions | grep sda4`
+    if [ -n "${datafs}" ]; then
+        if ! mount -t reiserfs -o rw,noatime /dev/sda4 /mnt; then
+            echo "Fail to mount datafs ..."
+        else
+            echo "Mount datafs successfully ..."
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+convert_boot_status()
+{
+    mount_usb_datafs
+    status="$?"
+    if [ "${status}" -eq 0 ]; then
+        if [ -e "${boot_status}" ]; then
+            echo "Convert boot-status to new version ..."
+
+            target_dev=`cut -d \  -f 1 ${boot_status}`
+            upgraded=`cut -d \  -f 2 ${boot_status}`
+
+            if [ "${target_dev}" = "/dev/sda2" ]; then
+                echo '1' > /writable/main_img
+                echo "/dev/sda3 ${upgraded} 0" > ${boot_status}
+            elif [ "${target_dev}" = "/dev/sda3" ]; then
+                echo '2' > /writable/main_img
+                echo "/dev/sda2 ${upgraded} 0" > ${boot_status}
+            fi
+
+            # Only performing upgrade, we could remove the old boot-status ...
+            if [ "${upgraded}" -eq 1 ]; then
+                touch "${imgdir}"/duplicate
+                echo "Remove boot-status file ..."
+                rm "${boot_status}"
+                echo "Done ..."
+            fi
+        fi
+        echo "Umount datafs ..."
+        umount /mnt
+    fi
+}
+
+default_boot_record()
+{
+    # Always boot /dev/sda2
+    if [ ! -e "/writable/main_img" ]; then
+        echo '1' > /writable/main_img
+    fi
+}
+
+check_miniboot_rebootcnt()
+{
+    # If reboot_cnt reaches to 4, it means that it had already booted three times on main_img,
+    # and needs to change to opposite index.
+    reboot_cnt=`check_v54himem_miniboot`
+
+    if [ "${reboot_cnt}" -eq 4 ]; then
+        main_img=`cat /writable/main_img`
+        if [ "${main_img}" -eq 1 ]; then
+            echo '2' > /writable/main_img
+        elif [ "${main_img}" -eq 2 ]; then
+            echo '1' > /writable/main_img
+        fi
+
+    # If miniboot's reboot_cnt is equal/bigger than 7, stop here to enter rescue mode.
+    elif [ "${reboot_cnt}" -ge 7 ]; then
+        echo "Enter rescue mode ..."
+        rescue_mode=1
+    fi
+}
+
+decide_boot_partition()
+{
+    main_img=`cat /writable/main_img`
+    if [ "${main_img}" -eq 1 ]; then
+        target_dev="/dev/sda2"
+    elif [ "${main_img}" -eq 2 ]; then
+        target_dev="/dev/sda3"
+    fi
+}
+
+mount_boot_partition()
+{
+    echo "Mount Director Boot Partition, ${target_dev}, on ${image_folder}"
+    mkdir -p ${image_folder}
+    if ! mount -t ext2 -o rw,noatime ${target_dev} ${image_folder}; then
+        echo "Mount failed.  Reboot"
+        reboot
+    else
+        # Load Director Image
+        load_director_image
+    fi
+}
+
+load_director_image()
+{
+    echo "Load Director Image"
+    echo "kexec --load ${image_path} --command-line=\"console=ttyS0,115200r root=${target_dev} ro mem=0x07ff0000 flash=0x01000000 uboot=1 usb\""
+
+    if [ -e "${image_path}" ] ; then
+        kexec --load ${image_path} --command-line="console=ttyS0,115200r root=${target_dev} ro mem=0x07ff0000 flash=0x01000000 uboot=1 usb"
+        # Execute Director Image
+        execute_director_image
+    else
+        echo "Director Image is not found... Boot Failed. Reboot"
+        reboot
+    fi
+}
+
+execute_director_image()
+{
+    echo "Boot Director Image"
+    echo "kexec -e"
+    kexec -e
+}
+
+
+boot_usb_image()
+{
+    # If it doesn't have main_img, create it under /writable.
+    default_boot_record
+
+    # If reboot_cnt is equal to 4, it means main_img boots failure more than 2 times. So, updating main_img record to swap booting device.
+    check_miniboot_rebootcnt
+    if [ "${rescue_mode}" -eq 0 ]; then
+        # To see if boot-status exists, if yes, then convert it to new version and remove it!
+        convert_boot_status
+
+        # Based on main_img located at datafs partition to decide which main_img should be used.
+        #   main_img = 1 -> USB_Partition(/dev/sda2)
+        #   main_img = 2 -> USB_Partition(/dev/sda3)
+        decide_boot_partition
+
+        # Mount Director Boot Partition
+        mount_boot_partition
+    fi
+}
+
+fdisk_usb()
+{
+    DATAFS=`mount | grep sda4`
+    if [ "${DATAFS}" != "" ] ; then
+        DATAFS=`mount | grep sda4 | cut -d \  -f 3`
+        umount ${DATAFS}
+    fi
+
+    #  To check if the disk is 1GB or 2GB from /proc/partitions.
+    #  The dislplay block size of /proc/partitions is 1024 bytes.
+
+    blk_size=`cat /proc/partitions| grep 'sda$' | sed 's/[[:space:]][[:space:]] */ /g'|cut -d' ' -f4`
+    disk_size=`expr $blk_size / 1024`
+    echo "FDISK USB storage"
+
+    if [ $disk_size -ge 1920 -a $disk_size -le 2048 ]; then
+        echo 'disk is 2GB'
+        /usr/sbin/lipe --pump readable --device /dev/sda </etc/init.d/usb_disk_tbl_2G.txt > /dev/null 2>&1
+    elif [ $disk_size -ge 933 -a $disk_size -le 1024 ]; then
+        echo 'disk is 1GB'
+        /usr/sbin/lipe --pump readable --device /dev/sda </etc/init.d/usb_disk_tbl.txt > /dev/null 2>&1
+    else
+        echo 'Unkown disk size'
+        return 1
+    fi
+
+    echo "Format storage ... 25%"
+    /sbin/mkfs.ext2 /dev/sda1 > /dev/null 2>&1
+
+    echo "Format storage(sda2) ... 50%"
+    /sbin/mkfs.ext2 /dev/sda2 > /dev/null 2>&1
+
+    echo "Format storage(sda3) ... 75%"
+    /sbin/mkfs.ext2 /dev/sda3 > /dev/null 2>&1
+
+    echo "Format storage(sda4) ... 100%"
+    /sbin/mkreiserfs -f --format 3.6 /dev/sda4 > /dev/null 2>&1
+
+    echo "Clear default MBR ..."
+    dd if=/dev/zero of=/dev/sda bs=1 count=66 seek=446 > /dev/null 2>&1
+
+    echo "Done"
+}
+
+IMGDIR=/mnt/etc/airespider-images
+ZD_UPG_IMG=/tmp/rescue_file.tar
+
+rescue_apimg()
+{
+    cd /tmp
+    mount -t reiserfs -o rw,noatime /dev/sda4 /mnt
+
+    if [ ! -e "${IMGDIR}" ]; then
+        mkdir -p ${IMGDIR}
+    else
+        rm -rf ${IMGDIR}/firmwares
+    fi
+
+    cat ${ZD_UPG_IMG} | gunzip | tar x all_files firmwares/* -C ${IMGDIR} > /dev/null 2>&1
+    mv ${IMGDIR}/all_files .
+
+    if [ -f "/tmp/all_files" ] ; then
+        # also remove firmwares and ap-models to let ac_upg.sh not moving apimgs
+        files=`cat all_files | sed 's/firmwares\* \|\|ap-models\* //g'`
+        cat $ZD_UPG_IMG | gunzip | tar x $files > /dev/null 2>&1
+        rm -f $ZD_UPG_IMG
+        # ac_upg.sh can handle all files extracted
+    fi
+
+    # touch duplicate flag
+    touch ${IMGDIR}/duplicate
+    umount /mnt
+    cd -
+}
+
+action=$1
+shift
+
+# reset the reboot_cnt and increase miniboot reboot_cnt
+/usr/bin/bsp set himem r0
+/usr/bin/bsp set himem mri
+
+case $action in
+    boot)
+        boot_usb_image ;;
+    rescue-apimg)
+        rescue_apimg $* ;;
+    fdisk)
+        fdisk_usb ;;
+    *)
+        echo "$0  <boot|fdisk>" ;;
+esac
+

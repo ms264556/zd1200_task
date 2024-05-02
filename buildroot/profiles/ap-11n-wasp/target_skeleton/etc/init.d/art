@@ -1,0 +1,42 @@
+#!/bin/sh
+
+#/etc/init.d/sys_init start
+set `cat /proc/cmdline`
+if test -z $IPADDR ; then
+#echo "IPADDR must be set run with exec -c \"RUNART=1 IPADDR=<ipaddress>\" "
+IPADDR=10.0.0.1
+fi
+telnetd -l /bin/ash
+BOARD_TYPE=`cat /proc/v54bsp/board_type`
+if [ "$BOARD_TYPE" -eq "27" ]; then
+/etc/init.d/network start 2 eth1@eth2@eth3@eth4@eth0
+brctl addbr br0
+brctl addif br0 eth0
+brctl addif br0 eth1
+brctl addif br0 eth2
+brctl addif br0 eth3
+brctl addif br0 eth4
+brctl setfd br0 0
+ifconfig eth0 up
+ifconfig eth1 up
+ifconfig eth2 up
+ifconfig eth3 up
+ifconfig eth4 up
+else
+/etc/init.d/network start 2 eth0@eth1
+brctl addbr br0
+brctl addif br0 eth0
+brctl addif br0 eth1
+brctl setfd br0 0
+ifconfig eth0 up
+ifconfig eth1 up
+fi
+ifconfig br0 $IPADDR up
+echo "Set ipaddress to $IPADDR"
+sleep 2
+insmod /usr/bin/art.ko
+echo "Starting ART client 0"
+art_client -console &
+echo "Starting ART client 0"
+art_client -console -instance 1&
+arping -Ub -c 2 -I br0 $IPADDR

@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBUSB
+	bool "libusb"
+	default n
+	help
+	  This is the home of libusb, a library that gives user level 
+	  applications uniform access to USB devices across many different
+	  operating systems.
+
+	  http://www.libusb.org/

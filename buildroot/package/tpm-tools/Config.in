@@ -1,0 +1,13 @@
+config BR2_PACKAGE_TPM_TOOLS
+    bool "TPM_TOOLS"
+    default n
+    help
+        tpm-tools is an open-source package designed to enable user and application
+        enablement of Trusted Computing using a Trusted Platform Module (TPM),
+        similar to a smart card environment.  Trusted Computing is a set of
+        specifications set forth by the Trusted Computing Group (TCG).  For more
+        information on the TCG and Trusted Computing please visit the Trusted
+        Computing Group website at:
+
+        http://www.trustedcomputinggroup.org
+        http://sourceforge.net/projects/trousers/files/tpm-tools/1.3.8/tpm-tools-1.3.8.tar.gz/download

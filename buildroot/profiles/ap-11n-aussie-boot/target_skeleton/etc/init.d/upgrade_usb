@@ -1,0 +1,61 @@
+#!/bin/sh
+
+firmware=$1
+serverip=$2
+
+ZD_UPG_IMG=rescue_file.tar
+
+if ! cat /proc/partitions | grep sda > /dev/null 2>&1; then
+    echo "You should insert your usb disk ..."
+    exit 
+fi
+
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 /firmware-image tftp-server-ip"
+    exit
+fi
+
+echo " ==> Retrieving firmware image from the server(${serverip})"
+if ! tftp -g -r /${firmware} -l /tmp/rescue_file ${serverip} > /dev/null 2>&1; then
+    echo "Retrieving file(${firmware}) from server(${serverip}) fails ..."
+else
+    echo " ==> Decrypt/Verify file ..."
+    if ! /usr/bin/tac_encrypt -d -i /tmp/rescue_file -o /tmp/${ZD_UPG_IMG} > /dev/null 2>&1; then
+        echo "Decrypt file fails ..."
+        exit
+    else
+        rm /tmp/rescue_file
+
+        echo " ==> fdisk usb"
+        /bin/sh /etc/init.d/usb_boot fdisk
+
+        echo " ==> Create temporal folders"
+        /bin/mkdir -p /tmp/director-primary/
+
+        echo " ==> mount partition(sda2) ..."
+        if ! /bin/mount -t ext2 -o rw,noatime,noacl /dev/sda2 /tmp/director-primary > /dev/null 2>&1; then
+            echo "mount sda2 fails ..."
+            exit
+        fi
+
+        echo " ==> Update ap images ..."
+        /bin/sh /etc/init.d/usb_boot rescue-apimg
+
+        echo " ==> Update partition ..."
+        /bin/mv /tmp/kernel-vmlinux /tmp/rootfs.tar /tmp/director-primary
+
+        echo " ==> Untar rootfs.tar ..."
+        /bin/tar -xf /tmp/director-primary/rootfs.tar -C /tmp/director-primary
+
+        echo " ==> Umount partition(sda2) ..."
+        umount /tmp/director-primary
+
+        echo " ==> Set main_img to 1 ..."
+        echo 1 > /writable/main_img
+
+        echo " ==> Set miniboot reboot_cnt to 0 ..."
+        /usr/bin/bsp set himem mr0
+
+        echo " ==> Done, you can unplug the usb disk ..."
+    fi
+fi

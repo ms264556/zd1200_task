@@ -1,0 +1,8 @@
+;1909055
+# Boot Type ST_c ST_h ST_s EN_c EN_h EN_s   ST_sector   TT_Sector
+    00   83    4    0    1   38   31   61        7808       68320
+    00   83   44    0    1  313   31   61       85888      527040
+    00   83  319    0    1  588   31   61      622688      527040
+    00   83  599    0    1  977   31   61     1169248      739807
+# This is a valid Partition Table.
+

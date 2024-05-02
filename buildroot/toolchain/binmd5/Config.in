@@ -1,0 +1,11 @@
+config BR2_PACKAGE_BINMD5_TARGET
+	bool "Install binmd5 for the target system"
+	default n
+	help
+	  Utility to build Firmware download image from a compressed binary image.
+
+config BR2_PACKAGE_BINMD5_HOST
+	bool "Install binmd5 for the host/build system"
+	default y
+	help
+	  Utility to build Firmware download image from ELF file

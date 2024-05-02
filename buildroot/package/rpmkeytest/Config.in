@@ -1,0 +1,6 @@
+config BR2_PACKAGE_RPMKEYTEST
+	bool "rpmKeyTest"
+	default n
+	help
+	    Ruckus RPM Key Testing Framework
+

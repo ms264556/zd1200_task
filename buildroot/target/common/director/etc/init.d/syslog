@@ -1,0 +1,6 @@
+#!/bin/sh
+#
+# Start syslogd
+#
+echo "Starting syslogd ..."
+/sbin/syslogd

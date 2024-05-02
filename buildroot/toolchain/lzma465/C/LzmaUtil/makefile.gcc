@@ -1,0 +1,54 @@
+PROG = lzma
+CXX = g++
+LIB = liblzma.a
+RM = rm -f
+CFLAGS = -c -O2 -Wall
+AR = ar
+RANLIB = ranlib
+
+OBJS = \
+  Alloc.o \
+  LzFind.o \
+  LzmaDec.o \
+  LzmaEnc.o \
+  LzmaLib.o \
+  7zFile.o \
+  7zStream.o \
+
+
+all: $(PROG)
+
+$(PROG): LzmaUtil.o $(LIB)
+	$(CXX) -o $(PROG) $(LDFLAGS) $< $(LIB)
+
+LzmaUtil.o: LzmaUtil.c
+	$(CXX) $(CFLAGS) LzmaUtil.c
+
+$(LIB): $(OBJS)
+	rm -f $@
+	$(AR) rcu $@ $(OBJS)
+	$(RANLIB) $@
+
+Alloc.o: ../Alloc.c
+	$(CXX) $(CFLAGS) ../Alloc.c
+
+LzFind.o: ../LzFind.c
+	$(CXX) $(CFLAGS) ../LzFind.c
+
+LzmaDec.o: ../LzmaDec.c
+	$(CXX) $(CFLAGS) ../LzmaDec.c
+
+LzmaEnc.o: ../LzmaEnc.c
+	$(CXX) $(CFLAGS) ../LzmaEnc.c
+
+LzmaLib.o: ../LzmaLib.c
+	$(CXX) $(CFLAGS) ../LzmaLib.c
+
+7zFile.o: ../7zFile.c
+	$(CXX) $(CFLAGS) ../7zFile.c
+
+7zStream.o: ../7zStream.c
+	$(CXX) $(CFLAGS) ../7zStream.c
+
+clean:
+	-$(RM) $(PROG) *.o *.a

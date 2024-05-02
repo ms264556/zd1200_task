@@ -1,0 +1,7 @@
+config BR2_PACKAGE_GKERMIT
+	bool "gkermit"
+	default n
+	help
+	  Build G-Kermit for the target.
+
+	  http://www.columbia.edu/kermit/gkermit.html

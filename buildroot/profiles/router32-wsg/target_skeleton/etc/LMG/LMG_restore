@@ -1,0 +1,5 @@
+#!/bin/sh
+if [ -f /writable/LMG ] ; then
+    rpm -r /writable/LMG
+    rm -rf /writable/LMG
+fi

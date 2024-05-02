@@ -1,0 +1,7 @@
+config BR2_PACKAGE_RP_PPPOE
+	bool "roaring penguin pppoe client"
+	default n
+	help
+	  An implementation of the PPPOE client
+
+	  http://www.roaringpenguin.com/

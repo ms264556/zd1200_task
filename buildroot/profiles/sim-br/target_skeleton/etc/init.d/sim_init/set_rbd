@@ -1,0 +1,20 @@
+#!/bin/sh
+
+echo "Set Board Data"
+
+params="model serial"
+kernel_cmd=`cat /proc/cmdline`
+
+for param in $params; do
+        set $kernel_cmd
+        while [ $# -gt 0 ]; do
+                echo "$1"|grep "$param=" >/dev/null
+                if [ $? -eq 0 ]; then
+			echo "--->Set $1"
+                       	echo `echo "$1" | sed "s/$param=\(.*\)/\1/"` > /proc/v54bsp/$param
+			break;
+                fi
+                shift
+        done
+done
+

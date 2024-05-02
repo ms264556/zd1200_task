@@ -1,0 +1,60 @@
+config BR2_TARGET_ROOTFS_TAR
+	bool "tar the root filesystem"
+	default n
+	help
+	  Build a tar archive of the root filesystem
+
+config BR2_TARGET_ROOTFS_TAR_OPTIONS
+	string "random options to pass to tar"
+	depends on BR2_TARGET_ROOTFS_TAR
+	default ""
+	help
+	  Common options:
+	   j - compress with bzip2
+	   z - compress with gzip
+
+config BR2_TARGET_DATAFS_TAR
+	bool "tar the data filesystem"
+	default n
+	help
+	  Build a tar archive of the data filesystem
+
+config BR2_TARGET_DATAFS_TAR_OPTIONS
+	string "random options to pass to tar"
+	depends on BR2_TARGET_DATAFS_TAR
+	default "z"
+	help
+	  Common options:
+	   j - compress with bzip2
+	   z - compress with gzip
+
+config BR2_TARGET_DATAFS_TAR_APIMG
+	bool "also includes AP images"
+	depends on BR2_TARGET_DATAFS_TAR
+	default y
+	help
+	  Include AP images
+
+config BR2_TARGET_DATAFS_TAR_APIMG_SOURCE
+	string "AP image source path"
+	depends BR2_TARGET_DATAFS_TAR_APIMG
+#	default "$(BUILD_DIR)/controller/ac/etc/download"
+#	default "/tmp/fd_img_dir"
+	default "$(AC_DIR)/etc/apimages"
+	help
+	  Where to find AP images
+
+config BR2_TARGET_DATAFS_TAR_OUTPUT
+	string "Output File"
+	depends on BR2_TARGET_DATAFS_TAR
+	default "$(BUILD_DIR)/datafs.$(ARCH).tar.$(PROFILE)"
+	help
+	  Output file name
+
+config BR2_TARGET_DATAFS_TAR_COPYTO
+	string "also copy the image to..."
+	depends on BR2_TARGET_DATAFS_TAR
+	default "/tftpboot"
+	help
+	  Copies the resulting image to a secondary location.
+

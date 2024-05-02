@@ -1,0 +1,319 @@
+#!/bin/sh
+# fix defaults
+#
+#exec 2>/dev/null
+
+#
+# see if we want factory defaults
+#
+data=/writable/data
+pst=${data}/persist-stg/
+cfg=${data}/config
+wsgclient=${data}/wsgclient
+etc=/writable/etc
+tfs=/tmp/fs
+certs=/writable/certs
+user_certs=${data}/user-certs
+portal_certs=${data}/portal-certs
+deltamac=/writable/deltamac
+d_upgrade=/writable/data/defaults_upgrade
+d_factory=/writable/data/defaults_factory
+d_autoconf=/writable/data/defaults_autoconf
+
+fixed_ctry_proc=/proc/v54bsp/fixed_ctry_code
+ctry_key=wlan-country-code
+
+NOTIFY_DEFAULTS_TR69=/writable/factory_reset_tr69
+
+#
+# Migration custom file if needed
+#
+/usr/sbin/custom_migrate
+
+#
+# initial bootup and when reset_defaults or upgrade_defaults is set
+factory=
+read factory < /proc/v54bsp/factory
+if [ "${factory}" = "" ] ; then
+    factory=0
+fi
+
+if [ -f ${d_factory} ]; then
+    # existence of ${d_factory} is same as factory=1
+    factory=1
+fi
+
+if [ "${factory}" != "1" -a "${factory}" != "2" -a -f ${d_upgrade} ]; then
+    # existence of ${d_upgrade} is same as factory=2
+    factory=2
+fi
+
+_tolower()
+{
+    UPPER="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    LOWER="abcdefghijklmnopqrstuvwxyz"
+    sed -e "y/${UPPER}/${LOWER}/" $*
+}
+
+_toupper()
+{
+    UPPER="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    LOWER="abcdefghijklmnopqrstuvwxyz"
+    sed -e "y/${LOWER}/${UPPER}/" $*
+}
+
+customer=`_tolower /proc/v54bsp/customer`
+model=`_tolower /proc/v54bsp/model`
+MODEL=`_toupper /proc/v54bsp/model`
+
+# setup custom_upgrade pre-processing/post-processing steps if needed
+custom_upgrade=/custom/${customer}/custom_upgrade
+
+# _pre_process and _post_process are functions defined in ${custom_upgrade}
+if [ ${factory} -gt 1 -a -x "${custom_upgrade}" ] ; then
+    . ${custom_upgrade}
+else
+    alias _pre_process=:
+    alias _post_process=:
+fi
+
+clear_oops()
+{
+    echo -n 0 > /proc/v54bsp/oops
+}
+
+_fix_fw_control()
+{
+    rpmfs=$1
+    tmpcontrol=/tmp/fw.control
+    fwcontrol=${rpmfs}/fw/control
+    sed "s/%model%/${model}/" ${fwcontrol} > ${tmpcontrol}
+    if [ $? -eq 0 ] ; then
+        /bin/mv ${tmpcontrol} ${fwcontrol}
+    fi
+}
+
+_fix_fw_ftp_user()
+{
+    rpmfs=$1
+    tmpuser=/tmp/fw.ftp_user
+    fwuser=${rpmfs}/fw/ftp_user
+    sed "s/%model%/${model}/" ${fwuser} > ${tmpuser}
+    if [ $? -eq 0 ] ; then
+        /bin/mv ${tmpuser} ${fwuser}
+    fi
+}
+
+_fix_model_display_string()
+{
+    rpmfs=$1
+    tmpmodel=/tmp/model.display.string
+    rpmmodel=${rpmfs}/model-display-string
+    M2=`echo ${MODEL} | sed -e "s/\([A-Z][A-Z]\)//"`
+    sed "s/%model%/${M2}/" ${rpmmodel} > ${tmpmodel}
+    if [ $? -eq 0 ] ; then
+        /bin/mv ${tmpmodel} ${rpmmodel}
+    fi
+}
+
+clear_support()
+{
+    ###################################################
+    # remove any support files in flash so critical RSM/RPM
+    # operation do not encounter flash out-of-space issue
+    echo "Removing support files in flash in favour of RPM init/maintenance"
+    rm -f /writable/saved_sysinfo /writable/reboot* /writable/sysinfo/*
+}
+
+_do_defaults()
+{
+    ###################################################
+    # reset or upgrade factory defaults
+    #
+    delete_list=/defaults/upgrade.delete
+    delete_list_customer=/defaults/${model}/upgrade.delete.${customer}
+
+    clear_support
+
+    # _pre_process will reset the factory flag to 1 if doing custom upgrade
+    _pre_process
+
+    auto_conf=
+    custom=
+    rpmcmd=
+
+    fixed_ctry=$(cat ${fixed_ctry_proc})
+    ctry_code=
+
+    if [ "${factory}" = "1"  ]; then
+        # reset to factory defaults
+        echo "Reset to factory defaults" >&2
+        if [ "${fixed_ctry}" = "1" ]; then
+            ctry_code=$(rpm -s ${ctry_key} | sed -e s/wlan-country-code=// -e s/\'//g)
+            echo "save ctry code ${ctry_code}"
+        fi
+        rm -rf ${cfg}/* ${pst}/*
+        rm -rf ${certs}/*
+        rm -rf ${user_certs}/*
+        rm -rf ${portal_certs}/*
+        rm -rf ${etc}/brownout
+        rm -rf ${wsgclient}
+        auto_conf=1
+        custom=1
+    elif [ "${factory}" = "2"  ]; then
+        # upgrade factory defaults
+        # remove obsolete keys from persist storage
+        echo "Factory defaults upgrade" >&2
+        rm -rf ${etc}/brownout
+        auto_conf=1
+        if [ -f "${delete_list}" ] ; then
+            rpmcmd="${rpmcmd} -D ${delete_list}"
+        fi
+        if [ -f "${delete_list_customer}" ] ; then
+            rpmcmd="${rpmcmd} -D ${delete_list_customer}"
+        fi
+    else
+        # neither reset or upgrade
+        # we are here because ${cfg}/master is empty
+        echo "factory=${factory}, ${cfg}/master is empty" >&2
+        auto_conf=1
+        custom=1
+    fi
+
+    if [ -f ${d_autoconf} ]; then
+        auto_conf=1
+    fi
+
+    # fix up defaults
+    if [ -d /defaults ]; then
+        rm -rf ${tfs}
+        mkdir -p ${tfs}
+        if [ "${customer}" != "" ] ; then
+            if [ "${model}" != "" ] ; then
+                # see if there is a patch file
+                patchfile=/defaults/${model}/${customer}.patch
+                if [ -f ${patchfile} ] ; then
+                    rpmcmd="${rpmcmd} -r ${patchfile}"
+                fi
+                cp -aM /defaults/${model}/${customer}/* ${tfs}
+            fi
+            cp -aM /defaults/common/${customer}/* ${tfs} 2> /dev/null
+            rc1=$?
+        else
+            rc1=255
+        fi
+        if [ "${model}" != "" ] ; then
+            cp -aM /defaults/${model}/ruckus/* ${tfs}
+        fi
+        cp -aM /defaults/common/ruckus/* ${tfs}
+        rc=$?
+
+        # fix up fw/control
+        _fix_fw_control ${tfs}
+
+        # fix up fw/ftp_user
+        _fix_fw_ftp_user ${tfs}
+
+        # fix up model-display-string
+        _fix_model_display_string ${tfs}
+
+        rpmcmd="${rpmcmd} -m ${tfs}"
+        rpm ${rpmcmd}
+        rm -rf ${tfs}
+    fi
+
+    _post_process
+
+    if [ "${custom}" = "1" ]; then
+        # apply  custom defaults
+        custom_def_enc=/writable/custom/${customer}.defaults2
+        custom_def=/tmp/${customer}.defaults2
+
+        # decrypt first
+        if [ -f ${custom_def_enc} ]; then
+            /usr/sbin/custom_pack -d -i ${custom_def_enc} -o ${custom_def}
+            RETVAL=$?
+            if [ $RETVAL -ne 0 ]; then
+                rm -f ${custom_def_enc}
+                rm -f ${custom_def}
+            fi
+        fi
+
+        if [ -f ${custom_def} ]; then
+
+            # MD5 integrity check
+            md5=`sed '1d' < ${custom_def} | md5sum | ( read m d; echo -n $m )`
+            hmd5=`sed 'q' < ${custom_def} | ( read p m j ; echo -n $m )`
+
+            if [ "${md5}" = "${hmd5}" ]; then
+                echo "Applying custom defaults"
+                sed '/^$/d;/^#/d;s/^% \(.*\)/\1/' < ${custom_def} | rkscli -s
+            else
+                echo "checksum failed on ${custom_def}"
+                # remove file?
+                rm -f ${custom_def_enc}
+            fi
+        fi
+        rm -f ${custom_def}
+    fi
+
+    if [ "${factory}" = "1" -o "${factory}" = "2" ]; then
+        echo -n 0 > /proc/v54bsp/factory
+    fi
+
+    if [ "${factory}" = "1" ]; then
+        # notify applications that an defaults reset has occurred
+        touch ${NOTIFY_DEFAULTS_TR69}
+        # remove flag to run  DeltaMAC
+        rm -f ${deltamac}
+        # remove factory flag 
+        rm -f ${d_factory}
+        if [ "${fixed_ctry}" = "1" ]; then
+            echo "restore ctry code ${ctry_code}"
+            rpm -p ${ctry_key}="${ctry_code}"
+        fi
+    fi
+
+    if [ "${factory}" = "2" ]; then
+        rm -f ${d_upgrade}
+    fi
+
+    if [ "${auto_conf}" = "1" ]; then
+        # run auto conf
+        /usr/sbin/auto_conf
+    fi
+
+    # always clear auto-conf status
+    rm -f ${d_autoconf}
+    return 0
+}
+
+
+# check to see if .../data/config/master is empty
+if [ -d ${cfg} ] ; then
+    def=`ls ${cfg}`
+else
+    def=`ls ${pst}`
+fi
+
+if [ "${factory}" = "1" -o "${factory}" = "2" -o "${def}" = "" ]; then
+    clear_oops
+
+    # echo "fix defaults" >&2
+    _do_defaults ${factory}
+    rc=$?
+    if [ "${factory}" = "2" ]; then
+        # echo "reboot again because of hang case after upgrade..."
+        reboot
+    fi
+else
+    # echo "Not reset/upgrade defaults" >&2
+    if [ -f ${d_autoconf} ]; then
+        clear_support
+        # run auto conf
+        /usr/sbin/auto_conf
+        rm -f ${d_autoconf}
+    fi
+    rc=0
+fi
+

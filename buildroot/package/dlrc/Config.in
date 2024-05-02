@@ -1,0 +1,8 @@
+config BR2_PACKAGE_DLRC
+	bool "dlrc-WARNING-EXPERIMENTAL"
+	default n
+	depends on openssl
+	help
+	  Provides download-and-run-code capability in a secure manner.
+	  This software is experimental at this time and not intended
+	  for production use.

@@ -1,0 +1,11 @@
+config BR2_PACKAGE_I2C_TOOLS
+    bool "I2C_TOOLS"
+    default n
+    help
+        This package contains an heterogeneous set of I2C tools for the Linux kernel.
+        These tools were originally part of the lm-sensors project but were finally
+        split into their own package for convenience. They compile, run and have been
+        tested on GNU/Linux.
+
+        http://www.lm-sensors.org/wiki/I2CTools
+        http://dl.lm-sensors.org/i2c-tools/releases/i2c-tools-3.1.0.tar.bz2

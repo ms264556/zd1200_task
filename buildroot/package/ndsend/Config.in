@@ -1,0 +1,9 @@
+config BR2_PACKAGE_NDSEND
+	bool "ndsend package"
+	default n
+	help
+	  ndsend - send a Neighbor Advertisement NDP packet 
+          The ndsend utility is called by arpsend(8) for IPv6 addresses to send an unsolicited Neighbor
+          Advertisement ICMPv6 multicast packet announcing a given IPv6 address to all  IPv6  nodes  as
+          per RFC4861.
+          Source Code: http://download.openvz.org/utils/vzctl/current/src/

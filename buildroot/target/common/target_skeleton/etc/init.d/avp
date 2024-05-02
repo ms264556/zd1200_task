@@ -1,0 +1,115 @@
+#!/bin/sh
+#
+# Start AVP ...
+#
+
+kernel_ver=`uname -r`
+rflow_mod_dir=/lib/modules/${kernel_ver}/kernel/net/rflow
+av_mod_dir=/lib/modules/${kernel_ver}/kernel/net/rflow
+dns_mod_dir=/lib/modules/${kernel_ver}/kernel/net/rks_dns
+
+test_insmod() {
+  # Test the module: if not installed yet, install it
+  mod=$2
+  dir=$1
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 1 ]; then
+	    #insmod $dir/$mod.ko > /dev/null 2>&1
+	    insmod $dir/$mod.ko
+  fi
+}
+
+test_rmmod() {
+  # Test the module: if not depended on, remove it
+  mod=$1
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 0 ]; then
+	    lsmod | grep ^$mod | grep "," > /dev/null 2>&1; mod_alone=$?
+	    if [ $mod_alone == 1 ]; then
+	        #rmmod $mod > /dev/null 2>&1
+	        rmmod $mod > /dev/null 2>&1
+	    fi
+  fi
+}
+
+install_modules() {
+  test_insmod ${rflow_mod_dir} rflow
+  test_insmod ${av_mod_dir} av
+  test_insmod ${dns_mod_dir} rks_dns
+}
+
+remove_modules() {
+  test_rmmod rks_dns
+  test_rmmod av
+  test_rmmod rflow
+}
+
+
+start_avpd() {
+     
+     for var in `rkscli -c 'get interface' 2>&1 1>/dev/null | awk '{print $1}'`; do
+         case "$var" in
+             *eth*) `rkscli -c "set dns-cache enable $var" ` > /dev/null 2>&1 ;;
+         esac
+	     if [ $var = "uif0" ] || [ $var = "wlan63" ] || [ $var = "wlan31" ]
+	     then
+	         `rkscli -c "set dns-cache enable $var" ` > /dev/null 2>&1
+	     fi
+     done
+    /usr/sbin/avpd -i cif0 -D 
+}
+
+stop_avpd() {
+  AVPD_PID=`cat /var/run/avpd.pid 2> /dev/null`
+  if [ "$AVPD_PID" != "" ]; then
+	# SIGTERM is more gracefully handled in AVPd; SIGKILL is not
+	kill -15 $AVPD_PID
+	rm -f /var/run/avpd.pid
+  fi
+  # Wait for 3 seconds for dust to settle down
+  sleep 3
+}
+
+start() {
+  AVPD_PID=`cat /var/run/avpd.pid 2> /dev/null`
+  if [ "$AVPD_PID" != "" ]; then
+	exit 0
+  fi
+  echo "Starting AVPd..."
+  start_avpd
+}
+
+stop() {
+  echo "AVPd will be stopped!"
+  AVPD_PID=`cat /var/run/avpd.pid 2> /dev/null`
+  if [ "$AVPD_PID" = "" ]; then
+	exit 0
+  fi
+  echo "Stopping AVPd..."
+  stop_avpd
+}
+
+restart() {
+  stop_avpd
+  install_modules
+  start_avpd
+}
+
+case "$1" in
+  start)
+        install_modules
+	start
+	;;
+  stop)
+        stop
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

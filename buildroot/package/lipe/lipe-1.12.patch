@@ -1,0 +1,92 @@
+diff -Naur lipe-1.12.orig/src/lipe.c lipe-1.12/src/lipe.c
+--- lipe-1.12.orig/src/lipe.c	2008-12-24 16:06:17.000000000 +0800
++++ lipe-1.12/src/lipe.c	2010-01-31 20:19:53.000000000 +0800
+@@ -300,6 +300,45 @@
+ 	printf("%5X%5X%5d%5d%5d%5d%5d%5d%12u%12u\n",partvar->bootable,partvar->type,partvar->st_c,partvar->st_h,partvar->st_s,partvar->en_c,partvar->en_h,partvar->en_s,partvar->st_sector,partvar->tt_sector);
+ }
+ 
++// 0213 Tony Chen
++// Reload partition table after pump it.
++#include <sys/ioctl.h>
++#define BLKRRPART	_IO(0x12,95)	/* re-read partition table */
++
++void
++reload_partition_table(char *device)
++{
++	int error = 0;
++	int fd;
++
++	if ((fd = open(device, O_RDONLY)) < 0) {
++		error = errno;
++	} else {
++		if (ioctl(fd, BLKRRPART) != 0) {
++			error = errno;
++		} else {
++			/* Copy from busybox.... :)
++			   Some kernel versions (1.2.x) seem to have trouble
++			   re-reading the partition table, but if asked to do it
++			   twice, the second time works. - biro@yggdrasil.com */
++			sync();
++			sleep(2);
++			if (ioctl(fd, BLKRRPART) != 0) {
++				error = errno;
++			}
++		}
++	}
++
++	if (error) {
++		printf("\nWARNING: Re-reading the partition table is failed with error %d: %s.\n"
++			   "The kernel still uses the old table.\n"
++			   "The new table will be used at the next reboot.\n",
++			   error, strerror(error));
++	}
++
++	close(fd);
++}
++
+ void help(char *path)
+ {
+ 	printf("%s v%s:\n\n",PACKAGE_NAME,PACKAGE_VERSION);
+@@ -437,7 +476,14 @@
+ 			dump_partition_table(device,what,starting_sector);
+ 			break;
+ 		case PUMPMODE:
++			// 0213 Tony Chen
++			printf("Writing new partition information.\n");
+ 			pump_partition_table(device,what);
++			printf("Syncing disks.\n");
++			sync(); sync(); sync(); sync();	/* Sync many times */
++			sleep(2);
++			printf("Reloading partition table.\n");
++			reload_partition_table(device);
+ 			break;
+ 		case TEXTMODE:
+ #ifdef USE_CURSES
+diff -Naur lipe-1.12.orig/src/Makefile.am lipe-1.12/src/Makefile.am
+--- lipe-1.12.orig/src/Makefile.am	2007-08-05 21:52:26.000000000 +0800
++++ lipe-1.12/src/Makefile.am	2010-01-31 17:17:33.000000000 +0800
+@@ -9,11 +9,11 @@
+ # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ 
+ AM_CPPFLAGS		=	-DSYSTEM_DATA_DIR=\""$(datadir)"\"
+-LDADD			=	-lcurses
+ 
+ if WITH_CURSES
+ LIPE_CURSES		=	lipecurse.c \
+ 				lipecurse.h
++LDADD			=	-lcurses
+ endif
+ 
+ if WITH_GTK2
+diff -Naur lipe-1.12.orig/src/Makefile.in lipe-1.12/src/Makefile.in
+--- lipe-1.12.orig/src/Makefile.in	2008-12-25 04:14:11.000000000 +0800
++++ lipe-1.12/src/Makefile.in	2010-01-31 17:19:12.000000000 +0800
+@@ -185,7 +185,7 @@
+ sysconfdir = @sysconfdir@
+ target_alias = @target_alias@
+ AM_CPPFLAGS = -DSYSTEM_DATA_DIR=\""$(datadir)"\"
+-LDADD = -lcurses
++@WITH_CURSES_TRUE@LDADD = -lcurses
+ @WITH_CURSES_TRUE@LIPE_CURSES = lipecurse.c \
+ @WITH_CURSES_TRUE@				lipecurse.h
+ 

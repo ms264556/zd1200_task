@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# Start PPPoE ...
+#
+
+kernel_ver=`uname -r`
+
+test_insmod() {
+  # Test the module: if not installed yet, install it
+  mod=$1
+  dir=/lib/modules/${kernel_ver}/kernel/drivers/net
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 1 ]; then
+	    insmod $dir/$mod.ko
+  fi
+}
+
+test_rmmod() {
+  # Test the module: if not depended on, remove it
+  mod=$1
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 0 ]; then
+	    lsmod | grep ^$mod | grep "," > /dev/null 2>&1; mod_alone=$?
+	    if [ $mod_alone == 1 ]; then
+	        rmmod $mod > /dev/null 2>&1
+	    fi
+  fi
+}
+
+install_modules() {
+  echo "inserting PPPoE modules..."
+  test_insmod slhc
+  if [ $kernel_ver == 2.6.15 ]; then
+    test_insmod ppp_bcp_generic      
+  elif [ $kernel_ver == 2.6.32.24 ];then
+    test_insmod ppp_generic
+  fi  
+  test_insmod pppox
+  test_insmod pppoe  
+}
+
+remove_modules() {
+  echo "removing modules..."
+  test_rmmod pppoe
+  test_rmmod pppox
+  if [ $kernel_ver == 2.6.15 ]; then
+    test_rmmod ppp_bcp_generic      
+  elif [ $kernel_ver == 2.6.32.24 ];then
+    test_rmmod ppp_generic
+  fi   
+  test_rmmod slhc   
+}
+
+start() {  
+  echo "Starting PPPoE..."
+}
+
+stop() {
+  echo "Stopping PPPoE..."
+}
+
+restart() {
+  install_modules
+}
+
+case "$1" in
+  start)
+        install_modules
+	start
+	;;
+  stop)
+        stop
+        remove_modules
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

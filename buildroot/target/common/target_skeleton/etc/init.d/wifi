@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# stop the radio[n]
+#
+
+_action() {
+    act=$1 ; shift
+    echo -n "${act} radio ..."
+    echo    " $*"
+	if [ "$1" != "" ]; then
+            IFS=' @'
+            for ii in $* ; do
+                /sbin/ifconfig ${ii} ${act}
+            done
+	else
+		/sbin/ifconfig wifi0 ${act}
+		/sbin/ifconfig wifi1 ${act} 2>/dev/null
+	fi
+#        echo "... done"
+}
+
+restart() {
+	_action down $*
+	_action up $*
+}	
+
+
+op=$1
+shift
+case "${op}" in
+start)
+	_action up $*
+	;;
+stop)
+	_action down $*
+	;;
+restart|reload)
+	restart $*
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?

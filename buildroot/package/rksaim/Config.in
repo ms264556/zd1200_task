@@ -1,0 +1,7 @@
+config BR2_PACKAGE_RKSAIM
+	bool "rksaim"
+	default n
+	select BR2_PACKAGE_LIBNL
+	help
+	  Ruckus AP deamon to support Aiming
+

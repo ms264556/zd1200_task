@@ -1,0 +1,5 @@
+config BR2_PACKAGE_SMTPCLIENT
+	bool "mail: Simple SMTP Client"
+	default n
+	help
+	  Client to send mail to a SMTP server

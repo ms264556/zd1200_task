@@ -1,0 +1,12 @@
+--- main.c.orig	2007-01-10 13:09:01.000000000 -0800
++++ main.c	2007-01-10 13:08:17.000000000 -0800
+@@ -571,6 +571,9 @@
+ 	    if (!persist)
+ 		break;
+ 	}
++	lcp_close(0, "modem hangup");
++    for (i = 0; (protp = protocols[i]) != NULL; ++i)
++        (*protp->init)(0);
+     }
+ 
+     /* Wait for scripts to finish */

@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# Start Controller components
+#
+IDLETIMEOUT=0
+SOURCE=/etc/airespider/system.xml
+KNOWN_HOSTS_DIR=/writable/data/dropbear
+echo "Starting sshd ..."
+if [ -f /etc/airespider/dropbear/dropbear_host_rsa_key ] ; then
+  if [ -f $SOURCE ] ; then
+      TEMP=`cat $SOURCE | sed -n s/.*idletimeout=\"//p |  sed -n s/\".*//p`
+      if [ " $TEMP" != " " ]; then
+	  IDLETIMEOUT=`expr $TEMP \* 60`
+      fi
+  fi
+  if [ ! -d "$KNOWN_HOSTS_DIR" ];then
+      mkdir -p $KNOWN_HOSTS_DIR
+  fi
+  /usr/sbin/dropbear -e /bin/login.sh -I $IDLETIMEOUT -r /etc/airespider/dropbear/dropbear_host_rsa_key -d /etc/airespider/dropbear/dropbear_host_dss_key -j -k
+else
+  echo "[dropbear] invalid /etc/airespider/dropbear, sshd not started -- FIXME"
+fi

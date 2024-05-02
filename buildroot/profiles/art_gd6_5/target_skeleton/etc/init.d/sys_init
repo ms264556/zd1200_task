@@ -1,0 +1,76 @@
+#!/bin/sh
+_sys_start()
+{
+mount -o remount,rw /
+mount -a
+/etc/init.d/urandom start
+
+#
+# mount datafs
+data_num=99
+_grep_datafs()
+{
+    while read pn sz esz name ; do
+        case "${name}" in
+        '"datafs"')  data_num=${pn#mtd}
+             data_num=${data_num%:}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/mtd
+}
+_grep_datafs
+if [ ${data_num} -lt 20 ]; then
+    mount -t jffs2 /dev/mtdblock${data_num} /writable
+else
+    echo "*** Cannot find datafs partition" >&2
+fi
+#
+
+#
+# set up /tmp directories
+if [ ! -d /tmp/non_persist ]; then
+    mkdir /tmp/non_persist
+fi
+#
+# fix links for /var
+vardirs="run log spool lock"
+for d in ${vardirs} ;do
+	rm -f  /var/${d}
+	mkdir /tmp/${d}
+	ln -fs /tmp/${d} /var/${d}
+done
+#
+if [ -d /defaults ]; then
+	cp -af /defaults /writable/data/rpm_defaults
+	if [ $? -eq 0 ];then
+		rm -rf /defaults
+	fi
+fi
+#
+#
+#
+insmod v54_bsp
+#
+
+if [  -d /rpm-defaults ]; then
+    cp -Rf /rpm-defaults/* /writable/data/persist-stg/
+	rm -rf /rpm-defaults
+fi
+mount -o remount,ro /
+mount
+}
+
+_sys_stop()
+{
+	mount -o remount,rw /
+	/etc/init.d/urandom stop
+}
+
+
+case "$1" in
+start|"")
+	_sys_start ;;
+stop)	_sys_stop ;;
+*)	;;
+esac

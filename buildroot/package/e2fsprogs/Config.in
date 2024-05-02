@@ -1,0 +1,27 @@
+config BR2_PACKAGE_E2FSPROGS
+	bool "e2fsprogs"
+	default n
+	help
+	  The EXT2 file system utilities and libraries
+
+config BR2_PACKAGE_E2FSPROG_RESIZER
+	bool "Enable resizer"
+	default n
+	depends on BR2_PACKAGE_E2FSPROGS
+	help
+	  Enable resizer tool
+
+config BR2_PACKAGE_E2FSPROG_SYSTEM
+	bool "Install e2fsprogs for system"
+	default n
+	depends on BR2_PACKAGE_E2FSPROGS
+	help
+	  Install EXT2 file system utilities to the system
+
+config BR2_PACKAGE_E2FSPROG_USBTOOL
+	bool "Install e2fsprogs for usb tool"
+	default y
+	depends on BR2_PACKAGE_E2FSPROGS
+	depends on BR2_TARGET_USBTOOL_KIT 
+	help
+	  Install EXT2 file system utilities for usb tool

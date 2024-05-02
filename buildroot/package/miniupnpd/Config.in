@@ -1,0 +1,8 @@
+config BR2_PACKAGE_MINIUPNPD
+	bool "upnpd"
+	default n
+	help
+	  A small footprint UPnP daemon.
+
+	  http://miniupnp.free.fr/
+

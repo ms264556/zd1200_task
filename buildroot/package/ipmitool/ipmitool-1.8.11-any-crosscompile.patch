@@ -1,0 +1,13 @@
+diff -Naur ipmitool-1.8.11/configure ipmitool-1.8.11.new/configure
+--- ipmitool-1.8.11/configure	2009-02-26 05:21:56.000000000 +0800
++++ ipmitool-1.8.11.new/configure	2010-10-01 18:48:34.000000000 +0800
+@@ -24315,8 +24315,7 @@
+   { { echo "$as_me:$LINENO: error: cannot run test program while cross compiling
+ See \`config.log' for more details." >&5
+ echo "$as_me: error: cannot run test program while cross compiling
+-See \`config.log' for more details." >&2;}
+-   { (exit 1); exit 1; }; }
++See \`config.log' for more details. (ignored)" >&2;} }
+ else
+   cat >conftest.$ac_ext <<_ACEOF
+ /* confdefs.h.  */

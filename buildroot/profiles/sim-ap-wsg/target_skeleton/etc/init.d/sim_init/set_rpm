@@ -1,0 +1,68 @@
+#!/bin/sh
+
+echo "Set RPM Key"
+
+params="zdaddr1 zdaddr2 devname fmaddr"
+kernel_cmd=`cat /proc/cmdline`
+rkscli_cmd="/usr/bin/rkscli"
+
+#zd1=""
+#zd2=""
+#devname=""
+
+for param in $params; do
+        set $kernel_cmd
+        while [ $# -gt 0 ]; do
+                echo "$1"|grep "$param=" >/dev/null
+                if [ $? -eq 0 ]; then
+                        #echo "--->Set $1"
+                        case $param in
+                        "zdaddr1")
+                                zd1=`$rkscli_cmd -c "get rpmkey apmgr/apmgr-primary-ac-ip-addr"`
+                                if [ "$zd1" = "" ]; then
+                                        zd1=`echo "$1" | sed "s/$param=\(.*\)/\1/"`
+                                        $rkscli_cmd -c "set rpmkey apmgr/apmgr-primary-ac-ip-addr $zd1"
+                                        echo "--->ZD 1st ip => [$zd1]"
+                                fi
+                                ;;
+                        "zdaddr2")
+                                zd2=`$rkscli_cmd -c "get rpmkey apmgr/apmgr-secondary-ac-ip-addr"`
+                                if [ "$zd2" = "" ]; then
+                                        zd2=`echo "$1" | sed "s/$param=\(.*\)/\1/"`
+                                        $rkscli_cmd -c "set rpmkey apmgr/apmgr-secondary-ac-ip-addr $zd2"
+                                        echo "--->ZD 2nd ip => [$zd2]"
+                                fi
+                                ;;
+                        "fmaddr")
+                                current_url=`$rkscli_cmd -c "get rpmkey tr069/current_server_url"`
+                                if [ "$current_url" = "" ]; then
+                                        current_url=`echo "$1" | sed "s/$param=\(.*\)/\1/"`
+                                        $rkscli_cmd -c "set rpmkey tr069/current_server_url https://$current_url/intune/server"
+                                        echo "--->FM ip => [$current_url]"
+                                fi
+                                ;;
+                        "devname")
+                                devname=`$rkscli_cmd -c "get rpmkey device-name"`
+                                if [ "$devname" = "device-name = RuckusAP" ]; then
+                                        devname=`echo "$1" | sed "s/$param=\(.*\)/\1/"`
+                                        $rkscli_cmd -c "set rpmkey device-name $devname"
+                                        echo "--->Device name => [$devname]"
+                                fi
+                                ;;
+                        *)
+                                cfg_val=`echo "$1" | sed "s/$param=\(.*\)/\1/"`
+                                echo "$cfg_val" > /proc/v54bsp/$param
+                                echo "--->/proc/v54bsp/$param => [$cfg_val]"
+                                ;;
+                        esac
+
+                        break;
+                fi
+                shift
+        done
+done
+
+#if [ "$zd1" != "" -o "$zd2" != "" ]; then
+#	/usr/bin/rkscli -c "set director ip $zd1 $zd2"
+#	echo "--->Set AC ip P:$zd1 S:$zd2"
+#fi

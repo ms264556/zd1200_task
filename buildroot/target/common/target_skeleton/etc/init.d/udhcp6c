@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# This is called by udhcpc on various dhcp events
+#
+
+STATIC_ROUTE6_FILE=/etc/iptables/static_route6.
+
+
+case "$1" in
+    cfgipv6route)
+            interface=$2
+	    SR6_FILE=$STATIC_ROUTE6_FILE$interface   
+
+	    if [ -f $SR6_FILE ] ;
+	    then
+	        ( while read sr6_dest sr6_prefixlen sr6_router ; do
+	            # delete first, so renew won't cause duplicate entries
+	            route -A inet6 del $sr6_dest/$sr6_prefixlen > /dev/null 2>&1
+	            route -A inet6 add $sr6_dest/$sr6_prefixlen gw $sr6_router dev $interface > /dev/null 2>&1
+	        done ) < $SR6_FILE
+	    fi
+	        ;;
+    *)
+        echo $"Usage: $0 {cfgipv6route}"
+        exit 1
+esac
+
+exit $?
+

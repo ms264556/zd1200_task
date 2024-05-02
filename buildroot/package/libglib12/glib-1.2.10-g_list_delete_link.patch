@@ -1,0 +1,35 @@
+diff -Naur glib-1.2.10/glib.h glib-1.2.10.new/glib.h
+--- glib-1.2.10/glib.h	2001-02-27 11:44:38.000000000 +0800
++++ glib-1.2.10.new/glib.h	2011-04-01 13:48:48.000000000 +0800
+@@ -883,6 +883,8 @@
+ GList* g_list_remove_link	(GList		*list,
+ 				 GList		*llink);
+ GList* g_list_reverse		(GList		*list);
++GList* g_list_delete_link	(GList		*list,
++				GList		*link_);
+ GList* g_list_copy		(GList		*list);
+ GList* g_list_nth		(GList		*list,
+ 				 guint		 n);
+diff -Naur glib-1.2.10/glist.c glib-1.2.10.new/glist.c
+--- glib-1.2.10/glist.c	1999-02-24 14:13:42.000000000 +0800
++++ glib-1.2.10.new/glist.c	2011-04-01 00:21:42.000000000 +0800
+@@ -314,6 +314,19 @@
+   return list;
+ }
+ 
++#define _g_list_free_1 g_list_free_1
++
++GList*
++g_list_delete_link (GList *list,
++                    GList *link_)
++{
++  list = g_list_remove_link (list, link_);
++  _g_list_free_1 (link_);
++
++  return list;
++}
++
++
+ GList*
+ g_list_copy (GList *list)
+ {

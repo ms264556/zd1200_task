@@ -1,0 +1,55 @@
+#This is config file for USB tool
+_DEF_ACTION="k s b"
+
+#CF Card Device Information
+_CFCARD="hda"
+_BOOTFS="hda1"
+_ROOTFS="hda2 hda3"
+_DATAFS="hda4"
+
+#Image Information
+_PARTITION="partition.2GB.img"
+_BOOTFSIMG="bootfs.i386.ext2.directorx86.img"
+_ROOTFSIMG="rootfs.i386.ext2.directorx86.img"
+_DATAFSIMG="datafs.i386.tar.directorx86.img"
+_KERNELIMG="bzImage"
+_RESTOREIMG="restoreinitramfs.gz"
+_RESTOREVER="restoreinitramfs.ver"
+
+#Default Settings
+#default settings for network boot
+_DEF_KERNEL="bzImage"
+_DEF_INITRAMFS="initramfs.gz"
+_DEF_NFS_ROOT="/nfsroot"
+
+#extra kernel command
+_DEF_TFTP_KERNEL_CMD="console=ttyS0,115200n8"
+_DEF_NFS_KERNEL_CMD="console=ttyS0,115200n8"
+
+#default host/server network settings
+_DEF_SERVER_IP="192.168.0.3"
+_DEF_HOST_IP="192.168.0.2"
+_DEF_NET_MASK="255.255.255.0"
+
+#name of port1 and port2
+_DEF_PORT1="eth0"
+_DEF_PORT2="eth1"
+
+#default connected port
+_DEF_PORT="eth1"
+
+#file name for downloading from server
+_DEF_TEMP_FILE="/tmp/upg.img"
+
+#list number of sector that going to be clean
+_DEF_SECTOR_CLEAN_LIST="0 63 20160 509040 3981601 3981701 3982101"
+
+#board data source [configfile/server]
+_DEF_BOARD_DATA_SRC="server"
+
+#default board data
+_DEF_BOARD_DATA_FIELD="{board} {model} {serial} {OUI} {mac1} {mac2}"
+_DEF_BOARD_DATA="Dachshund ZD3050 00000000 00:1f:41 00:07:18 00:07:19"
+
+#board data file name fro downloading from server
+_DEF_BOARD_DATA_FILE="zd_boarddata.txt"

@@ -1,0 +1,20 @@
+config BR2_PACKAGE_REISERFSPROGS
+	bool "reiserfsprogs"
+	default n 
+	help
+	  The REISER file system utilities and libraries
+
+config BR2_PACKAGE_REISERFSPROGS_SYSTEM
+	bool "Install reiserfs utils to the system"
+	default n
+	depends on BR2_PACKAGE_REISERFSPROGS
+	help
+	  Install reiserfs utils to the system
+
+config BR2_PACKAGE_REISERFSPROGS_USBTOOL
+	bool "Install reiserfs utils to usb tool"
+	default y
+	depends on BR2_PACKAGE_REISERFSPROGS
+	depends on BR2_TARGET_USBTOOL_KIT
+	help
+	  Install reiserfs utils to usb tool

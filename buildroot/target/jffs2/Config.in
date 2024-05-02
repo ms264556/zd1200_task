@@ -1,0 +1,130 @@
+config BR2_TARGET_JFFS2
+	bool "jffs2 filesystem"
+	default y
+	help
+	  Build jffs2 filesystems
+
+config BR2_TARGET_ROOTFS_JFFS2
+	bool "jffs2 root filesystem"
+	default n
+	depends on BR2_TARGET_JFFS2
+	help
+	  Build a jffs2 root filesystem
+
+config BR2_TARGET_DATAFS_JFFS2
+	bool "jffs2 data filesystem"
+	default y
+	depends on BR2_TARGET_JFFS2
+	help
+	  Build a jffs2 data filesystem
+
+config BR2_TARGET_DATAFS_2ND_FLASH_JFFS2
+	bool "jffs2 data filesystem - 2nd flash bank"
+	default n
+	depends on BR2_TARGET_JFFS2
+	help
+	  Build a jffs2 data filesystem
+
+config BR2_TARGET_DATAFS_JFFS2_16M
+	bool "jffs2 data filesystem 16M"
+	default y
+	depends on BR2_TARGET_JFFS2
+	help
+	  Build a jffs2 data filesystem
+
+config BR2_TARGET_JFFS2_EBSIZE
+	hex "Erase block size"
+	depends on BR2_TARGET_JFFS2
+	default 0x10000
+
+config BR2_TARGET_JFFS2_EBSIZE_16M
+	hex "Erase block size (16M)"
+	depends on BR2_TARGET_JFFS2 && BR2_TARGET_DATAFS_JFFS2_16M
+	default 0x40000
+
+choice
+	prompt "Endianess"
+	default BR2_TARGET_JFFS2_BE if BR2_RKS_BOARD_GD6 || BR2_RKS_BOARD_GD4 || BR2_RKS_BOARD_834PN || BR2_RKS_BOARD_TELSEY || BR2_RKS_BOARD_AP51 || BR2_RKS_BOARD_DF1
+	depends on BR2_TARGET_JFFS2
+
+config BR2_TARGET_JFFS2_LE
+	bool "little-endian"
+	depends on BR2_TARGET_JFFS2
+
+config BR2_TARGET_JFFS2_BE
+	bool "big-edian"
+	depends on BR2_TARGET_JFFS2
+
+endchoice
+
+config BR2_TARGET_ROOTFS_JFFS2_PAD
+	bool "Pad output"
+	depends on BR2_TARGET_ROOTFS_JFFS2
+	depends on BR2_TARGET_DATAFS_JFFS2
+	default y
+
+config BR2_TARGET_ROOTFS_JFFS2_PADSIZE
+	hex "Pad output size (0x0 = to end of EB)"
+	depends on BR2_TARGET_ROOTFS_JFFS2_PAD
+	default 0x0
+	help
+		Set to 0x0 to pad to end of erase block.
+
+config BR2_TARGET_ROOTFS_JFFS2_SQUASH
+	bool "Make all files be owned by root"
+	depends on BR2_TARGET_ROOTFS_JFFS2
+	depends on BR2_TARGET_DATAFS_JFFS2
+	default y
+
+config BR2_TARGET_ROOTFS_JFFS2_OUTPUT
+	string "Output File"
+	depends on BR2_TARGET_ROOTFS_JFFS2
+	default "$(BUILD_DIR)/rootfs.jffs2.$(PROFILE)"
+
+config BR2_TARGET_ROOTFS_JFFS2_COPYTO
+	string "also copy the image to..."
+	depends on BR2_TARGET_ROOTFS_JFFS2
+	default "/tftpboot"
+	help
+		Copies the resulting image to a secondary location.
+
+config BR2_TARGET_DATAFS_JFFS2_OUTPUT
+	string "Output File"
+	depends on BR2_TARGET_DATAFS_JFFS2
+	default "$(BUILD_DIR)/datafs.jffs2.$(PROFILE)"
+
+config BR2_TARGET_DATAFS_JFFS2_OUTPUT_16M
+	string "Output File"
+	depends on BR2_TARGET_DATAFS_JFFS2_16M && BR2_TARGET_DATAFS_JFFS2_16M
+	default "$(BUILD_DIR)/datafs16.jffs2.$(PROFILE)"
+
+config BR2_TARGET_DATAFS_2ND_FLASH_JFFS2_OUTPUT
+	string "Output File (2 flash bank case)"
+	depends on BR2_TARGET_DATAFS_JFFS2 && BR2_TARGET_DATAFS_2ND_FLASH_JFFS2
+	default "$(BUILD_DIR)/datafs.jffs2.2nd_flash.$(PROFILE)"
+
+config BR2_TARGET_DATAFS_JFFS2_COPYTO
+	string "also copy the image to..."
+	depends on BR2_TARGET_DATAFS_JFFS2
+	default "/tftpboot"
+	help
+		Copies the resulting image to a secondary location.
+
+config BR2_TARGET_DATAFS_JFFS2_PAD
+	bool "Pad output"
+	depends on BR2_TARGET_DATAFS_JFFS2
+	default y
+
+config BR2_TARGET_DATAFS_JFFS2_PADSIZE
+	hex "Pad output size (0x0 = to end of EB)"
+	depends on BR2_TARGET_DATAFS_JFFS2_PAD
+	default 0x70000
+	help
+		Set to 0x0 to pad to end of erase block.
+
+config BR2_TARGET_DATAFS_JFFS2_PADSIZE_16M
+	hex "Pad output size (0x0 = to end of EB)"
+	depends on BR2_TARGET_DATAFS_JFFS2_PAD && BR2_TARGET_DATAFS_JFFS2_16M
+	default 0x140000
+	help
+		Set to 0x0 to pad to end of erase block.

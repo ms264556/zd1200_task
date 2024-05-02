@@ -1,0 +1,23 @@
+--- uClibc-0.9.30.1-bak/libc/inet/resolv.c	2008-11-02 08:25:33.000000000 +0800
++++ uClibc-0.9.30.1/libc/inet/resolv.c	2013-08-04 00:05:50.000000000 +0800
+@@ -992,6 +992,7 @@
+ 		DPRINTF("Decoding answer at pos %d\n", pos);
+ 
+ 		first_answer = 1;
++         a->dotted = NULL;
+ 		for (j = 0; j < h.ancount && pos < len; j++) {
+ 			i = __decode_answer(packet, pos, len, &ma);
+ 			if (i < 0) {
+@@ -1008,11 +1009,11 @@
+ 				ma.buf = a->buf;
+ 				ma.buflen = a->buflen;
+ 				ma.add_count = a->add_count;
++                 free(a->dotted);
+ 				memcpy(a, &ma, sizeof(ma));
+ 				if (a->atype != T_SIG && (NULL == a->buf || (type != T_A && type != T_AAAA)))
+ 					break;
+ 				if (a->atype != type) {
+-					free(a->dotted);
+ 					continue;
+ 				}
+ 				a->add_count = h.ancount - j - 1;

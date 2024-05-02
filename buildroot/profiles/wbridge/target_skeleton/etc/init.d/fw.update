@@ -1,0 +1,51 @@
+#!/bin/ash
+#assume tftp
+
+if [ $# -lt 3 ] ; then
+echo "Usage: $0 <partition> <tftp_server> <elf_file>" >&2
+echo "e.g.:  $0 mtd3 192.168.1.3 collie/vmlinux" >&2
+exit 1
+fi
+
+part=/dev/$1
+server=$2
+fwfile=$3
+
+TFTPGET="tftp -g -l - -r ${fwfile} ${server}"
+
+nrc=0
+
+net_get()
+{
+eval ${TFTPGET}
+nrc=$?
+echo -n ${nrc} > /tmp/ng.rc
+return ${nrc}
+}
+
+net_get | md5sum > /tmp/server.fwsum
+mrc=$?
+nrc=`cat /tmp/ng.rc`
+if [ ${nrc} -ne 0 -o ${mrc} -ne 0 ] ; then
+echo "tftp get or md5sum check failed" >&2
+exit 2
+fi
+
+flash_erase ${part} 0 27
+if [ $? -ne 0 ] ; then
+echo "erase failed" >&2
+exit 3
+fi
+
+net_get | dd of=${part} bs=4096
+mrc=$?
+nrc=`cat /tmp/ng.rc`
+if [ ${nrc} -ne 0 -o ${mrc} -ne 0 ] ; then
+echo "image write failed" >&2
+exit 4
+fi
+
+echo "Image write succeeded, you may want to check md5sum of ${part}" >&2
+cat /tmp/server.fwsum
+exit 0
+

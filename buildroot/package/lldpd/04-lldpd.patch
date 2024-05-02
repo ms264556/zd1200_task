@@ -1,0 +1,66 @@
+diff -uNr lldpd-0.7.1/src/client/display.c lldpd-0.7.1-new/src/client/display.c
+--- lldpd-0.7.1/src/client/display.c	2013-07-03 18:34:40.162326777 -0700
++++ lldpd-0.7.1-new/src/client/display.c	2013-07-03 18:20:10.142322972 -0700
+@@ -177,8 +177,13 @@
+ 	if (lldpctl_atom_get_int(port, lldpctl_k_med_power_type) > 0) {
+  		tag_start(w, "poe", "Extended Power-over-Ethernet");
+ 
++#if defined(RCKS_LLDP)
++		tag_datatag(w, "device-type", "Power Type",
++		    lldpctl_atom_get_str(port, lldpctl_k_med_power_type));
++#else
+ 		tag_datatag(w, "device-type", "Power Type & Source",
+ 		    lldpctl_atom_get_str(port, lldpctl_k_med_power_type));
++#endif
+ 		tag_datatag(w, "source", "Power Source",
+ 		    lldpctl_atom_get_str(port, lldpctl_k_med_power_source));
+ 		tag_datatag(w, "priority", "Power priority",
+diff -uNr lldpd-0.7.1/src/lib/atom-private.c lldpd-0.7.1-new/src/lib/atom-private.c
+--- lldpd-0.7.1/src/lib/atom-private.c	2013-07-03 18:34:25.992338449 -0700
++++ lldpd-0.7.1-new/src/lib/atom-private.c	2013-07-03 18:17:24.532321198 -0700
+@@ -269,6 +269,7 @@
+ 	{ 0, NULL },
+ };
+ static lldpctl_map_t *port_med_pow_priority_map = port_dot3_power_priority_map_copy;
++static char strpower[8];
+ #else
+ static lldpctl_map_t *port_med_pow_priority_map = port_dot3_power_priority_map;
+ #endif
+@@ -867,6 +868,20 @@
+ 		return chassis->c_med_model;
+ 	case lldpctl_k_chassis_med_inventory_asset:
+ 		return chassis->c_med_asset;
++#if defined(RCKS_LLDP)
++	case lldpctl_k_med_power_type:
++		return map_lookup(port_med_pow_devicetype_map,
++		    port->p_med_power.devicetype);
++	case lldpctl_k_med_power_source:
++		return map_lookup(port_med_pow_source_map,
++		    port->p_med_power.source);
++	case lldpctl_k_med_power_priority:
++		return map_lookup(port_med_pow_priority_map,
++		    port->p_med_power.priority);
++	case lldpctl_k_med_power_val:
++		snprintf(strpower, sizeof(strpower), "%d", (port->p_med_power.val * 100));
++		return strpower;
++#endif
+ #endif
+ 
+ 	default:
+@@ -938,6 +953,16 @@
+ 		return chassis->c_med_type;
+ 	case lldpctl_k_chassis_med_cap:
+ 		return chassis->c_med_cap_available;
++#if defined(RCKS_LLDP)
++	case lldpctl_k_med_power_type:
++		return port->p_med_power.devicetype;
++	case lldpctl_k_med_power_source:
++		return port->p_med_power.source;
++	case lldpctl_k_med_power_priority:
++		return port->p_med_power.priority;
++	case lldpctl_k_med_power_val:
++		return port->p_med_power.val * 100;
++#endif
+ #endif
+ 	default:
+ 		return SET_ERROR(atom->conn, LLDPCTL_ERR_NOT_EXIST);

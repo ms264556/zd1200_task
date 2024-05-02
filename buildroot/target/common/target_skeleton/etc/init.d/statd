@@ -1,0 +1,102 @@
+#!/bin/sh
+#
+# Start STATd ...
+#
+
+kernel_ver=`uname -r`
+rflow_mod_dir=/lib/modules/${kernel_ver}/kernel/net/rflow/
+av_mod_dir=/lib/modules/${kernel_ver}/kernel/net/rflow/
+
+test_insmod() {
+  # Test the module: if not installed yet, install it
+  mod=$2
+  dir=$1
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 1 ]; then
+	    #insmod $dir/$mod.ko > /dev/null 2>&1
+	    insmod $dir/$mod.ko
+  fi
+}
+
+test_rmmod() {
+  # Test the module: if not depended on, remove it
+  mod=$1
+  lsmod | grep ^$mod > /dev/null 2>&1; mod_absent=$?
+  if [ $mod_absent == 0 ]; then
+	    lsmod | grep ^$mod | grep "," > /dev/null 2>&1; mod_alone=$?
+	    if [ $mod_alone == 1 ]; then
+	        #rmmod $mod > /dev/null 2>&1
+	        rmmod $mod > /dev/null 2>&1
+	    fi
+  fi
+}
+
+install_modules() {
+  test_insmod ${rflow_mod_dir} rflow
+  test_insmod ${av_mod_dir} av
+}
+
+remove_modules() {
+  test_rmmod av
+  test_rmmod rflow
+}
+
+
+start_statd() {
+  /usr/sbin/statd -t 300 -n 50 -v 500 -D 
+}
+
+stop_statd() {
+  STATD_PID=`cat /var/run/statd.pid 2> /dev/null`
+  if [ "$STATD_PID" != "" ]; then
+	# SIGTERM is more gracefully handled in STATd; SIGKILL is not
+	kill -9 $STATD_PID
+	rm -f /var/run/statd.pid
+  fi
+  # Wait for 5 seconds for dust to settle down
+  sleep 3
+}
+
+start() {
+  STATD_PID=`cat /var/run/statd.pid 2> /dev/null`
+  if [ "$STATD_PID" != "" ]; then
+	exit 0
+  fi
+  echo "Starting STATd..."
+  start_statd
+}
+
+stop() {
+  echo "STATd will be stopped!"
+  STATD_PID=`cat /var/run/statd.pid 2> /dev/null`
+  if [ "$STATD_PID" = "" ]; then
+	exit 0
+  fi
+  echo "Stopping STATd..."
+  stop_statd
+}
+
+restart() {
+  stop_statd
+  install_modules
+  start_statd
+}
+
+case "$1" in
+  start)
+        install_modules
+	start
+	;;
+  stop)
+        stop
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

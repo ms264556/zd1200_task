@@ -1,0 +1,14 @@
+config BR2_PACKAGE_WPS
+	bool "Wi-Fi Protected Setup"
+	default n
+	help
+	  Linux user space daemon for Wi-Fi Protected Setup
+		- Registrar
+		- Enrolee
+		- Registration Protocol
+		- UPnP
+
+		** openssl is required for compilation
+
+	  http://www.intel.com/cd/ids/developer/asmo-na/eng/247741.htm
+

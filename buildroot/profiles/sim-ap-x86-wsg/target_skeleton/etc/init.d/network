@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+#eth_mod=ae531x
+#eth_mod=ag7100_mod
+KERNEL_VERSION=`cat /proc/sys/kernel/osrelease`
+#eth_mod=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/ag7100/ag7100_mod.ko
+eth_mod=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/e1000/e1000.ko
+#eth_mod=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/pcnet32.ko
+# Autodetect should work
+# flip_phy=/writable/etc/flip_phy
+
+start() {
+ 	echo "Starting network..."
+        opts=
+	if [ "$1" != "" ]; then
+#		opts="dev_per_mac=$1"
+#		ndev=$1
+		if [ "$2" != "" ]; then
+			opts="${opts} ethnames=$2"
+		fi
+	else
+		ndev=1
+	fi
+#        if  [ -f "${flip_phy}" ] ; then
+#            opts="flip_phy=1 ${opts}"
+#        fi
+set -x
+	insmod ${eth_mod}
+        rc=$?
+  #ifconfig eth0 up
+  ifconfig eth1 up
+  ifconfig eth2 up promisc
+  ifconfig lo up
+
+set +x
+	if [ ${rc} -ne 0 ]; then
+		return
+	fi
+
+}	
+stop() {
+	echo "Stopping network..."
+	/sbin/ifdown -a
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+start)
+	shift;
+	start $*
+	;;
+stop)
+	stop
+	;;
+restart|reload)
+	restart
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

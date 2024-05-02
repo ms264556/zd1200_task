@@ -1,0 +1,37 @@
+ifeq ($(BR2_PTHREADS_NONE),y)
+THREADS:=--disable-threads
+else
+ifeq ($(BR2_PTHREADS),y)
+THREADS:=--enable-threads
+else
+THREADS:=--disable-threads
+endif
+endif
+
+
+ifeq ($(BR2_ENABLE_MULTILIB),y)
+MULTILIB:=--enable-multilib
+else
+MULTILIB:=--disable-multilib
+endif
+
+
+ifeq ($(BR2_ENABLE_OPENMP),y)
+OPENMP:=--enable-openmp
+else
+OPENMP:=--disable-openmp
+endif
+
+
+# FIXME -- this is temporary
+OPTIMIZE_FOR_CPU=$(ARCH)
+
+ifeq ($(BR2_GCC_VERSION_4_3_X),y)
+#BR2_CONFIGURE_DEVEL_SYSROOT=--with-sysroot=$(TOOL_BUILD_DIR)/uClibc_dev/
+#BR2_CONFIGURE_STAGING_SYSROOT=--with-sysroot=$(STAGING_DIR)
+BR2_CONFIGURE_BUILD_TOOLS=--with-build-time-tools=$(STAGING_DIR)/$(REAL_GNU_TARGET_NAME)/bin
+endif
+
+TOOLCHAIN_DIR ?= toolchain
+# gcc has a bunch of needed stuff....
+include $(TOOLCHAIN_DIR)/gcc/Makefile.in

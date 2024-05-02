@@ -1,0 +1,6 @@
+config BR2_PACKAGE_RUDA
+	bool "RUDA, Ruckus Unified Discovery Agent"
+	default n
+	help
+	  RUDA Ruckus Unified Discovery Agent for Access point
+

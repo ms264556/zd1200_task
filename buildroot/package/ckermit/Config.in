@@ -1,0 +1,7 @@
+config BR2_PACKAGE_CKERMIT
+	bool "ckermit"
+	default n
+	help
+	  Build C-Kermit for the target.
+
+	  http://www.columbia.edu/kermit/ck80.html

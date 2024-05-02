@@ -1,0 +1,12 @@
+#!/bin/sh
+
+echo "enable 1 1" > /proc/v54bsp/himem_v54rb
+date > /dev/v54rb1
+cat /proc/v54bsp/reason > /dev/v54rb1
+head -n5 /proc/v54bsp/oops > /dev/v54rb1
+echo "enable 1 0" > /proc/v54bsp/himem_v54rb
+
+
+
+
+

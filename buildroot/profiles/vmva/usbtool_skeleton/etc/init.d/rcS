@@ -1,0 +1,11 @@
+#!/bin/sh
+
+echo "Starting VMZD Installation Tool..."
+
+#system init
+mount proc /proc -t proc
+mount tmpfs /tmp -t tmpfs
+
+#system update
+insmod /lib/modules/`uname -r`/kernel/drivers/net/e1000e/e1000e.ko
+/etc/init.d/usbtool/cdrom_mount.sh

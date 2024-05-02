@@ -1,0 +1,17 @@
+conf_file=
+case "$1" in
+    start)
+        if [ -x /usr/sbin/vsftpd ] ; then
+            echo "Starting vsftpd ..."
+            /usr/sbin/vsftpd ${conf_file}
+            killall ftpdMon.sh
+            /bin/ftpdMon.sh &
+        fi
+        ;;
+    stop)
+        killall vsftpd
+        ;;
+    *)  
+        echo "Usage: $0 {start|stop}" >&2
+        ;;
+esac

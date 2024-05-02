@@ -1,0 +1,20 @@
+config BR2_TARGET_VMDK_IMAGE
+	bool "Generate VMDK disk image"
+	depends on BR2_TARGET_ISO_INSTALLER
+	default n
+	help
+	  Build VMDK image
+
+config BR2_VMDK_IMAGE_TARGET_DIR
+	string "VMDK disk image output path"
+	depends on BR2_TARGET_VMDK_IMAGE
+	default "$(TFTPBOOT)/$(PROFILE)"
+	help
+	  Output path of VMDK image
+
+config BR2_VMDK_IMAGE_SIZE
+	string "Disk size of VMDK image"
+	depends on BR2_TARGET_VMDK_IMAGE
+	default "2G"
+	help
+	  Disk size of VMDK image

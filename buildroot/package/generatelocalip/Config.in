@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LOCALIP
+	bool "localip"
+	default n
+	help
+	  localip is a C library with capabilities of generate a local ip address.

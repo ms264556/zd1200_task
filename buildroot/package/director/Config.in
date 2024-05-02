@@ -1,0 +1,42 @@
+config BR2_PACKAGE_DIRECTOR
+	bool "director"
+	default n
+	help
+	  Ruckus Director Application 
+
+if BR2_PACKAGE_DIRECTOR
+
+config BR2_PACKAGE_DIRECTOR_WITH_SIM_AP
+	bool "Pack with simulated AP images?"
+	default n
+	help
+	  Pack with simulated AP images.
+
+config BR2_PACKAGE_RADIUS_DM
+        bool "Support RADIUS Disconnect Messages"
+        help
+          Support RADIUS Disconnect Messages.
+
+config BR2_PACKAGE_RADIUS_CUI
+	bool "Support RADIUS CUI"
+	help
+	  Support RADIUS CUI.
+
+
+
+config BR2_PACKAGE_SUPPORT_ENTITLEMENT
+	bool "Support entitlement"
+	help
+	  Support Entitlement.
+
+if BR2_PACKAGE_SUPPORT_ENTITLEMENT
+
+config BR2_PACKAGE_RKS_SUPPORT_REPORT
+	bool "Ruckus Support Report"
+	help
+	  Ruckus Support Report.
+
+endif
+
+endif # BR2_PACKAGE_DIRECTOR
+

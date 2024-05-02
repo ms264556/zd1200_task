@@ -1,0 +1,2 @@
+echo "Starting tftpd ..."
+/usr/sbin/in.tftpd -l -s /etc/airespider-images/firmwares

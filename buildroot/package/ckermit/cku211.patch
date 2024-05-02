@@ -1,0 +1,48 @@
+diff -Naur cku211/ckucmd.c cku211.new/ckucmd.c
+--- cku211/ckucmd.c	2004-01-08 02:04:04.000000000 +0800
++++ cku211.new/ckucmd.c	2009-01-12 10:43:52.000000000 +0800
+@@ -7112,12 +7112,12 @@
+     debug(F101,"cmdconchk (*stdin)->_cnt","",(*stdin)->_cnt);
+     x = (*stdin)->_cnt;
+ #else
+-#ifdef NOARROWKEYS
++//#ifdef NOARROWKEYS
+     debug(F101,"cmdconchk NOARROWKEYS x","",0);
+-#else
+-    debug(F101,"cmdconchk stdin->_cnt","",stdin->_cnt);
+-    x = stdin->_cnt;
+-#endif /* NOARROWKEYS */
++//#else
++//    debug(F101,"cmdconchk stdin->_cnt","",stdin->_cnt);
++//    x = stdin->_cnt;
++//#endif /* NOARROWKEYS */
+ #endif /* VMS */
+     if (x == 0) x = conchk();
+     if (x < 0) x = 0;
+diff -Naur cku211/makefile cku211.new/makefile
+--- cku211/makefile	2004-04-18 02:52:00.000000000 +0800
++++ cku211.new/makefile	2009-01-12 11:04:32.000000000 +0800
+@@ -1407,7 +1407,7 @@
+ ckctel.$(EXT): ckcsym.h ckcdeb.h ckcker.h ckcnet.h ckctel.h ckclib.h
+ 
+ wart: ckwart.$(EXT)
+-	$(CC) $(LNKFLAGS) -o wart ckwart.$(EXT) $(LIBS)
++	@echo "gcc $(LNKFLAGS) -o wart ckwart.$(EXT) $(LIBS)"
+ 
+ ckcmdb.$(EXT): ckcmdb.c ckcdeb.h ckcsym.h ckclib.h
+ 
+@@ -5536,6 +5536,14 @@
+ 	$(MAKE) linuxnc KTARGET=$${KTARGET:-$(@)} "KFLAGS=-DZSL5500" \
+ 	"CC = gcc" "CC2 = gcc"
+ 
++linuxrks:
++	gcc -o wart -DCK_SCOV5 ckwart.c
++	$(MAKE) xermit KTARGET=$${KTARGET:-$(@)} "CC=${CC}" "CC2=${CC2}"\
++	"CFLAGS = -O -DLINUX -pipe -funsigned-char -DPOSIX -DCK_POSIX_SIG \
++	-DLINUXFSSTND -DNOCOTFMC -DNOXFER -DNODEBUG -DNOCSETS \
++	-DNONET -DMINIDIAL -DNOSCRIPT -DNOIKSD -DNOPUSH $(KFLAGS)" \
++	"LNKFLAGS = $(LNKFLAGS)" "LIBS = "
++
+ # A minimum-size version for Linux that does only scripting and
+ # serial communication -- no networks, no file transfer.
+ linuxso:

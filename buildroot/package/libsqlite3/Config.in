@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBSQLITE
+	bool "Ruckus sqlite3 library"
+	default n
+	help
+	  Ruckus sqlite3 library.

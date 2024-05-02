@@ -1,0 +1,5 @@
+config BR2_PACKAGE_REGDMN_CHANN
+	bool "regdmn_chann"
+	default n
+	help
+	  country/channel/power setting for stamgr

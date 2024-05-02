@@ -1,0 +1,10 @@
+#!/bin/ash -x
+
+# With L2TP off, make budget/backlog numbers higher as before
+echo 300 > /proc/sys/net/core/netdev_budget
+echo 1000 > /proc/sys/net/core/netdev_max_backlog
+
+/usr/sbin/rsmd_func l2tp-pppbcp stop
+
+exit 0
+

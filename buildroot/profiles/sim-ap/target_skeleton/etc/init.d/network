@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+KERNEL_VERSION=`cat /proc/sys/kernel/osrelease`
+#SIM AP uses pcnet NIC
+eth_mod=/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/pcnet32.ko
+
+start() {
+ 	echo "Starting network..."
+set -x
+	insmod ${eth_mod}
+        rc=$?
+set +x
+	if [ ${rc} -ne 0 ]; then
+		return
+	fi
+}	
+stop() {
+	echo "Stopping network..."
+	/sbin/ifdown -a
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+start)
+	shift;
+	start $*
+	;;
+stop)
+	stop
+	;;
+restart|reload)
+	restart
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

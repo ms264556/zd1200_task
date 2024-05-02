@@ -1,0 +1,12 @@
+config BR2_TARGET_USBTOOL_KIT
+	bool "Enable USB tool kits"
+	default n
+	help
+	  Create USB tool kits for system rescue.
+
+config BR2_USB_TOOL_TARGET_DIR
+	string "USB initramfs output path"
+	depends on BR2_TARGET_USBTOOL_KIT
+	default "$(TFTPBOOT)"
+	help
+	  Output path to the initramfs of usb tool kit

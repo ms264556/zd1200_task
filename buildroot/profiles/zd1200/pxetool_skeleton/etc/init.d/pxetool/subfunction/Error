@@ -1,0 +1,156 @@
+#!/bin/sh
+
+#TODO: L10N gettext()
+PREFIX_ERR="ERR>"
+
+MSG_GEN_SUCCESS="Operation done without errors"
+ERR_SET_NIC=$PREFIX_ERR"Set network interface failed!!!"
+ERR_DOWNLOAD_FAIL=$PREFIX_ERR"File downloaded failed!!!"
+ERR_BOOT_KERNEL_FAIL=$PREFIX_ERR"Boot new kernel failed!!!"
+ERR_LOAD_KERNEL_FAIL=$PREFIX_ERR"Load new kernel/initramfs failed!!!"
+ERR_UPDATE_PARTITION_FAIL=$PREFIX_ERR"Update partition table failed!!!"
+ERR_UPDATE_KERNEL_FAIL=$PREFIX_ERR"Update kernel image failed!!!"
+ERR_FORMAT_FAIL=$PREFIX_ERR"Format partition failed!!!"
+ERR_UPDATE_IMAGE_FAIL=$PREFIX_ERR"Update partition failed!!!"
+ERR_RESIZE_PARTITION_FAIL=$PREFIX_ERR"Resize partition failed!!!"
+ERR_MOUNT_FAIL=$PREFIX_ERR"Mount partition failed!!!"
+ERR_INSTALL_BOOTLOADER=$PREFIX_ERR"Install bootloader failed!!!"
+
+ERR_CODE_IDT_BOOTFS=1
+ERR_CODE_IDT_ROOTFS=2
+ERR_CODE_IDT_DATAFS=3
+
+CAT_UPD_PARTITION=1
+  ERR_CODE_UPD_PARTITION=1
+CAT_FMT_PARTITION=2
+  ERR_CODE_FMT_PARTITION=1
+CAT_UPD_BOOTFS=3
+  ERR_CODE_UPD_BOOTFS_IMG=1
+  ERR_CODE_UPD_BOOTFS_RSZ=2
+  ERR_CODE_UPD_BOOTFS_BLD=3
+CAT_UPD_ROOTFS=4
+  ERR_CODE_UPD_ROOTFS_IMG=1
+  ERR_CODE_UPD_ROOTFS_RSZ=2
+CAT_UPD_DATAFS=5
+  ERR_CODE_UPD_DATAFS_MNT=1
+  ERR_CODE_UPD_DATAFS_TAR=2
+CAT_UPD_KERNEL=6
+  ERR_CODE_UPD_KERNEL_MNT=1
+  ERR_CODE_UPD_KERNEL_IMG=2
+
+ShowError ()
+{
+  cat=$1
+  err=$2
+
+  case $cat in
+    $CAT_UPD_PARTITION)
+      case $err in
+        $ERR_CODE_UPD_PARTITION)
+           echo $ERR_UPDATE_PARTITION_FAIL
+        ;;
+        *)
+           echo $MSG_GEN_SUCCESS
+        ;;
+      esac
+    ;;
+    $CAT_FMT_PARTITION)
+      case $err in
+        0)
+          echo $MSG_GEN_SUCCESS
+        ;;
+        *)
+          fs=`expr $err - $ERR_CODE_FMT_PARTITION`
+          case $fs in
+            $ERR_CODE_IDT_BOOTFS)
+              FS="(bootfs)"
+            ;;
+            $ERR_CODE_IDT_ROOTFS)
+              FS="(rootfs)"
+            ;;
+            $ERR_CODE_IDT_DATAFS)
+              FS="(datafs)"
+            ;;
+          esac
+          echo $ERR_FORMAT_FAIL $FS
+        ;;
+      esac
+    ;;
+    $CAT_UPD_BOOTFS)
+      case $err in
+        $ERR_CODE_UPD_ROOTFS_IMG)
+          echo $ERR_UPDATE_IMAGE_FAIL "(bootfs)"
+        ;;
+        $ERR_CODE_UPD_ROOTFS_RSZ)
+          echo $ERR_RESIZE_PARTITION_FAIL "(bootfs)"
+        ;;
+        $ERR_CODE_UPD_BOOTFS_BLD)
+          echo $ERR_INSTALL_BOOTLOADER "(bootfs)"
+        ;;
+        *)
+          echo $MSG_GEN_SUCCESS
+        ;;
+      esac
+    ;;
+    $CAT_UPD_ROOTFS)
+      case $err in
+        $ERR_CODE_UPD_ROOTFS_IMG)
+          echo $ERR_UPDATE_IMAGE_FAIL "(rootfs)"
+        ;;
+        $ERR_CODE_UPD_ROOTFS_RSZ)
+          echo $ERR_RESIZE_PARTITION_FAIL "(rootfs)"
+        ;;
+        *)
+          echo $MSG_GEN_SUCCESS
+        ;;
+      esac
+    ;;
+    $CAT_UPD_DATAFS)
+      case $err in
+        $ERR_CODE_UPD_DATAFS_MNT)
+          echo $ERR_MOUNT_FAIL "(datafs)"
+        ;;
+        $ERR_CODE_UPD_DATAFS_TAR)
+          echo $MSG_UPDATE_IMAGE_FAIL "(datafs)"
+        ;;
+        *)
+          echo $MSG_GEN_SUCCESS
+        ;;
+      esac
+    ;;
+    $CAT_UPD_KERNEL)
+      case $err in
+        $ERR_CODE_UPD_KERNEL_MNT)
+          echo $ERR_MOUNT_FAIL "(rootfs)"
+        ;;
+        $ERR_CODE_UPD_KERNEL_IMG)
+          echo $ERR_UPDATE_KERNEL_FAIL "(rootfs)"
+        ;;
+        *)
+          echo $MSG_GEN_SUCCESS
+        ;;
+     esac
+    ;;
+  esac
+}
+
+_unittest () {
+ShowError $CAT_UPD_PARTITION 0
+ShowError $CAT_UPD_PARTITION $ERR_CODE_UPD_PARTITION
+ShowError $CAT_FMT_PARTITION 0
+ShowError $CAT_FMT_PARTITION 2
+ShowError $CAT_FMT_PARTITION 3
+ShowError $CAT_FMT_PARTITION 4
+ShowError $CAT_UPD_BOOTFS 0
+ShowError $CAT_UPD_BOOTFS $ERR_CODE_UPD_BOOTFS_IMG
+ShowError $CAT_UPD_BOOTFS $ERR_CODE_UPD_ROOTFS_RSZ
+ShowError $CAT_UPD_ROOTFS 0
+ShowError $CAT_UPD_ROOTFS $ERR_CODE_UPD_ROOTFS_IMG
+ShowError $CAT_UPD_ROOTFS $ERR_CODE_UPD_ROOTFS_RSZ
+ShowError $CAT_UPD_DATAFS 0
+ShowError $CAT_UPD_KERNEL 0
+ShowError $CAT_UPD_KERNEL $ERR_CODE_UPD_KERNEL_MNT
+ShowError $CAT_UPD_KERNEL $ERR_CODE_UPD_KERNEL_IMG
+}
+
+#_unittest

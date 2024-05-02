@@ -1,0 +1,12 @@
+config BR2_PACKAGE_C2LIB
+	bool "c2lib"
+	default n
+	help
+	  c2lib is a C library with capabilities of vector, hash, string, etc. We don't want to use STL yet we'd like some of the functionalities.
+	  c2lib uses the concept of 'pool' where you don't worry about memory management when you write codes and can simply delete the pool to free all memory that's dynamically allocated
+	  License: LGPL Version: 1.4.2 
+	  URL:     http://www.annexia.org/freeware/c2lib/
+	  Modifications:
+		- make it compilable for gcc 3.4 and up
+	  Notes:
+		- it's not being maintained anymore

@@ -1,0 +1,6 @@
+config BR2_PACKAGE_AUSSIE_RESCUE
+	bool "aussie-rescue"
+	default n
+	help
+	  The rescue mode for Aussie.
+

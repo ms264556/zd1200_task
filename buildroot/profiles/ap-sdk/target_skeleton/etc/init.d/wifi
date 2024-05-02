@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# stop the radio[n]
+#
+MADWIFI_DIR=/lib/modules/2.6.15/net
+MODULES="wlan ath_hal ath_rate_v54beamflex ath_dfs wlan_scan_rks wlan_scan_sta wlan_tkip wlan_wep wlan_ccmp wlan_xauth wlan_acl ath_pci v54smartmedia"
+
+_action() {
+    act=$1 ; shift
+    echo -n "${act} radio ..."
+
+    #load madwifi driver
+    for module in $MODULES
+    do
+        /sbin/insmod $MADWIFI_DIR/$module.ko
+    done
+
+    echo    " $*"
+	if [ "$1" != "" ]; then
+            IFS=' @'
+            for ii in $* ; do
+                /sbin/ifconfig ${ii} ${act}
+            done
+	else
+		/usr/bin/wlanconfig wlan0 create wlandev wifi0 wlanmode ap
+		/sbin/ifconfig wifi0 ${act}
+		/sbin/ifconfig wlan0 up
+		/sbin/ifconfig wifi1 ${act} 2>/dev/null
+	fi
+#        echo "... done"
+}
+
+restart() {
+	_action down $*
+	_action up $*
+}	
+
+
+op=$1
+shift
+case "${op}" in
+start)
+	_action up $*
+	;;
+stop)
+	_action down $*
+	;;
+restart|reload)
+	restart $*
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?

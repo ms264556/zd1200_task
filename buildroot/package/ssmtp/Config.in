@@ -1,0 +1,8 @@
+config BR2_PACKAGE_SSMTP
+	bool "ssmtp"
+	default n
+	help
+	  A Busybox externel tiny utility named "ssmtp", an extremely simple Mail Transfer Agent.
+	  http://www.busybox.net/tinyutils.html
+	  ftp://ftp.debian.org/debian/pool/main/s/ssmtp/
+

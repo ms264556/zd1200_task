@@ -1,0 +1,42 @@
+config BR2_TARGET_ROOTFS_SQUASHFS
+	bool "squashfs root filesystem"
+	default y
+	help
+	  Build a squashfs root filesystem
+
+config BR2_TARGET_ROOTFS_SQUASHFS_FILELIST
+	bool "Make a listed of file with MD5 for rootfs"
+	depends on BR2_TARGET_ROOTFS_SQUASHFS
+	default n
+
+config BR2_TARGET_ROOTFS_SQUASHFS_OUTPUT
+	string "Output File name"
+	depends on BR2_TARGET_ROOTFS_SQUASHFS
+	default "ramdisk"
+	help
+		The value $(BR2_TARGET_ROOTFS_OUTPUT).img needs to to match
+		$(CONFIG_EMBEDDED RAMDISK_IMAGE) specified in linux-release.config.
+		Note that the suffix .img is added automatically to
+		$(BR2_TARGET_ROOTFS_OUTPUT)
+
+config BR2_ROOTFS_RAMDISK_COPYTO
+	string "copy the rootfs image to ramdisk location"
+	depends on 	BR2_TARGET_ROOTFS_SQUASHFS
+#	default "arch/$(BR2_ARCH)/ramdisk/"
+	help
+	  Copies the resulting rootfs image to the ramdisk location
+	  to be linked into the kernel.  Path is relative to kernel tree.
+
+config BR2_TARGET_ROOTFS_SQUASHFS_COPYTO
+	string "also copy the image to..."
+	depends on 	BR2_TARGET_ROOTFS_SQUASHFS
+	default ""
+	help
+	  Copies the resulting rootfs image to a secondary location
+	  like a tftp server's root directory.
+
+config BR2_TARGET_BUILD_BACKUP_IMAGE
+	bool "junk non-essential files for barebone backup image"
+	default n
+	help
+	  Remove some non-essential files to pare down backup image size

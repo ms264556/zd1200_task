@@ -1,0 +1,2 @@
+tunnel profile create profile_name=tnl_p_$DEST_IPADDR src_ipaddr=$SRC_IPADDR dest_ipaddr=$DEST_IPADDR our_udp_port=1701 auth_mode=challenge $SECRET 
+peer profile create profile_name=peer_p_$DEST_IPADDR peer_ipaddr=$DEST_IPADDR lac_lns=lns tunnel_profile_name=tnl_p_$DEST_IPADDR netmask=32

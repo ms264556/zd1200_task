@@ -1,0 +1,7 @@
+config BR2_PACKAGE_PARPROUTED
+	bool "parprouted"
+	default n
+	help
+	  parprouted is a daemon for transparent IP (Layer 3) proxy ARP bridging.
+
+	  http://www.hazard.maks.net/

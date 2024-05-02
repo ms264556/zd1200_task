@@ -1,0 +1,111 @@
+#!/bin/sh
+
+. /etc/init.d/usbtool/subfunction/DefConfig
+. /etc/init.d/usbtool/subfunction/Message
+
+#get input from user
+AskUser () {
+  echo $1
+  if [ "$2" != "" ]; then
+    echo "$MSG_TYPE_DEFAULT [$2]"
+    if [ "$AUTOCONFIRM" = "no" -o "$3" = "force" ]; then
+      if [ "$4" = "" ]; then
+         echo "$MSG_TYPE_ENTER"
+      else
+         echo "$4"
+      fi
+    fi
+  fi
+
+  if [ "$AUTOCONFIRM" = "yes" -a "$3" != "force" ]; then
+    INPUTSTR=""
+  else
+    read -p ">" INPUTSTR
+  fi
+}
+
+GetUserInputs () {
+  while [ "$1" != "" ]; do
+  case "$1" in
+    "port")
+       AskUser "$MSG_SELECT_HINT NIC port (Available $G_PORT1, $G_PORT2):" "$G_PORT"
+       if [ "$INPUTSTR" != "" ]; then
+         G_PORT="$INPUTSTR"
+       fi
+    ;;
+    "server_ip")
+       AskUser "$MSG_TYPE_HINT server IP:" "$G_SERVER_IP"
+       if [ "$INPUTSTR" != "" ]; then
+         G_SERVER_IP="$INPUTSTR"
+       fi
+    ;;
+    "host_ip")
+       AskUser "$MSG_TYPE_HINT host IP:" "$G_HOST_IP"
+       if [ "$INPUTSTR" != "" ]; then
+         G_HOST_IP="$INPUTSTR"
+       fi
+    ;;
+    "mask")
+       AskUser "$MSG_TYPE_HINT net mask:" "$G_NET_MASK"
+       if [ "$INPUTSTR" != "" ]; then
+         G_NET_MASK="$INPUTSTR"
+       fi
+    ;;
+    "kernel")
+      AskUser "$MSG_TYPE_HINT kernel name:" "$G_KERNEL"
+      if [ "$INPUTSTR" != "" ]; then
+        G_KERNEL="$INPUTSTR"
+      fi
+    ;;
+    "initramfs")
+      AskUser "$MSG_TYPE_HINT initramfs name:" "$G_INITRAMFS"
+      if [ "$INPUTSTR" != "" ]; then
+        G_INITRAMFS="$INPUTSTR"
+      fi
+    ;;
+    "nfsroot")
+      AskUser "$MSG_TYPE_HINT NFS root path:" "$G_NFS_ROOT"
+      if [ "$INPUTSTR" != "" ]; then
+        G_NFS_ROOT="$INPUTSTR"
+      fi
+    ;;
+    "tftp_command")
+      AskUser "$MSG_TYPE_HINT kernel command:" "$G_TFTP_KERNEL_CMD"
+      if [ "$INPUTSTR" != "" ]; then
+        G_TFTP_KERNEL_CMD="$INPUTSTR"
+      fi
+    ;;
+    "nfs_command")
+      AskUser "$MSG_TYPE_HINT kernel command:" "$G_NFS_KERNEL_CMD"
+      if [ "$INPUTSTR" != "" ]; then
+        G_NFS_KERNEL_CMD="$INPUTSTR"
+      fi
+    ;;
+    "temp_file")
+      AskUser "$MSG_TYPE_HINT file name:" "$G_TEMP_FILE"
+      if [ "$INPUTSTR" != "" ]; then
+        G_TEMP_FILE="$INPUTSTR"
+      fi
+    ;;
+    "boarddata_file")
+      AskUser "$MSG_TYPE_HINT board data file name:" "$G_BOARD_DATA_FILE"
+      if [ "$INPUTSTR" != "" ]; then
+        G_BOARD_DATA_FILE="$INPUTSTR"
+      fi
+    ;;
+    *)
+      shift
+      continue
+    ;;
+  esac
+       
+  shift
+  done
+}
+
+_unittest () {
+GetUserInputs "port" "server_ip" "host_ip" "mask" "kernel" "initramfs" "tftp_command"
+GetUserInputs "nothing"
+}
+
+#_unittest

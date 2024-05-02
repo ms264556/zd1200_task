@@ -1,0 +1,54 @@
+menu "Target Options"
+
+
+comment "filesystem for target device"
+
+config BR2_FLASH_ROOTFS
+        bool "linux kernel: Kernel to look for rootfs image in flash"
+        default n
+        help
+            Kernel to look for rootfs image in flash.
+			rootfs not embedded in kernel.
+
+config BR2_MOUNT_FLASH_ROOTFS
+        bool "linux kernel: mount rootfs directly from flash partition."
+        depends on BR2_FLASH_ROOTFS
+        default n
+        help
+            mount rootfs directly from image in flash partition.
+
+config BR2_FLASH_ROOTFS
+	bool "build flash root file system"
+	default n
+
+source "target/cramfs/Config.in"
+comment "== jffs2 images ================="
+source "target/jffs2/Config.in"
+comment "== reiserfs images =============="
+source "target/reiserfs/Config.in"
+comment "== squashfs images =============="
+source "target/squashfs/Config.in"
+comment "== ext2 images =================="
+source "target/ext2/Config.in"
+comment "== tar images ==================="
+source "target/tar/Config.in"
+comment "== initramfs images ============="
+source "target/initramfs/Config.in"
+comment "== nfs =========================="
+source "target/nfs/Config.in"
+comment "== rescue tool kit images ======="
+source "target/usbtool/Config.in"
+source "target/restoretool/Config.in"
+comment "== iso installer ================"
+source target/isoinstaller/Config.in"
+comment "== vmdk image ==================="
+source "target/vmdkimage/Config.in"
+#comment "bootloader for target device"
+
+#source "target/x86/grub/Config.in"
+#source "target/x86/syslinux/Config.in"
+#source "target/powerpc/yaboot/Config.in"
+
+endmenu
+
+#source "target/device/Config.in"

@@ -1,0 +1,5 @@
+config BR2_PACKAGE_IPMITOOL
+	bool "ipmitool"
+	default n
+	help
+	  Install ipmitool

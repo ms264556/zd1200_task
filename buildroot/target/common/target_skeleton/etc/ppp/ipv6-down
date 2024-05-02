@@ -1,0 +1,41 @@
+#!/bin/ash -x
+#
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
+PPPOE_DEF_IP=/tmp/pppoe6.defip.
+
+#PPP interface names are more meaningful than they look:
+#ppp0: PPPoE
+#ppp3: PPPoE. when management vlan is enabled
+#ppp7: PPPoL2TP
+#ppp9: Aruba RAP
+export PPPOX=pppox6
+if [ "$IFNAME" = "ppp0" ]; then
+	export PPPOX=pppoe6
+fi
+if [ "$IFNAME" = "ppp3" ]; then
+	export PPPOX=pppoe6
+fi
+if [ "$IFNAME" = "ppp7" ]; then
+	export PPPOX=pppol2tp6
+fi
+
+echo "pppd ip-down IPv6CP IPLOCAL=$IPLOCAL IPREMOTE=$IPREMOTE DNS1=$DNS1 DNS2=$DNS2 IFNAME=$IFNAME" > /tmp/$PPPOX.debug
+
+rm -f /tmp/$PPPOX.completed.$IFNAME
+touch /tmp/$PPPOX.down.$IFNAME
+
+if [ "$IFNAME" = "ppp0" -o "$IFNAME" = "ppp3" ]; then
+    DEF_IP_FILE=$PPPOE_DEF_IP$IFNAME
+    if [ -r $DEF_IP_FILE ] ;
+    then
+        DEF_IP=`cat $DEF_IP_FILE`  
+    else
+        DEF_IP=fc00::1
+    fi
+
+    #/sbin/ifconfig $DEVICE $DEF_IP netmask 255.255.255.0 2>/dev/null
+
+    /sbin/route add default gw $DEF_IP dev $DEVICE ;
+    /sbin/ifconfig $DEVICE up
+fi

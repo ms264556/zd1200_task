@@ -1,0 +1,7 @@
+config BR2_PACKAGE_TUNNELMGR
+	bool "tunnelmgr"
+	default n
+	select BR2_PACKAGE_CA-CERTS
+	help
+	Application to establish data tunnels between APs and WSG Data Blades.
+

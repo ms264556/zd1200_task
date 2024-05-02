@@ -1,0 +1,102 @@
+#!/bin/sh
+#
+# Start IPSEC ...
+#
+
+status() {
+case "$1" in
+  isakmp)
+	TIME="..:..:.."
+	SA_ESTABLISHED="9"
+	ISAKMP=`/sbin/racoonctl -l -s /tmp/racoon.sock show-sa isakmp 2> /dev/null | grep "$TIME"`
+	set - `echo $ISAKMP`
+	if [ "$3" = "$SA_ESTABLISHED" ] ; then
+		return 0
+	else
+		return 255
+	fi
+	;;
+  ipsec)
+	STATE="state=mature"
+	IPSEC=`/sbin/racoonctl -l -s /tmp/racoon.sock show-sa ipsec 2> /dev/null | grep "$STATE"`
+	set - `echo $IPSEC`
+	if [ "$4" = "$STATE" -a "$8" = "$STATE" ] ; then
+		return 0
+	else
+		return 255
+	fi
+	;;
+  *)
+	return 255
+esac
+}
+
+start_ipsec() {
+  /sbin/setkey -f /tmp/racoon-setkey.conf
+  /sbin/racoon -f /tmp/racoon-psk.conf
+
+  set - `rkscli -c "get l2tp" | grep "L2TP server"`; L2TP_SERVER=$6
+  # Establish ISAKMP SA using racoonctl
+  CONN=`/sbin/racoonctl -s /tmp/racoon.sock -t 10 vpn-connect $L2TP_SERVER 2> /dev/null`
+  # Establish IPsec SA using ping
+  if [ "$CONN" = "VPN connexion established" ] ; then
+      ping -c 1 $L2TP_SERVER > /dev/null 2>&1
+  fi
+}
+
+stop_ipsec() {
+  RACOON_PID=`cat /var/run/racoon.pid 2> /dev/null`
+  if [ "$RACOON_PID" != "" ]; then
+	# SIGTERM is more gracefully handled in ipsec-tools; SIGKILL is not
+	kill -15 $RACOON_PID
+	rm -f /var/run/racoon.pid
+  fi
+  /sbin/setkey -F
+  /sbin/setkey -FP
+}
+
+start() {
+  RACOON_PID=`cat /var/run/racoon.pid 2> /dev/null`
+  if [ "$RACOON_PID" != "" ]; then
+	exit 0
+  fi
+  echo "Starting IPsec..."
+  stop_ipsec
+  start_ipsec
+}
+
+stop() {
+  RACOON_PID=`cat /var/run/racoon.pid 2> /dev/null`
+  if [ "$RACOON_PID" = "" ]; then
+	exit 0
+  fi
+  echo "Stopping IPsec..."
+  stop_ipsec
+}
+
+restart() {
+  echo "Restarting IPsec..."
+  stop_ipsec
+  start_ipsec
+}
+
+case "$1" in
+  status)
+	status $2
+	;;
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo $"Usage: $0 {status|start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

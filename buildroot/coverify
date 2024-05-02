@@ -1,0 +1,227 @@
+#!/bin/bash
+
+if [ "$1" == "make" ] ; then
+    shift
+fi
+
+
+COV_LOG=cov.log
+COV_PROFILE=`echo $* | sed -n 's/^.*PROFILE=/PROFILE=/;s/ .*//p'`
+
+COV_PATH_BIN=`make cov_path_install ${COV_PROFILE}`/bin
+COV_PATH_DB=`make cov_path_db ${COV_PROFILE}`
+COV_PATH_INSTALL=`make cov_path_install ${COV_PROFILE}`
+COV_PASSWORD=`echo ${HOSTNAME} | sed 's/\([a-zA-Z0-9]*\)\.*//2g' | sed 's/\.//'`-${RANDOM}
+COV_PORT=`make cov_port ${COV_PROFILE}`
+COV_VERSION=`head -n 1 ${COV_PATH_INSTALL}/VERSION`
+
+PATH_DEFECT_DB=${COV_PATH_DB}/${COV_VERSION}-${USER}
+PATH_DEFECT_DB_LIVE=${PATH_DEFECT_DB}/covgui.xml
+
+
+__PRODUCT()
+{
+    COV_PATH_ANALYSIS=`make cov_path_analysis $*`
+    PRODUCT=`echo ${COV_PATH_ANALYSIS} | sed 's/..\/cov-analysis//' | \
+        sed 's/\/build_mips_release\///' | \
+        sed 's/\/build_i386_release\///'`
+}
+
+
+__ADD_PRODUCT()
+{
+    ${COV_PATH_BIN}/cov-query-db --datadir ${PATH_DEFECT_DB} --mode products \
+        --product $1 > /dev/null 2>&1
+    if [ $? != 0 ] ; then
+        ${COV_PATH_BIN}/cov-manage-db --datadir ${PATH_DEFECT_DB} --mode products \
+            --add -set name:"$1" --set domain:"C/C++"
+    fi
+}
+
+
+__DELETE_PRODUCT()
+{
+    ${COV_PATH_BIN}/cov-query-db --datadir ${PATH_DEFECT_DB} --mode products \
+        --product $1 > /dev/null 2>&1
+    if [ $? == 0 ] ; then
+        ${COV_PATH_BIN}/cov-query-db --datadir ${PATH_DEFECT_DB} --mode runs \
+            --product $1 --hide-all
+        if [ $? == 0 ] ; then
+            ${COV_PATH_BIN}/cov-manage-db --datadir ${PATH_DEFECT_DB} --mode runs \
+                --delete-all --product $1
+        fi
+        ${COV_PATH_BIN}/cov-manage-db --datadir ${PATH_DEFECT_DB} --mode products \
+            --name $1 --delete
+    fi
+}
+
+
+__BUILD()
+{
+    __PRODUCT ${COV_PROFILE}
+
+    ### Prerequisite check: toolchain needs to be pre-built first
+    make cov_prereq_check ${COV_PROFILE} > /dev/null 2>&1
+    if [ $? != 0 ] ; then
+        echo Please build the toolchain first!
+        exit 1
+    fi
+
+    ### Save Buid Log From Last Run
+    if [ -f ${COV_PATH_ANALYSIS}/build.log.txt ] ; then
+        mv -f ${COV_PATH_ANALYSIS}/build.log.txt ${COV_PATH_ANALYSIS}/build.log.txt.old
+    fi
+
+    ### Build Phase
+    #${COV_PATH_BIN}/cov-build --dir ${COV_PATH_ANALYSIS} make $*
+    ${COV_PATH_BIN}/cov-build --dir ${COV_PATH_ANALYSIS} make $* > ${COV_LOG} 2>&1
+
+    ### Check Build Status
+    err=`grep -n " Error " ${COV_LOG} | grep  "make" | grep -v "ignored"`
+    if [ "${err}" != "" ] ; then
+        echo "Build error" >&2
+        exit 2
+    fi
+
+    ### Analysis Phase
+    ${COV_PATH_BIN}/cov-analyze --dir ${COV_PATH_ANALYSIS} -all
+
+    __INSTALL_GUI
+    __START_GUI
+
+    ### Verify Product
+    ${COV_PATH_BIN}/cov-query-db --datadir ${PATH_DEFECT_DB} --mode products \
+        --product ${PRODUCT} > /dev/null 2>&1
+    if [ $? != 0 ] ; then
+        __ADD_PRODUCT ${PRODUCT}
+    fi
+
+    ### Commit Phase
+    ${COV_PATH_BIN}/cov-commit-defects --dir ${COV_PATH_ANALYSIS} \
+        --datadir ${PATH_DEFECT_DB} --product ${PRODUCT} --user admin
+}
+
+
+__INSTALL_GUI()
+{
+    __PRODUCT ${COV_PROFILE}
+
+    ### Prep Databsae
+    ${COV_PATH_BIN}/cov-query-db --datadir ${PATH_DEFECT_DB} --mode actions > /dev/null 2>&1
+    if [ $? != 0 ] ; then
+        echo
+        echo Installing DB for ${USER} @ ${PATH_DEFECT_DB}, PORT \'${COV_PORT}\'
+        echo \*\*\* PROFILE info is needed to initialize DB with correct initial product \*\*\*
+        echo Initial product: ${PRODUCT}
+        ${COV_PATH_BIN}/cov-install-gui --datadir ${PATH_DEFECT_DB} --domain 'C/C++' \
+            --password ${COV_PASSWORD} --product ${PRODUCT} --port ${COV_PORT}
+        echo PASSWORD=${COV_PASSWORD},PORT=${COV_PORT} > ${HOME}/.cov_ruckus
+        echo
+    fi
+}
+
+
+__UNINSTALL_GUI()
+{
+    __STOP_GUI
+    rm -rf ${PATH_DEFECT_DB}
+    echo Successfully removed Defect Manager DB
+}
+
+
+__START_GUI()
+{
+    ### Start GUI
+    if [ ! -d ${PATH_DEFECT_DB} ] ; then
+        echo
+        echo No Prevent DB.
+        echo You must execute analysis run first \(or minimally install first\).
+        echo Note: PROFILE must be specified for install to succeed.
+        echo
+        exit 3
+    fi
+    if [ -f ${PATH_DEFECT_DB_LIVE} ] ; then
+        ${COV_PATH_BIN}/cov-probe-gui --port \
+            `sed -n 's/<port>\([0-9]*\)<\/port>/\1/p' ${PATH_DEFECT_DB}/covgui.xml` > /dev/null 2>&1
+        if [ $? != 0 ] ; then
+            ${COV_PATH_BIN}/cov-start-gui --datadir ${PATH_DEFECT_DB}
+        fi
+    else
+        ${COV_PATH_BIN}/cov-start-gui --datadir ${PATH_DEFECT_DB}
+    fi
+}
+
+
+__STOP_GUI()
+{
+    ### Start GUI
+    if [ -f ${PATH_DEFECT_DB_LIVE} ] ; then
+        ${COV_PATH_BIN}/cov-stop-gui --datadir ${PATH_DEFECT_DB}
+    fi
+}
+
+
+__USAGE()
+{
+    echo "usage:"
+    echo "  $0 options"
+    echo "    ------------ GUI & DB ----------------------------"
+    echo "    optimize  -- optimize (potentially time-consuming)"
+    echo "    start     -- start defect manager GUI"
+    echo "    stop      -- stop defect manager GUI"
+    echo "    install   -- install defect manager DB"
+    echo "    uninstall -- stop defect manager & delete DB"
+    echo "    ------------ Product -----------------------------"
+    echo "    add <product>"
+    echo "    delete <product>"
+    echo "    ------------ Settings ----------------------------"
+    echo "    passwd <new password>"
+    echo "    port <new GUI port>"
+    echo "    ------------ Build,Analyze,Commit ----------------"
+    echo "    <librsm>  -- build/analyze/commit of 'make librsm'"
+    echo "    if no option specified, equivalent to just 'make'"
+    echo "    --------------------------------------------------"
+    echo
+}
+
+
+### Command Switch
+case "$1" in
+optimize )
+    ${COV_PATH_BIN}/cov-maintain-db --datadir ${PATH_DEFECT_DB} --optimize
+    ;;
+start | on )
+    __START_GUI;
+    ;;
+stop | off )
+    __STOP_GUI;
+    ;;
+install )
+    __INSTALL_GUI $*;
+    ;;
+uninstall )
+    __UNINSTALL_GUI;
+    ;;
+add )
+    __ADD_PRODUCT $2
+    ;;
+delete )
+    __DELETE_PRODUCT $2
+    ;;
+passwd )
+    ${COV_PATH_BIN}/cov-manage-db --datadir ${PATH_DEFECT_DB} \
+        --mode users --name admin --set password:$2
+    ;;
+port )
+    __STOP_GUI
+    sed -i 's/<port>[0-9]*<\/port>/<port>'$2'<\/port>/' ${PATH_DEFECT_DB}/covgui.defaults.xml
+    __START_GUI
+    ;;
+help | -h | --help )
+    __USAGE
+    ;;
+*)
+    __BUILD $*;
+    ;;
+esac
+

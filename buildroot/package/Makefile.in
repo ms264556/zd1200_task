@@ -1,0 +1,116 @@
+MAKE1=make
+MAKE=make -j$(BR2_JLEVEL)
+
+# Strip off the annoying quoting
+ARCH:=$(strip $(subst ",, $(BR2_ARCH)))
+#"
+WGET:=$(strip $(subst ",, $(BR2_WGET)))
+#"
+SVN:=$(strip $(subst ",, $(BR2_SVN)))
+#"
+
+
+ifneq ($(BR2_LARGEFILE),y)
+DISABLE_LARGEFILE= --disable-largefile
+endif
+TARGET_CFLAGS=$(TARGET_OPTIMIZATION) $(TARGET_DEBUGGING)
+HOSTCC:=gcc
+
+BASE_DIR:=${shell pwd}
+TOP_DIR :=$(BASE_DIR)
+TOPDIR  :=$(BASE_DIR)
+
+DL_DIR=$(strip $(subst ",, $(BR2_DL_DIR)))
+ifeq ($(DL_DIR),)
+DL_DIR:=$(BASE_DIR)/dl
+endif
+
+#PATCH_DIR=$(BASE_DIR)/sources/patches
+BUILD_DIR:=$(BASE_DIR)/build/$(PROFILE)/build_$(ARCH)$(ARCH_FPU_SUFFIX)_$(strip $(subst ",, $(BR2_TOPDIR_SUFFIX)))
+TARGET_DIR:=$(BUILD_DIR)/root
+TOOL_BUILD_DIR=$(BASE_DIR)/build/$(strip $(subst ",, $(BR2_TOOLCHAIN_ID)))/toolchain_build_$(ARCH)$(ARCH_FPU_SUFFIX)_$(strip $(subst ",, $(BR2_TOPDIR_SUFFIX)))
+
+# Strip off the annoying quoting
+STAGING_DIR:=$(strip $(subst ",, $(BR2_STAGING_DIR)))
+ifeq ($(ARCH),powerpc)
+STAGING_DIR := $(STAGING_DIR)_$(ARCH)
+endif
+#"
+TARGET_PATH=$(STAGING_DIR)/bin:$(TOOL_BUILD_DIR)/bin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin
+IMAGE=$(BUILD_DIR)/rootfs.$(ARCH)$(ARCH_FPU_SUFFIX)
+REAL_GNU_TARGET_NAME=$(OPTIMIZE_FOR_CPU)-linux-uclibc
+GNU_TARGET_NAME=$(OPTIMIZE_FOR_CPU)-linux
+KERNEL_CROSS=$(STAGING_DIR)/bin/$(OPTIMIZE_FOR_CPU)-linux-uclibc-
+TARGET_CROSS=$(STAGING_DIR)/bin/$(OPTIMIZE_FOR_CPU)-linux-uclibc-
+TARGET_CC=$(TARGET_CROSS)gcc
+TARGET_CPP=$(TARGET_CROSS)g++
+TARGET_LD=$(TARGET_CROSS)ld
+TARGET_AR=$(TARGET_CROSS)ar
+TARGET_RANLIB=$(TARGET_CROSS)ranlib
+TARGET_STRIP=$(TARGET_CROSS)strip --remove-section=.comment --remove-section=.note
+STRIP=$(TARGET_CROSS)strip --remove-section=.comment --remove-section=.note
+INSTALL=/usr/bin/install
+
+# needed for madwifi
+TOOLPATH=$(STAGING_DIR)
+TOOLPREFIX=$(OPTIMIZE_FOR_CPU)-linux-uclibc-
+export TOOLPATH
+export TOOLPREFIX
+
+HOST_ARCH:=$(shell $(HOSTCC) -dumpmachine | sed -e s'/-.*//' \
+	-e 's/sparc.*/sparc/' \
+	-e 's/arm.*/arm/g' \
+	-e 's/m68k.*/m68k/' \
+	-e 's/ppc/powerpc/g' \
+	-e 's/v850.*/v850/g' \
+	-e 's/sh[234]/sh/' \
+	-e 's/mips-.*/mips/' \
+	-e 's/mipsel-.*/mipsel/' \
+	-e 's/cris.*/cris/' \
+	-e 's/i[3-9]86/i386/' \
+	)
+GNU_HOST_NAME:=$(HOST_ARCH)-pc-linux-gnu
+HOST_CFLAGS   ?= -O2
+HOST_CFLAGS   += -I$(HOST_DIR)/include -I$(HOST_DIR)/usr/include
+HOST_CXXFLAGS += -I$(HOST_DIR)/include -I$(HOST_DIR)/usr/include
+HOST_LDFLAGS  += -L$(HOST_DIR)/lib -L$(HOST_DIR)/usr/lib -Wl,-rpath,$(HOST_DIR)/lib
+HOST_PATH=$(HOST_DIR)/bin:$(HOST_DIR)/usr/bin:$(PATH)
+
+TARGET_CONFIGURE_OPTS=PATH=$(TARGET_PATH) \
+		AR=$(TARGET_CROSS)ar \
+		AS=$(TARGET_CROSS)as \
+		LD=$(TARGET_CROSS)ld \
+		NM=$(TARGET_CROSS)nm \
+		CC=$(TARGET_CROSS)gcc \
+		GCC=$(TARGET_CROSS)gcc \
+		CXX=$(TARGET_CROSS)g++ \
+		STRIP="$(TARGET_STRIP)" \
+		RANLIB=$(TARGET_CROSS)ranlib \
+		OBJCOPY=$(TARGET_CROSS)objcopy \
+		PKG_CONFIG="$(PKG_CONFIG_HOST_BINARY)" \
+		STAGING_DIR="$(STAGING_DIR)"
+
+HOST_CONFIGURE_OPTS=PATH=$(HOST_PATH) \
+		CFLAGS="$(HOST_CFLAGS)" \
+		CXXFLAGS="$(HOST_CXXFLAGS)" \
+		LDFLAGS="$(HOST_LDFLAGS)" \
+		PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 \
+		PKG_CONFIG_ALLOW_SYSTEM_LIBS=1 \
+		PKG_CONFIG="$(PKG_CONFIG_HOST_BINARY)" \
+		PKG_CONFIG_SYSROOT_DIR="/" \
+		PKG_CONFIG_LIBDIR="$(HOST_DIR)/lib/pkgconfig:$(HOST_DIR)/share/pkgconfig" \
+		PERLLIB="$(HOST_DIR)/lib/perl" \
+		LD_LIBRARY_PATH="$(HOST_DIR)/lib:$(LD_LIBRARY_PATH)"
+
+HOST_MAKE_ENV=PATH=$(HOST_PATH) \
+		LD_LIBRARY_PATH="$(HOST_DIR)/lib:$(LD_LIBRARY_PATH)" \
+		PKG_CONFIG="$(PKG_CONFIG_HOST_BINARY)" \
+		PKG_CONFIG_LIBDIR="$(HOST_DIR)/lib/pkgconfig" \
+		PERLLIB="$(HOST_DIR)/lib/perl"
+ifeq ($(ENABLE_LOCALE),true)
+DISABLE_NLS:=
+else
+DISABLE_NLS:=--disable-nls
+endif
+include package/Makefile.autotools.in
+include package/Makefile.package.in

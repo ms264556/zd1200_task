@@ -1,0 +1,118 @@
+diff -Naur trousers-0.3.11.2.a/dist/tcsd.conf.in trousers-0.3.11.2.b/dist/tcsd.conf.in
+--- trousers-0.3.11.2.a/dist/tcsd.conf.in	2013-07-12 09:27:37.000000000 -0700
++++ trousers-0.3.11.2.b/dist/tcsd.conf.in	2014-02-19 19:37:43.703670827 -0800
+@@ -27,6 +27,7 @@
+ # Description: Path where the tcsd creates its persistent storage file.
+ #
+ # system_ps_file = @localstatedir@/lib/tpm/system.data
++system_ps_file = /writable/data/tpm/system.data
+ #
+ 
+ # Option: firmware_log_file
+diff -Naur trousers-0.3.11.2.a/src/include/tcsd.h trousers-0.3.11.2.b/src/include/tcsd.h
+--- trousers-0.3.11.2.a/src/include/tcsd.h	2013-07-12 09:27:37.000000000 -0700
++++ trousers-0.3.11.2.b/src/include/tcsd.h	2014-02-19 19:40:37.023170555 -0800
+@@ -48,11 +48,20 @@
+ 							of this TCS System */
+ };
+ 
++#if defined(RCKS)
++#define TCSD_DEFAULT_CONFIG_FILE	"/writable/data/tpm/tcsd.conf"
++#else
+ #define TCSD_DEFAULT_CONFIG_FILE	ETC_PREFIX "/tcsd.conf"
++#endif
+ extern char *tcsd_config_file;
+ 
++#if defined(RCKS)
++#define TSS_USER_NAME		"root"
++#define TSS_GROUP_NAME		"root"
++#else
+ #define TSS_USER_NAME		"tss"
+ #define TSS_GROUP_NAME		"tss"
++#endif
+ 
+ #define TCSD_DEFAULT_MAX_THREADS	10
+ #define TCSD_DEFAULT_SYSTEM_PS_FILE	VAR_PREFIX "/lib/tpm/system.data"
+diff -Naur trousers-0.3.11.2.a/src/include/tspps.h trousers-0.3.11.2.b/src/include/tspps.h
+--- trousers-0.3.11.2.a/src/include/tspps.h	2013-07-12 09:27:37.000000000 -0700
++++ trousers-0.3.11.2.b/src/include/tspps.h	2014-02-19 22:34:00.443115908 -0800
+@@ -13,7 +13,11 @@
+ 
+ #define PASSWD_BUFSIZE		4096
+ 
++#if defined(RCKS)
++#define TSS_USER_PS_DIR		"/writable/data/tpm/.trousers"
++#else
+ #define TSS_USER_PS_DIR		".trousers"
++#endif
+ #define TSS_USER_PS_FILE	"user.data"
+ 
+ TSS_RESULT	   get_file(int *);
+diff -Naur trousers-0.3.11.2.a/src/tcsd/svrside.c trousers-0.3.11.2.b/src/tcsd/svrside.c
+--- trousers-0.3.11.2.a/src/tcsd/svrside.c	2013-08-13 09:59:00.000000000 -0700
++++ trousers-0.3.11.2.b/src/tcsd/svrside.c	2014-03-03 18:53:12.463095948 -0800
+@@ -11,6 +11,9 @@
+ 
+ #include <stdlib.h>
+ #include <stdio.h>
++#if defined(RCKS)
++#include <fcntl.h>
++#endif
+ #include <unistd.h>
+ #include <string.h>
+ #include <sys/types.h>
+@@ -228,6 +231,9 @@
+ 		{"config", 1, NULL, 'c'},
+ 		{0, 0, 0, 0}
+ 	};
++#if defined(RCKS)
++	int fd;
++#endif
+ 
+ 	unsetenv("TCSD_USE_TCP_DEVICE");
+ 	while ((c = getopt_long(argc, argv, "fhec:", long_options, &option_index)) != -1) {
+@@ -298,6 +304,7 @@
+ 	}
+ 	client_len = (unsigned)sizeof(client_addr);
+ 	
++#if !defined(RCKS)
+ 	if (getenv("TCSD_FOREGROUND") == NULL) {
+ 		if (daemon(0, 0) == -1) {
+ 			perror("daemon");
+@@ -305,6 +312,36 @@
+ 			return -1;
+ 		}
+ 	}
++#else
++	if (getenv("TCSD_FOREGROUND") == NULL) {
++		switch (fork()) {
++			case -1:
++				perror("fork");
++				tcsd_shutdown();
++				return -1;
++			case 0:
++				break;
++			default:
++				_exit(0);
++		}
++
++		if (setsid() == -1)
++			return(-1);
++
++		if (fork())
++			_exit(0);
++
++		chdir("/");
++
++		if ((fd = open("/dev/null", O_RDWR, 0)) != -1) {
++			dup2(fd, STDIN_FILENO);
++			dup2(fd, STDOUT_FILENO);
++			dup2(fd, STDERR_FILENO);
++			if (fd > 2)
++				close(fd);
++		}
++	}
++#endif
+ 
+ 	LogInfo("%s: TCSD up and running.", PACKAGE_STRING);
+ 	do {

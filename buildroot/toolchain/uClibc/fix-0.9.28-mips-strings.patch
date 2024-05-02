@@ -1,0 +1,19 @@
+*** uClibc/libc/Makefile	2005-08-17 15:49:48.000000000 -0700
+--- uClibc/libc/Makefile	2007-05-29 18:02:32.000000000 -0700
+*************** $(LIBNAME) shared_$(LIBNAME) ar-target: 
+*** 59,65 ****
+  	$(AR) dN 2 $(LIBNAME) $$objs && \
+  	$(AR) dN 2 $(LIBNAME) $$objs
+  	@for objfile in obj.signal \
+! 	                obj.string.generic obj.string.$(TARGET_ARCH) obj.string \
+  	                obj.sysdeps.common obj.sysdeps.$(TARGET_ARCH) ; do \
+  		if [ -e $$objfile ] ; then \
+  			if [ "$(MAKE_IS_SILENT)" = "n" ] ; then \
+--- 59,65 ----
+  	$(AR) dN 2 $(LIBNAME) $$objs && \
+  	$(AR) dN 2 $(LIBNAME) $$objs
+  	@for objfile in obj.signal \
+! 	                obj.string obj.string.generic obj.string.$(TARGET_ARCH) \
+  	                obj.sysdeps.common obj.sysdeps.$(TARGET_ARCH) ; do \
+  		if [ -e $$objfile ] ; then \
+  			if [ "$(MAKE_IS_SILENT)" = "n" ] ; then \

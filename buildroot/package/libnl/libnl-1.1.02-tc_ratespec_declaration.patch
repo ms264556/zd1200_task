@@ -1,0 +1,53 @@
+diff -uPr libnl-1.1-old/include/linux/pkt_sched.h libnl-1.1/include/linux/pkt_sched.h
+--- libnl-1.1-old/include/linux/pkt_sched.h	2008-01-14 23:48:45.000000000 +0800
++++ libnl-1.1/include/linux/pkt_sched.h	2010-11-18 10:27:03.342406000 +0800
+@@ -77,8 +77,8 @@
+ {
+ 	unsigned char	cell_log;
+ 	unsigned char	__reserved;
+-	unsigned short	feature;
+-	short		addend;
++	unsigned short	overhead;
++	short		cell_align;
+ 	unsigned short	mpu;
+ 	__u32		rate;
+ };
+diff -uPr libnl-1.1-old/include/netlink-local.h libnl-1.1/include/netlink-local.h
+--- libnl-1.1-old/include/netlink-local.h	2010-11-18 10:26:23.449642000 +0800
++++ libnl-1.1/include/netlink-local.h	2010-11-18 10:09:25.883654000 +0800
+@@ -370,8 +370,8 @@
+ 				      struct tc_ratespec *src)
+ {
+ 	dst->rs_cell_log = src->cell_log;
+-	dst->rs_feature = src->feature;
+-	dst->rs_addend = src->addend;
++    dst->rs_overhead = src->overhead;
++    dst->rs_cell_align = src->cell_align;
+ 	dst->rs_mpu = src->mpu;
+ 	dst->rs_rate = src->rate;
+ }
+@@ -380,8 +380,8 @@
+ 				       struct rtnl_ratespec *src)
+ {
+ 	dst->cell_log = src->rs_cell_log;
+-	dst->feature = src->rs_feature;
+-	dst->addend = src->rs_addend;
++    dst->overhead = src->rs_overhead;
++    dst->cell_align = src->rs_cell_align;
+ 	dst->mpu = src->rs_mpu;
+ 	dst->rate = src->rs_rate;
+ }
+diff -uPr libnl-1.1-old/include/netlink-types.h libnl-1.1/include/netlink-types.h
+--- libnl-1.1-old/include/netlink-types.h	2008-01-14 23:48:45.000000000 +0800
++++ libnl-1.1/include/netlink-types.h	2010-11-18 10:30:40.733024000 +0800
+@@ -427,8 +427,8 @@
+ struct rtnl_ratespec
+ {
+ 	uint8_t			rs_cell_log;
+-	uint16_t		rs_feature;
+-	uint16_t		rs_addend;
++	uint16_t		rs_overhead;
++	uint16_t		rs_cell_align;
+ 	uint16_t		rs_mpu;
+ 	uint32_t		rs_rate;
+ };

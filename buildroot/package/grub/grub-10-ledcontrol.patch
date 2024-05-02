@@ -1,0 +1,227 @@
+diff -Naur grub-0.97.old/stage2/builtins.c grub-0.97/stage2/builtins.c
+--- grub-0.97.old/stage2/builtins.c	2005-02-16 05:58:23.000000000 +0800
++++ grub-0.97/stage2/builtins.c	2008-04-30 11:46:14.000000000 +0800
+@@ -3527,6 +3527,215 @@
+ };
+ #endif /* SUPPORT_SERIAL */
+ 
++/* Lazy implementation for LED control                       */
++/* embedded kernel driver in one function for bootloader..:) */
++
++//Steal works from kernel headers...:pp
++#define BUILDIO(bwl,bw,type) \
++static inline void out##bwl(unsigned type value, int port) { \
++        asm volatile("out" #bwl " %" #bw "0, %w1" : : "a"(value), "Nd"(port)); \
++} \
++static inline unsigned type in##bwl(int port) { \
++        unsigned type value; \
++        asm volatile("in" #bwl " %w1, %" #bw "0" : "=a"(value) : "Nd"(port)); \
++        return value; \
++}
++BUILDIO(b,b,char)
++
++//=======================================================
++//Logic Device
++#define LDN8    0x08 //WDT
++#define LDN9    0x09 //LED
++
++//Configuration Regiser
++#define CR07    0x07 //LOGIC DEVICE
++#define CR30    0x30 //LOGIC DEVICE Activate/Inactivate
++
++//Control Register
++#define CR2D    0x2D //VSB Power + GPIO5
++#define CR20    0x20
++#define CR21    0x21
++#define CR2A    0x2A
++#define CR2C    0x2C
++
++//
++#define CRF0    0xF0
++#define CRF1    0xF1
++#define CRF2    0xF2
++#define CRF5    0xf5
++#define CRF6    0xf6
++#define CRF7    0xf7
++#define PORTB   0x61
++
++//
++#define W627_CONFIG     0x2E
++#define W627_DATA       0x2F
++
++//
++#define W627_MODE       0x87
++#define W627_EDHG       0x04
++#define W627_END        0xAA
++#define W627_DISABLE    0x00
++
++//
++#define W627_ID_MSB     0xA0
++
++//=======================================================
++//GPIO Define
++#define V54_GPIO_LED_RED       0x01
++#define V54_GPIO_LED_GREEN     0x02
++
++//Color Define
++#define SET_ON          1
++#define SET_OFF         0
++
++//Pin defines
++#define GPIO3_IO_REG            CRF0
++#define GPIO3_DATA_REG          CRF1
++#define GPIO3_INVERSION_REG     CRF2
++#define I2C_PIN_SEL             CR2A
++#define MULTI_FUNCTION_SEL      CR2C
++
++#define LED_DEVICE              LDN9
++
++static inline int
++set_led(unsigned char pin, int state)
++{
++  //=======================================================
++  auto void port_open(void);
++  auto void port_close(void);
++  auto void port_read(unsigned char port, unsigned char value);
++  auto void port_write(unsigned char port, unsigned char value);
++
++  //=======================================================
++  #define W627_READ_PORT   port_read
++  #define W627_WRITE_PORT  port_write
++  #define W627_OPEN_PORT   port_open
++  #define W627_CLOSE_PORT  port_close
++
++  //=======================================================
++  void port_open(void)
++    {
++      unsigned char value, tmp;
++      outb(W627_MODE, W627_CONFIG);
++      outb(W627_MODE, W627_CONFIG);
++
++      //Delay
++      value = inb(PORTB)&0x10;
++      do
++        {
++          tmp = inb(PORTB)&0x10;
++        }while(value == tmp);
++
++//      W627_READ_PORT(CR20, value);
++//      if(value != W627_ID_MSB){
++//        grub_printf("Non ZD3000 Hardware [0x%x]!!!\n", value);
++//      }
++    }
++
++  void port_close(void)
++    {
++      outb(W627_END, W627_CONFIG);
++    }
++
++  void port_read(unsigned char port, unsigned char value)
++    {
++      outb(port, W627_CONFIG);
++      value = inb(W627_DATA);
++    }
++
++  void port_write(unsigned char port, unsigned char value)
++    {
++      outb(port, W627_CONFIG);
++      outb(value,  W627_DATA);
++    }
++
++  //=======================================================
++  unsigned char val = 0x00;
++  W627_OPEN_PORT();
++
++  //I2c pin Select by CR2C
++  W627_READ_PORT(I2C_PIN_SEL, val);
++  W627_WRITE_PORT(I2C_PIN_SEL, (val&0xfd));
++
++  //Pin Selections 88, 89, 90
++  W627_READ_PORT(MULTI_FUNCTION_SEL, val);
++  W627_WRITE_PORT(MULTI_FUNCTION_SEL, (val&0x1f));
++
++  //Point to LED device (LDN9)
++  outb(CR07, W627_CONFIG);
++  outb(LED_DEVICE, W627_DATA);
++  //Activate LED device
++  W627_READ_PORT(CR30, val);
++  W627_WRITE_PORT(CR30, (val|0x02));
++
++  //GPIO3 inversion
++  W627_WRITE_PORT(GPIO3_INVERSION_REG, 0x00);
++
++  //GPIO3 input/output pin setting
++  W627_READ_PORT(GPIO3_IO_REG, val);
++  W627_WRITE_PORT(GPIO3_IO_REG, (val&0xfc));
++
++  //Set Color
++  W627_READ_PORT(GPIO3_DATA_REG, val);
++  W627_WRITE_PORT(GPIO3_DATA_REG, ( state?(val|pin):(val&~pin) ));
++
++  //Close
++  W627_CLOSE_PORT();
++
++  return 0;
++}
++
++static int 
++setled_func (char *arg, int flags)
++{
++  unsigned char pin = V54_GPIO_LED_RED;
++  int status = SET_ON;
++
++  while(1)
++    {
++      if(grub_memcmp (arg, "--color=", sizeof ("--color=") - 1) == 0)
++        {
++          char *p = arg + sizeof ("--color=") - 1;
++          if(grub_memcmp(p, "RED", sizeof("RED") - 1) == 0)
++            {
++              pin = V54_GPIO_LED_RED;
++            }
++          else if(grub_memcmp(p, "GREEN", sizeof("GREEN") - 1) == 0)
++            {
++              pin = V54_GPIO_LED_GREEN;
++            }
++        }
++      else if(grub_memcmp (arg, "--status=", sizeof ("--status=") - 1) == 0)
++        {
++          char *p = arg + sizeof ("--status=") - 1;
++          if(grub_memcmp(p, "ON", sizeof("ON") - 1) == 0)
++            {
++              status = SET_ON;
++            }
++          else if(grub_memcmp(p, "OFF", sizeof("OFF") - 1) == 0)
++            {
++              status = SET_OFF;
++            }
++        }
++      else
++          break;
++
++      arg = skip_to (0, arg);
++    }
++
++  return set_led(pin, status);
++}
++
++static struct builtin builtin_setled =
++{
++  "setled",
++  setled_func,
++  BUILTIN_MENU | BUILTIN_CMDLINE | BUILTIN_HELP_LIST,
++  "setled --color=[RED|GREEN] --status=[ON|OFF]",
++  "Set led status"
++};
++
+ 
+ /* setkey */
+ struct keysym
+@@ -4862,6 +5071,7 @@
+ #ifdef SUPPORT_SERIAL
+   &builtin_serial,
+ #endif /* SUPPORT_SERIAL */
++  &builtin_setled,
+   &builtin_setkey,
+   &builtin_setup,
+ #if defined(SUPPORT_SERIAL) || defined(SUPPORT_HERCULES)

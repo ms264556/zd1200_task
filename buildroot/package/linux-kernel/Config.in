@@ -1,0 +1,96 @@
+config BR2_LINUX_KERNEL
+	bool "linux kernel"
+	default y
+	help
+	  The linux  kernel
+
+choice
+	prompt "Linux Kernel Version"
+	default BR2_KERNEL_ATHEROS_LATEST
+	depends on BR2_LINUX_KERNEL
+	help
+	  Select the version of linux kernel you wish to use.
+	  You must select the correct set of header files to match
+	  the kernel you intend to use on your target system.
+
+	config BR2_KERNEL_ATHEROS_LATEST
+		bool "Latest atheros linux drop available"
+
+	config  BR2_KERNEL_BROADCOM_LATEST
+		bool "Latest broadcom linux drop available"
+
+	config  BR2_KERNEL_BROADCOM_SERCOMM
+		bool "Broadcom 963xx kernel from the sercomm branch"
+
+	config  BR2_KERNEL_BROADCOM_TELSEY
+		bool "Broadcom 963xx kernel from the sercomm branch"
+
+	config  BR2_KERNEL_RKS_X86
+		bool "Ruckus maintained linux kernel for x86 minipci sdk"
+
+endchoice
+
+config BR2_KERNEL_RKS_SYSTEM_TRACE
+	bool "Build kernel with system trace support ?"
+	default n
+
+config BR2_KERNEL_RKS_SYSTEM_HOOKS
+	bool "Build kernel with Ruckus system hook ?"
+	default y
+
+config BR2_KERNEL_PATH
+	string "kernel path"
+	default "../atheros/linux/ap/src/kernels/mips-linux-2.4.25" if BR2_KERNEL_ATHEROS_LATEST
+	default "../external/sercomm/bcm963xx/bcm963xx/kernel/linux" if BR2_KERNEL_BROADCOM_LATEST
+	default "../external/telsey/bcm963xx/bcm963xx/kernel/linux" if BR2_KERNEL_BROADCOM_TELSEY
+	default "../external/gpl/linux-2.6.15" if BR2_KERNEL_RKS_X86
+	depends on BR2_LINUX_KERNEL
+
+config BR2_KERNEL_OBJTREE
+	bool "kernel objtree in build directory"
+	default y
+	depends on BR2_LINUX_KERNEL
+
+config BR2_KERNEL_COPYTO
+	string "also copy the image to..."
+	depends on      BR2_LINUX_KERNEL
+	default "/tftpboot"
+	help
+	  Copies the resulting image to a secondary location.
+
+config BR2_KERNEL_STRIP_DEBUG
+	bool "linux kernel: strip -g vmlinux"
+	depends on      BR2_LINUX_KERNEL
+	default n if BR2_KERNEL_RKS_X86
+	default y
+	help
+	  Strip debugging symbols from vmlinux
+
+config BR2_KERNEL_BINMD5
+	bool "linux kernel: attach header to compressed image"
+	depends on      BR2_LINUX_KERNEL
+	default y
+	help
+	  Attach header to Lzma compressed image
+
+config BR2_KERNEL_BUILD_DEBUG
+	bool "kernel build debug"
+	default n
+	depends on BR2_LINUX_KERNEL
+	help
+	  Enable "kgdb" and "-g" for kernel image debug
+
+config BR2_KERNEL_BUILD_FOR_VM
+	bool "kernel build for VMware"
+	default n
+	depends on BR2_LINUX_KERNEL
+	depends on BR2_RKS_BOARD_NAR5520
+	help
+	  Build kernel for that can run on VMware
+
+config BR2_BRIDGE_SET_MAC
+	bool "linux kernel: set bridge MAC address directly"
+	default n
+	help
+	  Allow bridge MAC to be set directly instead of taking on the
+	  MAC address of an attached interface.

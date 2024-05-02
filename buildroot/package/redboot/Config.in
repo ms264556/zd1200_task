@@ -1,0 +1,15 @@
+config BR2_PACKAGE_REDBOOT
+	bool "redboot"
+	default n
+	help
+	  The redboot bootloader
+
+config BR2_REDBOOT_CLEAN_BUILD
+	bool "redboot_clean_build"
+	depends on BR2_PACKAGE_REDBOOT
+	help
+	  The redboot bootloader clean build
+
+config BR2_PACKAGE_REDBOOT_PATH
+	string "path to redboot source directory"
+	default "../atheros/linux/ap/src/redboot_cobra"

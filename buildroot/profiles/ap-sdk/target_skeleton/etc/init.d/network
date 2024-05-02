@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+start() {
+	ifconfig lo up
+	echo -n "Starting network..."
+
+	#load atheros nic
+	insmod /lib/modules/2.6.15/kernel/drivers/net/ag7100/ag7100_mod.ko
+	echo " $*"
+	if [ "$1" != "" -a "$2" != "" ]; then
+	    shift;
+	    IFS=' @'
+            for ii in $* ; do
+	        /sbin/ifconfig ${ii} up
+            done
+	else
+	        /sbin/ifconfig eth0 up 2>/dev/null
+	        /sbin/ifconfig eth1 up 2>/dev/null
+	fi
+}	
+
+stop() {
+	echo -n "Stopping network..."
+	echo    " $*"
+	if [ "$1" != "" -a "$2" != "" ]; then
+            shift;
+            IFS=' @'
+            for ii in $* ; do
+                /sbin/ifconfig ${ii} down
+            done
+	else
+		/sbin/ifconfig eth0 down 2>/dev/null
+		/sbin/ifconfig eth1 down 2>/dev/null
+	fi
+
+}
+
+restart() {
+	stop $*
+	start $*
+}	
+
+
+op=$1
+shift
+case "${op}" in
+start)
+	start $*
+	;;
+stop)
+	stop $*
+	;;
+restart|reload)
+	restart $*
+	;;
+*)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

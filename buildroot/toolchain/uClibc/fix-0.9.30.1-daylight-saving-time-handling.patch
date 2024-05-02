@@ -1,0 +1,12 @@
+diff -urNP uClibc-0.9.30.1/libc/misc/time/time.c uClibc-0.9.30.1.new/libc/misc/time/time.c
+--- uClibc-0.9.30.1/libc/misc/time/time.c	2008-09-26 00:12:29.000000000 +0800
++++ uClibc-0.9.30.1.new/libc/misc/time/time.c	2014-04-11 17:26:27.018225617 +0800
+@@ -705,7 +705,7 @@
+ 					++day;
+ 				}
+ 				monlen = 31 + day_cor[r->month -1] - day_cor[r->month];
+-				if (isleap && (r->month > 1)) {
++				if (isleap && (r->month == 2)) {
+ 					++monlen;
+ 				}
+ 				/* Wweekday (0 is Sunday) of 1st of the month

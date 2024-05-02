@@ -1,0 +1,26 @@
+GREEN_LED=/proc/v54bsp/sysLed0
+RED_LED=/proc/v54bsp/sysLed2
+
+setLed () {
+  case "$2" in
+   blink)
+     VALUE=10 ;;
+   slow_blink)
+     VALUE=20 ;;
+   "")
+     VALUE=1 ;;
+  esac
+
+  case "$1" in
+   red)
+     echo 0 > $GREEN_LED
+     echo $VALUE > $RED_LED ;;
+   green)
+     echo 0 > $RED_LED
+     echo $VALUE > $GREEN_LED ;;
+   both)
+     echo $VALUE > $RED_LED
+     echo $VALUE > $GREEN_LED ;;
+ esac
+}
+

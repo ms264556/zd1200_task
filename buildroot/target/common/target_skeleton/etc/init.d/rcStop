@@ -1,0 +1,15 @@
+#!/bin/sh
+
+echo "System Shutdown ..." >&2
+
+for i in /writable/data/scripts/stop/* ; do
+    # Ignore dangling symlinks (if any).
+    [ ! -f "$i" ] && continue
+    [ ! -x "$i" ] && continue
+
+    $i stop
+done
+
+#
+uptime
+exit 0

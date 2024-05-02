@@ -1,0 +1,30 @@
+config BR2_PACKAGE_NDISC6
+	bool "NDisc6 package"
+	default n
+	help
+	  NDisc6 package
+	  NDisc6 is a small collection of useful tools for IPv6 networking
+	  Turn on this option to build NDisc6 package and install ndisc6
+	  http://www.remlab.net/ndisc6/
+
+config BR2_PACKAGE_NDISC6_NDISC6
+	bool "build traceroute6"	
+	depends on BR2_PACKAGE_NDISC6
+	default n
+	help
+	  Install traceroute6 from NDisc6 package
+
+config BR2_PACKAGE_NDISC6_TRACEROUTE6
+	bool "build traceroute6"	
+	depends on BR2_PACKAGE_NDISC6
+	default n
+	help
+	  Install traceroute6 from NDisc6 package
+
+config BR2_PACKAGE_NDISC6_RDISC6
+	bool "build traceroute6"	
+	depends on BR2_PACKAGE_NDISC6
+	default n
+	help
+	  Install rdisc6 from NDisc6 package
+

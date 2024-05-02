@@ -1,0 +1,159 @@
+#!/bin/sh
+_sys_start()
+{
+#mount -o remount,rw /
+#mount -a
+mount -t proc /proc /proc
+mount -t tmpfs -o defaults,size=4M tmpfs /tmp
+
+#
+# v54_bsp now linked in kernel
+# insmod v54_bsp
+sysctl -w net.ipv4.ip_local_port_range="32768 61000"
+sysctl -p
+#
+
+
+if [ ${_init_} -gt 1 ] ; then
+#
+# mount datafs
+data_num=99
+_grep_datafs()
+{
+    while read pn sz esz name ; do
+        case "${name}" in
+        '"datafs"')  data_num=${pn#mtd}
+             data_num=${data_num%:}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/mtd
+}
+_grep_datafs
+if [ ${data_num} -lt 20 ]; then
+    mount -t jffs2 /dev/mtdblock${data_num} /writable
+	if [ ! -d /writable/etc ]; then
+		mkdir /writable/etc
+	fi
+else
+    echo "*** Cannot find datafs partition" >&2
+fi
+#
+
+# save current running version
+if [ -d /writable/etc ] ; then
+    if [ -f /writable/etc/version ] ; then
+        mv -f /writable/etc/version /writable/etc/last_version
+    fi
+    cp /etc/version /writable/etc/
+fi
+
+#
+# set up /tmp directories
+if [ ! -d /tmp/non_persist ]; then
+    mkdir /tmp/non_persist
+fi
+#
+# fix links for /var
+vardirs="run log spool lock ftp"
+for d in ${vardirs} ;do
+#	rm -f  /var/${d}
+	mkdir -p /tmp/var/${d}
+# symlink for these are already in target_skeleton
+#	ln -fs /tmp/var/${d} /var/${d}
+done
+
+# create link directories for dnsmasq and iptables
+mkdir -p /tmp/dnsmasq
+mkdir -p /tmp/iptables
+
+#
+# create directory for applications
+#
+
+### apmgr
+mkdir -p /writable/etc/apmgr_cfg
+
+### CA certificate store
+CA_DIR=/writable/data/webs-certs/trustedCAs_dir
+mkdir -p ${CA_DIR}
+
+### firmware update
+mkdir -p /writable/custom
+mkdir -p /writable/fw/custom
+
+### reboot reason, temperature records...
+mkdir -p /writable/etc/system
+
+### tr069
+mkdir -p /writable/data/tr069/data
+mkdir -p /writable/data/tr069/filetrans
+mkdir -p /writable/data/tr069/options
+mkdir -p /writable/data/tr069/parameter
+mkdir -p /writable/data/tr069/persistent_options
+mkdir -p /writable/data/tr069/transferlist
+mkdir -p /writable/data/tr069/Vouchers
+
+### WebUI
+mkdir -p /writable/web
+
+# urandom
+/etc/init.d/urandom start
+
+
+# Load CA Store
+
+
+#
+# load rpmkeys
+#
+mkdir -p /writable/data/config
+rpmd start
+
+# 
+# load Sim AP parameters
+#
+/etc/init.d/sim_init/set_rbd
+/etc/init.d/sim_init/set_jardmesh
+
+#
+# see if we want factory defaults
+#
+/etc/init.d/fix_defaults
+#
+
+#
+# load Sim AP parameters
+#
+/etc/init.d/sim_init/set_rpm
+
+#init -gt 1
+fi
+
+if [ -x /proc/bus/usb ] ; then
+    mount -t usbfs none /proc/bus/usb
+fi
+
+mount -o remount,ro /
+mount
+}
+
+_sys_stop()
+{
+	mount -o remount,rw /
+	/etc/init.d/urandom stop
+}
+
+
+if [ "$INIT" != "" ] ; then
+    _init_=${INIT}
+else
+    _init_=3
+fi
+case "$1" in
+start|"")
+	_sys_start ;;
+stop)
+	_sys_stop ;;
+*)	;;
+esac

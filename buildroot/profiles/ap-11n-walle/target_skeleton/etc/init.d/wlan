@@ -1,0 +1,220 @@
+#!/bin/sh
+#
+# Start the network....
+#
+KERNEL_VERSION=`uname -r`
+modpath=/lib/modules/${KERNEL_VERSION}/net
+
+start_acl() {
+    ouiacl=/writable/data/persist-stg/ouiacl
+    if [ -f "${ouiacl}" ]; then
+        echo "  populating whitelist oui acl !!!!! "
+        for i in `cat ${ouiacl}`
+        do        
+          iwpriv wlan0 rksaddprobemac $i
+        done
+    fi
+}
+
+start_wlan() {
+    echo "Starting wireless networking..."
+    modlist1="atrcm ath_hal ath_dfs wlan ath_rate_v54beamflex wlan_scan_sta wlan_scan_ap" 
+    modlist2="wlan_xauth wlan_ccmp wlan_tkip wlan_wep wlan_acl ath_pktlog"
+    set -x
+    for m in ${modlist1} ${modlist2}; do
+ 	insmod ${modpath}/${m}.ko
+    done
+
+    cc=840
+    if [ -f "/writable/data/persist-stg/countrycode" ]; then
+        cc=`cat /writable/data/persist-stg/countrycode`
+    fi
+    insmod $modpath/ath_pci.ko countrycode=$cc
+
+    wlanmode=ap
+    if [ -f "/writable/data/persist-stg/wlanmode" ]; then
+        wlanmode=`cat /writable/data/persist-stg/wlanmode`
+    fi
+    wlanconfig wlan0 create wlandev wifi0 wlanmode $wlanmode
+
+    if [ -f "/writable/data/persist-stg/fband" ]; then
+        fband=`cat /writable/data/persist-stg/fband`
+        iwpriv wlan0 mode $fband
+    fi
+
+    ssid=AP11N
+    if [ -f "/writable/data/persist-stg/ssid" ]; then
+        ssid=`cat /writable/data/persist-stg/ssid`
+    fi
+    iwconfig wlan0 essid $ssid
+
+    tx_chainmask=7
+    if [ -f "/writable/data/persist-stg/txchainmask" ]; then
+        tx_chainmask=`cat /writable/data/persist-stg/txchainmask`
+    fi
+    iwpriv wlan0 tx_chainmask $tx_chainmask
+
+    rx_chainmask=7
+    if [ -f "/writable/data/persist-stg/rxchainmask" ]; then
+        rx_chainmask=`cat /writable/data/persist-stg/rxchainmask`
+    fi
+    iwpriv wlan0 rx_chainmask $rx_chainmask
+
+    enable_blockaggr=1
+    if [ -f "/writable/data/persist-stg/blockaggr" ]; then
+        enable_blockaggr=`cat /writable/data/persist-stg/blockaggr`
+    fi
+
+    protmode=0
+    if [ -f "/writable/data/persist-stg/protmode" ]; then
+        protmode=`cat /writable/data/persist-stg/protmode`
+    fi
+
+    rx_antenna=0x1eadf
+    if [ -f "/writable/data/persist-stg/rx_antenna" ]; then
+        rx_antenna=`cat /writable/data/persist-stg/rx_antenna`
+    fi
+
+    cw_mode=2
+    if [ -f "/writable/data/persist-stg/cwmode" ]; then
+	cw_mode=`cat /writable/data/persist-stg/cwmode`      
+    fi
+    iwpriv wlan0 cwmmode $cw_mode
+	
+    cw_enable=0
+    if [ -f "/writable/data/persist-stg/cwenable" ]; then
+	cw_enable=`cat /writable/data/persist-stg/cwenable`      
+    fi
+    iwpriv wlan0 cwmenable $cw_enable
+
+    beacon_ant=$rx_antenna
+    if [ -f "/writable/data/persist-stg/bcn_ant" ]; then
+	beacon_ant=`cat /writable/data/persist-stg/bcn_ant`
+    fi
+
+    echo $rx_antenna > /proc/sys/dev/wifi0/rxantenna
+
+    echo $beacon_ant > /proc/sys/dev/rks/bant
+
+    iwpriv wlan0 ampdu $enable_blockaggr
+
+    iwpriv wlan0 extprotspac 0
+
+    iwpriv wlan0 protmode $protmode
+  
+    iwpriv wlan0 abolt 0
+
+    iwpriv wlan0 wds 1
+
+    if [ -f "/writable/data/persist-stg/txpower" ]; then
+        tx_pow=`cat /writable/data/persist-stg/txpower`
+        iwconfig wlan0 txpower $tx_pow
+    fi
+
+    if [ "$wlanmode" = "ap" ]; then
+        channel=6
+        if [ -f "/writable/data/persist-stg/channel" ]; then
+            channel=`cat /writable/data/persist-stg/channel`      
+        fi
+        iwconfig wlan0 channel $channel
+        
+        # white list acl 
+        start_acl  
+    fi
+
+    ifconfig wlan0 up
+
+    wmmparams=/writable/data/persist-stg/wmmparams
+    if [ -f "${wmmparams}" ]; then
+        echo " csetting wmmparams !!!!! "
+        while read line; do
+          iwpriv wlan0 setwmmparams $line
+        done <  $wmmparams
+    fi
+
+    set +x
+}
+
+start_smartcast() {
+    sm_module=v54smartmedia.ko
+    if [ -f "$modpath/$sm_module" ]; then
+        echo "Starting smartcast..."
+        insmod $modpath/$sm_module
+    fi
+}
+
+
+start_nat() {
+    echo " Starting NAT ..."
+    iptables --flush
+    iptables --table nat --flush
+    iptables --delete-chain
+    iptables --table nat --delete-chain
+
+   # Set up IP FORWARDing and Masquerading
+    iptables --table nat --append POSTROUTING --out-interface eth0 -j MASQUERADE
+    iptables --append FORWARD --in-interface wlan0 -j ACCEPT
+
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+}
+
+start_router() {
+    echo "Starting router..."
+    start_wlan
+#    start_smartcast
+    udhcpc -p /var/run/udhcpc.pid -i eth0
+    udhcpd /etc/udhcpd.conf
+    start_nat 
+}
+
+start_bridge() {
+    echo "Starting ap..."
+# start_wlan
+    brctl addif br0 wlan0
+}	
+
+start() {
+    start_wlan
+    start_bridge
+
+# start smartcast after bridge to allow wlan and eth device creation
+#    start_smartcast
+}
+
+stop() {
+    echo -n "Stopping wireless network..."
+    /sbin/ifdown -a
+}
+restart() {
+    stop
+    start
+}	
+
+case "$1" in
+    start)
+  	start
+	;;
+    stop)
+  	stop
+	;;
+    start_wlan)
+  	start_wlan
+	;;
+    start_smartcast)
+  	start_smartcast
+	;;
+    start_nat)
+  	start_nat
+	;;
+    start_router)
+  	start_router
+	;;
+    restart|reload)
+  	restart
+	;;
+    *)
+	echo $"Usage: $0 {start|stop|restart|start_wlan|start_router|start_bridge|start_nat|start_smartcast}"
+	exit 1
+esac
+
+exit $?

@@ -1,0 +1,9 @@
+config BR2_PACKAGE_ARUBA_L2TPD
+	bool "aruba-l2tpd"
+	default n
+	depends on BR2_PACKAGE_ARUBA_REMOTE_AP
+	help
+	  implementation of L2TP daemon
+
+	  http://aruba.com/
+

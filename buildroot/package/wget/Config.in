@@ -1,0 +1,8 @@
+config BR2_PACKAGE_WGET
+	bool "wget"
+	default n
+	select BR2_PACKAGE_CA-CERTS
+	help
+	  Network utility to retrieve files from http/ftp/etc...
+
+	  http://wget.sunsite.dk/

@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+# Start the network....
+#
+IPTABLES="/usr/sbin/iptables"
+export IPTABLES
+
+enable() {
+ 	echo "Enabling NAT...lan:$1 wan:$2"
+   $IPTABLES --table nat --flush
+   $IPTABLES --table nat --delete-chain
+
+   # Set up IP FORWARDing and Masquerading
+   $IPTABLES --table nat --append POSTROUTING --out-interface $2 -j MASQUERADE
+   $IPTABLES --append FORWARD --in-interface $1 -j ACCEPT
+
+   echo 1 > /proc/sys/net/ipv4/ip_forward
+
+}	
+disable() {
+ 	echo "Disabling NAT...lan:$1 wan:$2"
+   $IPTABLES --flush
+   $IPTABLES --table nat --flush
+   $IPTABLES --delete-chain
+   $IPTABLES --table nat --delete-chain
+   echo 0 > /proc/sys/net/ipv4/ip_forward
+}
+start() {
+ 	echo "Starting NAT..."
+}	
+stop() {
+	echo -n "Stopping NAT..."
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  restart|reload)
+  	restart
+	;;
+  enable)
+  	enable $2 $3
+	;;
+  disable)
+  	disable $2 $3
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

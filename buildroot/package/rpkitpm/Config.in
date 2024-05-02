@@ -1,0 +1,6 @@
+config BR2_PACKAGE_RPKITPM
+	bool "rpkitpm"
+	default n
+	help
+	    Ruckus rpki-tpm-tool
+

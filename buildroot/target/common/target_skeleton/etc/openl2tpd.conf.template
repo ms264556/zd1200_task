@@ -1,0 +1,6 @@
+system modify deny_remote_tunnel_creates=yes
+tunnel create tunnel_name=t-$SRC_IPADDR dest_ipaddr=$DEST_IPADDR peer_udp_port=1701 \
+	persist=off hello_timeout=30 max_retries=6 retry_timeout=5 \
+	$SECRET do_pmtu_discovery=off use_udp_checksums=off
+session create tunnel_name=t-$SRC_IPADDR sub_address=c-$SRC_IPADDR
+

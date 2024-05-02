@@ -1,0 +1,19 @@
+_restart () {
+  killall -9 tftp 1>/dev/null 2>&1
+  killall -o wget 1>/dev/null 2>&1
+  killall -9 printdot 1>/dev/null 2>&1
+  killall -9 gunzip 1>/dev/null 2>&1
+  killall -9 tar 1>/dev/null 2>&1
+  killall -9 tac_ecnrypt 1>/dev/null 2>&1
+  rm -rf /tmp/* 1>/dev/null 2>&1
+
+  clear
+  echo "Restarting wizard..."
+  sleep 2
+  exec /etc/init.d/rescuetool/restoretool.sh
+}
+
+_reboot () {
+  reboot
+}
+

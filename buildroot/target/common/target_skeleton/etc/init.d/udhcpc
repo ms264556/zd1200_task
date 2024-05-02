@@ -1,0 +1,221 @@
+#!/bin/sh
+#
+# This is called by udhcpc on various dhcp events
+#
+
+UDHCPC_LEASE_DONE_FILE=/tmp/udhcpc.lease.done
+UDHCPC_DEF_ROUTE_OWNER=/tmp/udhcpc.defroute.
+UDHCPC_DEF_IP=/tmp/udhcpc.defip.
+UDHCPC_DNS_OWNER=/tmp/udhcpc.dns.
+UDHCPC_BOUND=/tmp/udhcpc.bound.
+
+STATIC_ROUTE_FILE=/etc/iptables/static_route.
+
+
+bound() {
+    cat /dev/null > $UDHCPC_BOUND$interface
+    echo "dhcp bound event for interface $interface" >> $UDHCPC_BOUND$interface
+    echo "-> ip=$ip subnet:$subnet" >> $UDHCPC_BOUND$interface
+    echo "-> routers=$router dns=$dns broadcast=$broadcast" >> $UDHCPC_BOUND$interface
+    echo "-> hostname=$hostname domain=$domain" >> $UDHCPC_BOUND$interface
+    echo "-> wins=$wins ntpsrv=$ntpsrv timezone=$timezone tr069=$tr069"  >> $UDHCPC_BOUND$interface
+    cat $UDHCPC_BOUND$interface
+    echo -n "$tr069"    > /tmp/dhcp.options.tr069
+    echo $timezone > /tmp/dhcp.options.timezone
+    echo $ntpsrv   > /tmp/dhcp.options.ntpsrv
+    echo $lease    > /tmp/udhcpc.lease.secs
+
+    RESOLV_CONF="/etc/resolv.conf"
+    RESOLV4_CONF="/tmp/resolv4.conf"
+    RESOLV6_CONF="/tmp/resolv6.conf"
+    RESOLV_CONF_LOCK="/tmp/resolv.conf.lock"
+    DNSMASQ_SCRIPT="/etc/init.d/dnsmasq.sh"
+
+    UDHCPC_NTP_FILE="/tmp/udhcpc.ntp"
+    ROUTE_OWNER=$UDHCPC_DEF_ROUTE_OWNER$interface
+    DNS_OWNER=$UDHCPC_DNS_OWNER$interface
+
+    [ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
+    [ -n "$subnet" ] && NETMASK="netmask $subnet"
+    [ -z "$subnet" ] && export `ipcalc -b $ip ` && NETMASK="broadcast $NETMASK"
+    [ -z "$broadcast" ] && export `ipcalc -b $ip $subnet` && BROADCAST="broadcast $BROADCAST" 
+
+    echo "/sbin/ifconfig $interface $ip $BROADCAST $NETMASK"
+    /sbin/ifconfig $interface $ip $BROADCAST $NETMASK
+
+    /usr/bin/arping -c 3 -U -I $interface $ip
+
+    # fix firewall setup for NAT'ed interfaces
+    /etc/init.d/nat firewall
+    echo
+
+    # If this is for USB interface, touch route and DNS owner file
+    # so that default route and DNS config files will be generated
+    if [ "$interface" == "usb0" ] ;
+    then
+        touch $ROUTE_OWNER
+        touch $DNS_OWNER
+    fi
+
+    if [ -n "$router" -a -e $ROUTE_OWNER ] ;
+    then
+        echo "deleting routers"
+        /sbin/route del default gw 0.0.0.0 dev $interface 2>/dev/null
+
+        for i in $router
+        do
+            /sbin/route add default gw $i dev $interface   	
+        done
+    fi
+
+    if [ -e $ROUTE_OWNER -a -e $DNS_OWNER ] ;
+    then
+        echo -n > $RESOLV4_CONF
+        [ -n "$domain" ] && echo domain $domain >> $RESOLV4_CONF
+        if [ "x$dns" == "x" ] ;
+        then
+            cdns1=`/usr/bin/rpm -s dns/dns1 | sed -n "s#dns/dns1=##;s#'##g;p"`
+            cdns2=`/usr/bin/rpm -s dns/dns2 | sed -n "s#dns/dns2=##;s#'##g;p"`
+            dns="$cdns1 $cdns2"
+            echo adding preconfigure dns server.
+        fi
+        for i in $dns
+        do
+            echo adding dns $i
+            echo nameserver $i >> $RESOLV4_CONF
+        done
+        # update IPv4 dns info. to resolv.conf
+
+        while [ -f $RESOLV_CONF_LOCK ]
+        do
+            sleep 1
+        done
+
+        touch $RESOLV_CONF_LOCK
+        echo -n > $RESOLV_CONF
+        if [ -f $RESOLV6_CONF ] ;
+        then
+            cat $RESOLV6_CONF >> $RESOLV_CONF
+        fi
+        if [ -f $RESOLV4_CONF ] ;
+        then
+            cat $RESOLV4_CONF >> $RESOLV_CONF
+        fi
+        rm $RESOLV_CONF_LOCK
+    fi
+
+    if [ -n "$wins" -a -e $ROUTE_OWNER ] ;
+    then
+        echo "WINS is available"
+        sleep 2
+        if [ -r $DNSMASQ_SCRIPT ] ;
+        then
+            echo "restarting dnsmasq to use WINS=$wins"
+            $DNSMASQ_SCRIPT restart -O44,$wins
+        fi
+    fi
+
+    if [ -e $ROUTE_OWNER ] ;
+    then
+        echo -n > $UDHCPC_NTP_FILE
+        if [ -n "$ntpsrv" ] ;
+        then
+            echo "NTP is available"
+            echo -n "$ntpsrv" > $UDHCPC_NTP_FILE
+        fi
+    fi
+
+    if [ -e $ROUTE_OWNER ] ;
+    then
+        echo $interface > /tmp/wanif
+        echo $ip        > /tmp/wanip
+    fi
+
+    cat /proc/uptime > $UDHCPC_LEASE_DONE_FILE.$interface
+
+    SR_FILE=$STATIC_ROUTE_FILE$interface    
+
+    if [ -f $SR_FILE ] ;
+    then
+        export `ipcalc -n $ip $subnet`
+        dhcp_route=$NETWORK
+        ( while read sr_dest sr_mask sr_router ; do
+            export `ipcalc -n $sr_router $subnet`
+            config_route=$NETWORK
+            if [ "$dhcp_route" != "$config_route" -a "$router" != "" ];
+            then 
+                sr_router=$router
+            fi 
+            # delete first, so renew won't cause duplicate entries
+            route del -net $sr_dest netmask $sr_mask > /dev/null 2>&1
+            route add -net $sr_dest netmask $sr_mask gw $sr_router $interface	
+        done ) < $SR_FILE
+    fi
+
+    if [ ! -z $hostname ];
+    then
+        rkscli -c "set device-name $hostname"
+    fi
+
+    # AeroScout update local IP/MAC address
+    AEROSCTD=/usr/bin/aerosctd
+    [ -e $AEROSCTD ] && $AEROSCTD -n > /dev/null 2>&1
+}   
+
+
+deconfig() 
+{
+    DEF_IP_FILE=$UDHCPC_DEF_IP$interface
+    ROUTE_OWNER=$UDHCPC_DEF_ROUTE_OWNER$interface
+
+    echo "dhcp deconfig event for interface $interface "
+    rm -f $UDHCPC_LEASE_DONE_FILE.$interface
+
+    if [ -r $DEF_IP_FILE ] ;
+    then
+        DEF_IP=`cat $DEF_IP_FILE`  
+    else
+        DEF_IP=0.0.0.0
+    fi
+
+    /sbin/ifconfig $interface $DEF_IP netmask 255.255.255.0 2>/dev/null
+
+    [ -e $ROUTE_OWNER ] && /sbin/route add default gw 0.0.0.0 dev $interface ;
+    /sbin/ifconfig $interface up
+
+    cat /dev/null > $UDHCPC_BOUND$interface
+}
+
+
+renew() {
+    echo "dhcp renew event for interface $interface ip=$ip subnet=$subnet"
+    echo "  routers= $router dns=$dns hostname=$hostname"
+    bound
+}
+
+
+nak() {
+    echo "dhcp nak event for interface $interface "
+}
+
+
+case "$1" in
+    deconfig)
+        deconfig
+        ;;
+    bound)
+        bound
+        ;;
+    renew)
+        renew
+        ;;
+    nak)
+        nak
+        ;;
+    *)
+        echo $"Usage: $0 {deconfig|bound|renew|nak}"
+        exit 1
+esac
+
+exit $?
+

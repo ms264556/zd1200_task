@@ -1,0 +1,8 @@
+config BR2_PACKAGE_ZIP
+	bool "zip"
+	default n
+	help
+		Zip 2.32 is a compression and file packaging utility.
+
+		http://www.info-zip.org/
+

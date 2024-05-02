@@ -1,0 +1,157 @@
+#!/bin/sh
+
+trap 0, 2
+
+PLATFORMINFO=
+TMPNODE=/mnt
+USBDEV=
+TARGETDEV=
+ETHDRIVER=
+
+_dev_found=
+_find_dev()
+{
+    _dev_found=
+    while read major minor blocks name; do
+        case "$minor" in
+        $2)
+             if [ $major -eq $1 ]; then
+                _dev_found=$name;
+                break;
+             fi
+             ;;
+        *) ;;
+        esac
+    done < /proc/partitions
+}
+
+_detect_T5520UR_usbdev()
+{
+   USBDEV=
+   TARGETDEV=
+   _find_dev 8 4
+   _disk_1=$_dev_found
+   _find_dev 8 20
+   _disk_2=$_dev_found
+   case "$_disk_1$_disk_2" in
+      "")
+         #case new device
+         _find_dev 8 1
+         _disk_1=$_dev_found
+         _find_dev 8 17
+         _disk_2=$_dev_found
+         case "$_disk_1$_disk_2" in
+            "$_disk_1")
+               USBDEV=$_disk_1
+               _find_dev 8 16
+               TARGETDEV=$_dev_found
+               echo "New device found at $TARGETDEV."
+            ;;
+            "$_disk_2")
+               USBDEV=$_disk_2
+               _find_dev 8 0
+               TARGETDEV=$_dev_found
+               echo "New device found at $TARGETDEV."
+            ;;
+            "")
+            ;;
+            *)
+               mkdir -p /test
+               mount /dev/$_disk_1 /test
+               if [ $? -eq 0 ]; then
+                  USBDEV=$_disk_1
+                  _find_dev 8 16
+                  TARGETDEV=$_dev_found
+                  echo "New device found at $TARGETDEV."
+               else
+                  mount /dev/$_disk_2 /test
+                  if [ $? -eq 0 ]; then
+                     USBDEV=$_disk_2
+                     _find_dev 8 0
+                     TARGETDEV=$_dev_found
+                     echo "New device found at $TARGETDEV."
+                  fi
+               fi
+               umount /test > /dev/null 2>&1
+            ;;
+         esac
+      ;;
+      "$_disk_1")
+         #case /dev/sda4 => rebuild image
+         _find_dev 8 0
+         TARGETDEV=$_dev_found
+         _find_dev 8 17
+         USBDEV=$_dev_found
+         echo "Found previous image in $TARGETDEV, rebuild it."
+      ;;
+      "$_disk_2")
+         #case /dev/sdb4 => rebuild image
+         _find_dev 8 16
+         TARGETDEV=$_dev_found
+         _find_dev 8 1
+         USBDEV=$_dev_found
+         echo "Found previous image in $TARGETDEV, rebuild it."
+      ;;
+      *)
+      ;;
+   esac
+}
+
+_detect_hw()
+{
+   echo -n "-->Detecting hardware, please wait.."
+   retry=$1
+   while [ $retry -gt 0 ]; do
+      PLATFORMINFO=`cat /proc/rks_hw_info/platform`
+      case $PLATFORMINFO in
+         "NAR5520")
+            _find_dev 8 1
+            USBDEV=$_dev_found
+            _find_dev 3 0
+            TARGETDEV=$_dev_found
+            ETHDRIVER=/lib/modules/`uname -r`/kernel/drivers/net/e1000e/e1000e.ko
+         ;;
+         "T5520UR")
+            _detect_T5520UR_usbdev
+            ETHDRIVER=/lib/modules/`uname -r`/kernel/drivers/net/igb/igb.ko
+         ;;
+         *)
+         ;;
+      esac
+
+      if [ -z "$USBDEV" -o -z "$TARGETDEV" ]; then
+          echo -n ".."
+          retry=`expr $retry - 1`
+          sleep 2;
+      else
+          echo "Done"
+          echo "-->Found platform:[$PLATFORMINFO], device:[$TARGETDEV]..."
+          return 0;
+          break;
+      fi
+   done
+   echo "";
+   return 1;
+}
+
+echo "USB Tool Starting..."
+
+#system init
+mount proc /proc -t proc
+mount tmpfs /tmp -t tmpfs
+
+sleep 3
+_detect_hw 5
+if [ $? -ne 0 ]; then
+   echo "ERROR: Cannot upgrade, target platform and/or device not found"
+   echo "       Platform:[$PLATFORMINFO]"
+   echo "       USB:[$USBDEV], TARGET:[$TARGETDEV]"
+   cat /proc/partitions
+   echo "Reboots in 10 seconds..."
+   sleep 10
+else
+    insmod $ETHDRIVER
+    export PLATFORMINFO TMPNODE USBDEV TARGETDEV
+    /etc/init.d/usbtool/usb_mount.sh
+fi
+/sbin/reboot

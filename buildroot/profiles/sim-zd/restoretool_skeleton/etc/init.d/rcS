@@ -1,0 +1,9 @@
+#!/bin/sh
+
+echo "System Rescue Tool Started"
+
+#system init
+mount proc /proc -t proc
+mount tmpfs /tmp -t tmpfs
+
+/etc/init.d/rescuetool/restoretool.sh

@@ -1,0 +1,6 @@
+config BR2_PACKAGE_DELTA_MAC
+	bool "delta"
+	default n
+	help
+	    Delta Mac Client for manufacturing support
+

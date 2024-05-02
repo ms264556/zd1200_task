@@ -1,0 +1,86 @@
+#!/bin/sh
+
+WSG_OPENSSH_PRIKEY="/writable/data/user-certs/key.pem"
+WSG_DROPBEAR_PRIKEY="/tmp/dataKey"
+
+WSGHOSTNAME=""
+
+
+start_sshtunnel() {
+    dbclient -y -N -f -i $WSG_DROPBEAR_PRIKEY -L 1812:localhost:1812 -L 1813:localhost:1813 -L 8082:localhost:80 -L 8083:localhost:8083 -L 514:localhost:514 -L 11211:localhost:11211 sshtunnel@$WSGHOSTNAME
+}
+
+stop_sshtunnel() {
+    SSHTUNNEL_PID=`cat /var/run/dbclient.pid 2> /dev/null`
+    if [ "$SSHTUNNEL_PID" != "" ]; then
+        kill -15 $SSHTUNNEL_PID
+    fi
+
+    DBCLIENT=`pidof dbclient`
+    if [ "$DBCLIENT" != "" ]; then 
+        echo "pid of dbclient $DBCLIENT"
+        killall -9 dbclient
+    fi
+
+    if [ -f "/tmp/wsg-server" ]; then
+        mv /tmp/wsg-server /tmp/wsg-server.old
+    fi
+}
+
+key_convert() {
+    echo "converting Key format"
+    # convert openssh key into dropbear format if necessary
+    dropbearconvert openssh dropbear $WSG_OPENSSH_PRIKEY $WSG_DROPBEAR_PRIKEY
+}
+
+start() {
+    echo "Starting SSH tunnel"
+    # always do  key conversion when starts
+    key_convert
+
+    WSGHOSTNAME=$1
+    start_sshtunnel
+
+    if [ "$?" -ne "0" ]; then
+        echo "fail to connection to $WSGHOSTNAME"
+        mv /tmp/wsg-server.now /tmp/wsg-server.old
+        exit 1
+    fi
+
+    # change state, from "connecting" to "connected"
+    if [ -f "/tmp/wsg-server.now" ]; then
+        mv /tmp/wsg-server.now /tmp/wsg-server
+    fi
+
+    pidof dbclient > /var/run/dbclient.pid
+}
+
+stop() {
+    echo "Teardown SSH tunnel"
+    stop_sshtunnel
+    rm -f /var/run/dbclient.pid
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+case "$1" in
+    start)
+        start $2
+        ;;
+    stop)
+        stop
+        ;;
+    restart|reload)
+        restart
+        ;;
+    *)
+    echo $"Usage: $0 {start|stop|restart}"
+        exit 1
+esac
+
+exit $?
+

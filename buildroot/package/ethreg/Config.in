@@ -1,0 +1,6 @@
+config BR2_PACKAGE_ETHREG
+	bool "ethreg"
+	default n
+	help
+	    Atheros ethreg
+

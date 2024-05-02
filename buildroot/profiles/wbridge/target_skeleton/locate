@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ $# -lt 1 ]; then
+  cat /proc/v54/locate
+else
+  echo $1 > /proc/v54/locate
+fi

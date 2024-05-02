@@ -1,0 +1,29 @@
+# /etc/inittab
+#
+# Copyright (C) 2001 Erik Andersen <andersen@codepoet.org>
+#
+# Note: BusyBox init doesn't support runlevels.  The runlevels field is
+# completely ignored by BusyBox init. If you want runlevels, use
+# sysvinit.
+#
+# Format for each entry: <id>:<runlevels>:<action>:<process>
+#
+# id        == tty to run on, or empty for /dev/console
+# runlevels == ignored
+# action    == one of sysinit, respawn, askfirst, wait, and once
+# process   == program to run
+
+# Startup the system
+# now run any rc scripts
+::sysinit:/etc/init.d/rcS
+::shutdown:/etc/init.d/rcStop
+/dev/console::respawn:/bin/login.sh
+::respawn:/bin/tacmon.sh
+::respawn:/bin/getevt.sh
+::respawn:/bin/tsyslogd.sh
+::respawn:/bin/rhttpd
+::respawn:/bin/zapd
+::respawn:/bin/clusterD
+::respawn:/bin/smsd
+
+

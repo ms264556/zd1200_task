@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+start() {
+ 	echo "Starting network..."
+# We build th e driver into the kernel so don't need to modprobe
+    if [ "$1" != "" ]; then
+        opts="dev_per_mac=$1"
+        ndev=$1
+    fi
+	insmod ae531x ${opts}
+	/sbin/ifconfig eth0 up
+	/sbin/ifconfig eth1 up
+    if [ "$1" = "3" ]; then
+        /sbin/ifconfig eth2 up
+    fi
+}	
+stop() {
+	echo -n "Stopping network..."
+	/sbin/ifdown -a
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+  start)
+    shift;
+  	start $*
+	;;
+  stop)
+  	stop
+	;;
+  restart|reload)
+  	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
+

@@ -1,0 +1,21 @@
+diff --git a/configure b/configure
+index 0557d88..2b698b5 100755
+--- a/configure
++++ b/configure
+@@ -3940,16 +3940,10 @@ done
+ 
+ for ac_header in linux/types.h linux/errqueue.h
+ do :
+-  as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
+-ac_fn_c_check_header_mongrel "$LINENO" "$ac_header" "$as_ac_Header" "$ac_includes_default"
+-eval as_val=\$$as_ac_Header
+-   if test "x$as_val" = x""yes; then :
+   cat >>confdefs.h <<_ACEOF
+ #define `$as_echo "HAVE_$ac_header" | $as_tr_cpp` 1
+ _ACEOF
+ 
+-fi
+-
+ done
+ 
+ for ac_header in sys/utsname.h sys/select.h sys/file.h

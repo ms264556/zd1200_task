@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LIBICONV
+	bool "libiconv"
+	default n
+	help
+	  GNU libiconv
+
+	  http://www.gnu.org/software/libiconv/

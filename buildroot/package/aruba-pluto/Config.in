@@ -1,0 +1,9 @@
+config BR2_PACKAGE_ARUBA_PLUTO
+	bool "aruba-pluto"
+	default n
+	depends on BR2_PACKAGE_ARUBA_REMOTE_AP && BR2_PACKAGE_FREESWAN && BR2_PACKAGE_LIBGMP
+	help
+	  implementation of VPN client
+
+	  http://aruba.com/
+

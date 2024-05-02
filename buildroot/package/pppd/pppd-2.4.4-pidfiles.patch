@@ -1,0 +1,16 @@
+--- original.ppp-2.4.4/pppd/auth.c	2009-03-25 17:28:49.000000000 -0700
++++ ppp-2.4.4/pppd/auth.c	2009-03-25 19:25:49.000000000 -0700
+@@ -651,8 +651,13 @@
+      * can happen that another pppd gets the same unit and then
+      * we delete its pid file.
+      */
++#if 0
++    /* Ruckus: Removing pid files when link down does NOT work for us
++     * thus commenting out.
++     */
+     if (!doing_multilink && !demand)
+ 	remove_pidfiles();
++#endif
+ 
+     /*
+      * If we may want to bring the link up again, transfer

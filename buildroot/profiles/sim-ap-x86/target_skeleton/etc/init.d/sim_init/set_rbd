@@ -1,0 +1,15 @@
+#!/bin/sh
+
+params="model serial"
+
+echo "Set Board Data"
+for param in $params; do
+	value=`eval echo "$""$param"`
+	if [ -n $value ]; then
+		echo "-->RBD: /proc/v54bsp/$param=$value"
+		echo $value > /proc/v54bsp/$param
+	fi
+done
+
+#Set board type to GD10
+echo "13" >/proc/v54bsp/board_type

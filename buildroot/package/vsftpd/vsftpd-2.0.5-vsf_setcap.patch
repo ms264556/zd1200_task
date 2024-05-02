@@ -1,0 +1,18 @@
+diff -Naur vsftpd-2.0.5/sysdeputil.c vsftpd-2.0.5.new/sysdeputil.c
+--- vsftpd-2.0.5/sysdeputil.c	2006-07-03 06:14:10.000000000 +0800
++++ vsftpd-2.0.5.new/sysdeputil.c	2011-03-28 19:42:15.000000000 +0800
+@@ -157,9 +157,14 @@
+ #if defined(VSF_SYSDEP_HAVE_CAPABILITIES) && !defined(VSF_SYSDEP_HAVE_LIBCAP)
+ #include <linux/unistd.h>
+ #include <linux/capability.h>
++#include <linux/version.h>
+ #include <errno.h>
+ #include <syscall.h>
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+ _syscall2(int, capset, cap_user_header_t, header, const cap_user_data_t, data)
++#else
++#include <sys/capability.h>
++#endif
+ /* Gross HACK to avoid warnings - linux headers overlap glibc headers */
+ #undef __NFDBITS
+ #undef __FDMASK

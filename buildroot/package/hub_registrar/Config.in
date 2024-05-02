@@ -1,0 +1,7 @@
+config BR2_PACKAGE_HUB_REGISTRAR
+	bool "hub-registrar"
+	default n
+	select BR2_PACKAGE_OCSP
+	help
+	  Ruckus AP Hub / Registrar Cloud Service
+

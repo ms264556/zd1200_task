@@ -1,0 +1,7 @@
+config BR2_PACKAGE_APMGR
+	bool "AP Manager"
+	depends on BR2_PACKAGE_AFMOD
+	default n
+	help
+	  AP Manager application for communicating with Access Controller
+

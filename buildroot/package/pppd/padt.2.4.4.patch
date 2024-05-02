@@ -1,0 +1,18 @@
+--- main.c.orig	2006-06-03 20:52:50.000000000 -0700
++++ main.c	2007-02-13 13:20:21.413319488 -0800
+@@ -573,10 +573,15 @@
+ 		    new_phase(PHASE_DORMANT); /* allow signal to end holdoff */
+ 	    } while (phase == PHASE_HOLDOFF);
+ 	    if (!persist)
+ 		break;
+ 	}
++	lcp_close(0, "modem hangup");
++	for (i = 0; (protp = protocols[i]) != NULL; ++i)
++	    (*protp->init)(0);
++	if (the_channel->check_options)
++	    (*the_channel->check_options)();
+     }
+ 
+     /* Wait for scripts to finish */
+     reap_kids();
+     if (n_children > 0) {

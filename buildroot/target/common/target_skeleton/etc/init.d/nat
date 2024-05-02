@@ -1,0 +1,573 @@
+#!/bin/sh
+# This script sets up the NAT'ing
+# and also handle port forwarding rule
+# Add iptables rule to only allow traffic to IF address on the NAT'ed interfaces
+
+IPT_FILTER="/usr/sbin/iptables -t filter"
+IPT_NAT="/usr/sbin/iptables -t nat"
+IPT_MANGLE="/usr/sbin/iptables -t mangle"
+
+# iptables usage:
+# NAT uses the nat table POSTROUTING chain
+# port forward uses the nat table PREROUTING chain
+# firewall uses the mangle table PREROUTING chain
+# ACL uses the filter table FORWARD chain
+
+# file containing list of WAN if's to be NAT'ed
+nat_if=/etc/iptables/nat_if
+
+# file for user-specified port-fwd rules
+portfwd=/etc/iptables/portfwd
+
+pf_firewall_rules=PF-ALLOW
+
+# files that indicate the modules that are loaded
+ld_filter="/tmp/iptables/loaded_filter"
+ld_mangle="/tmp/iptables/loaded_mangle"
+ld_nat="/tmp/iptables/loaded_nat"
+ld_cmd="/tmp/iptables/loaded_cmd"
+kernel_ver=`uname -r`
+module_path="/lib/modules/${kernel_ver}/kernel/net/ipv4/netfilter"
+nfxt_path="/lib/modules/${kernel_ver}/kernel/net/netfilter"
+
+case "${kernel_ver}" in
+    2.6.15)
+        nfxt_mode=0
+        ;;
+    2.6.32*)
+        nfxt_mode=1
+        ;;
+    *)
+        nfxt_mode=1
+esac
+
+load_iptables_cmd()
+{
+    if [ ! -f ${ld_cmd} ] ; then
+        if [ "${nfxt_mode}" = "1" ] ; then
+            insmod ${nfxt_path}/x_tables.ko
+            insmod ${nfxt_path}/xt_tcpudp.ko
+        fi
+        insmod ${module_path}/ip_tables.ko
+        touch ${ld_cmd}
+    fi
+}
+
+load_netfilter_nat_tbl()
+{
+
+    if [ ! -f ${ld_nat} ] ; then
+        if [ "${nfxt_mode}" = "0" ] ; then
+            insmod ${module_path}/ip_conntrack.ko hashsize=256
+            insmod ${module_path}/ip_conntrack_ftp.ko
+            insmod ${module_path}/ip_conntrack_irc.ko
+            insmod ${module_path}/ip_conntrack_tftp.ko
+            insmod ${module_path}/ip_nat.ko
+            insmod ${module_path}/ip_nat_ftp.ko
+            insmod ${module_path}/ip_nat_irc.ko
+            insmod ${module_path}/ip_nat_tftp.ko
+            insmod ${module_path}/ipt_MASQUERADE.ko
+            insmod ${module_path}/iptable_nat.ko
+        else
+            insmod ${nfxt_path}/nf_conntrack.ko hashsize=256
+            insmod ${module_path}/nf_defrag_ipv4.ko
+            insmod ${module_path}/nf_conntrack_ipv4.ko
+            insmod ${nfxt_path}/nf_conntrack_ftp.ko
+            insmod ${nfxt_path}/nf_conntrack_irc.ko
+            insmod ${nfxt_path}/nf_conntrack_tftp.ko
+            insmod ${module_path}/nf_nat.ko
+            insmod ${module_path}/nf_nat_ftp.ko
+            insmod ${module_path}/nf_nat_irc.ko
+            insmod ${module_path}/nf_nat_tftp.ko
+            insmod ${module_path}/ipt_MASQUERADE.ko
+            insmod ${module_path}/iptable_nat.ko
+        fi
+        touch ${ld_nat}
+    fi
+}
+
+load_netfilter_filter_tbl()
+{
+    if [ ! -f ${ld_filter} ] ; then
+        if [ "${nfxt_mode}" = "0" ] ; then
+            insmod ${module_path}/ipt_TCPMSS.ko
+            insmod ${module_path}/ipt_tcpmss.ko
+            insmod ${module_path}/iptable_filter.ko
+        else
+            insmod ${nfxt_path}/xt_TCPMSS.ko
+            insmod ${nfxt_path}/xt_tcpmss.ko
+            insmod ${module_path}/iptable_filter.ko
+        fi
+        touch ${ld_filter}
+    fi
+}
+
+load_netfilter_mangle_tbl()
+{
+    if [ ! -f ${ld_mangle} ] ; then
+        insmod ${module_path}/iptable_mangle.ko
+        touch ${ld_mangle}
+    fi
+}
+
+# setup rules to allow port_forward targets to respond to management traffic
+# in situation where the internal port_forward target and
+# the AP management interface are on the same bridge.
+_init_pf_firewall()
+{
+    ${IPT_MANGLE} -N ${pf_firewall_rules} 2>/dev/null
+    ${IPT_MANGLE} -F ${pf_firewall_rules}
+
+    rm -f ${pf_firewall_rules}
+
+    if [ $# -lt 1 ] ; then
+        return 0
+    fi
+
+    wanIf=$1 ; shift
+    firewall_in="PREROUTING -i ${wanIf} -j ${pf_firewall_rules}"
+    ${IPT_MANGLE} -D ${firewall_in} 2> /dev/null
+    ${IPT_MANGLE} -A ${firewall_in}
+
+    return 0
+}
+
+# file for port-fwd rules on feature support (sta-mgmt)
+portfw="/etc/iptables/port_fw"
+
+setup_internal_port_fwd_rules()
+{
+    iif=$1
+    for rule in ${portfw}.* ; do
+        if [ ! -f "${rule}" ] ; then
+            break
+        fi
+        read proto dp target tp mif comments < ${rule}
+        # add rule to allow port_fw targets outbound traffic to pass through
+        # firewall if mangement if is same as wan if
+        if [ "${mif}" = "${iif}" ] ; then
+            # delete then add
+            ${IPT_MANGLE} -D ${pf_firewall_rules} -i ${iif} -s ${target} -j ACCEPT 2>/dev/null
+            ${IPT_MANGLE} -A ${pf_firewall_rules} -i ${iif} -s ${target} -j ACCEPT
+        fi
+        ${IPT_NAT} -A PREROUTING -i ${iif} -p ${proto} --dport ${dp} -j DNAT --to-destination ${target}:${tp}
+    done
+}
+
+setup_port_fwd_rules()
+{
+    if [ "${wan1}" = "" ] ; then return ; fi
+
+    # echo "Port forward for ${wan1}" >&2
+
+    if [ -f ${portfwd} ]; then
+        ( 
+            while read proto destport target ; do
+                $IPT_NAT -A PREROUTING -i $1 -p $proto --dport $destport -j DNAT --to-destination $target
+            done
+        ) < ${portfwd}
+    fi
+}
+
+_setup_pf_nat_if()
+{
+    wanIf=$1
+    ls ${portfw}.* >/dev/null 2>&1
+
+    if [ $? -ne 0 ] ; then
+        return
+    fi
+
+    if [ ! -f ${nat_if} ] ; then
+       # no nat_if file, need to have a NAT'ed interface
+       # _add_nat also add the PORT-FW firewall chain
+       _add_nat ${wanIf}
+    fi
+
+    return
+}
+
+internal_port_fw()
+{
+    wanIf=$1
+
+    # echo "${wanif}: Internal PortFW setup..." >&2
+
+    # these are internal rules used by the AP for adapter management
+    # set this up on all NAT'ed interfaces
+
+    _setup_pf_nat_if ${wanIf}
+
+    if [ -f ${nat_if} ] ; then
+      ( 
+        while read i io ; do
+            if [ "${io}" = "o" ] ; then
+                setup_internal_port_fwd_rules ${i}
+            fi
+        done
+      ) < ${nat_if}
+    elif [ "${wanIf}" != "" ] ; then
+        # no NAT'ed interface configured, e.g. single bridge
+        # use the wanIf value in argument 1
+        setup_internal_port_fwd_rules ${wanIf}
+    fi
+}
+
+port_fw_enable()
+{
+    ROUTE_MODE=`cat /proc/sys/net/ipv4/ip_forward`
+    if [ "$ROUTE_MODE" = "1" ] ; then
+        wan1=$1 ; shift
+
+        ${IPT_NAT} -F PREROUTING
+
+        internal_port_fw ${wan1}
+
+        # this is the user configured rules
+        setup_port_fwd_rules ${wan1}
+    fi
+}
+
+port_fw_disable()
+{
+    ${IPT_NAT} -F PREROUTING
+    # private_port_forwarding only disable with NAT
+    internal_port_fw
+}
+
+########################################
+#
+# For Remote Management
+#
+########################################
+
+RMGMT_STATUS_PARAM_FILE="/tmp/management_ip_param"
+RMGMT_IPRANGE_PARAM_FILE="/tmp/management_ip_entry"
+RMGMT_START_STATUS_FILE="/tmp/management_ip_ctrl"
+RMGMT_CHAIN="REMOTE_MANAGEMENT_CHAIN"
+
+remote_mgmt_op_chain()
+{
+    # create/delete remote management chain
+    # arg1 = operation (c: create, d: delete)
+
+    if [ $1 = "c" ]; then
+        ${IPT_FILTER} -N ${RMGMT_CHAIN}
+        ${IPT_FILTER} -A ${RMGMT_CHAIN} -j DROP
+    else
+        ${IPT_FILTER} -F ${RMGMT_CHAIN}
+        ${IPT_FILTER} -X ${RMGMT_CHAIN}
+    fi
+}
+
+remote_mgmt_enable_chain()
+{
+    # create remote management chanin and insert the rule in INPUT chain
+    # arg1 = nat interface
+    # arg2 = access ports
+
+    nif=$1
+    dports=$2
+    remote_mgmt_op_chain "c" ${RMGMT_CHAIN}
+    ${IPT_FILTER} -I INPUT -i ${nif} -p tcp -m multiport --dport ${dports} -j ${RMGMT_CHAIN}
+}
+
+remote_mgmt_disable_chain()
+{
+    # clean remote management chain and delete the rule in INPUT chain
+    # arg1 = nat interface
+    # arg2 = access ports
+
+    nif=$1
+    dports=$2
+    ${IPT_FILTER} -D INPUT -i ${nif} -p tcp -m multiport --dport ${dports} -j ${RMGMT_CHAIN}
+    remote_mgmt_op_chain "d" ${RMGMT_CHAIN}
+}
+
+remote_mgmt_add_ip_access()
+{
+    # add rules for ip range limited
+    # arg1 = nat interface
+
+    nif=$1
+    if [ -f ${RMGMT_IPRANGE_PARAM_FILE} ]; then
+        while read ip_access_enable address netmask ; do
+            if [ ${ip_access_enable} = "1" ]; then
+                ${IPTABLES} -I ${RMGMT_CHAIN} -i $nif -s $address/$netmask -j ACCEPT
+            fi
+        done < ${RMGMT_IPRANGE_PARAM_FILE}
+    fi
+}
+
+remote_mgmt_do_stop()
+{
+    # stop remote management
+    # arg1 = interface
+
+    nif=$1
+    if [ -f ${RMGMT_STATUS_PARAM_FILE} ]; then
+        read rmgmt_enable rmgmt_limit_by_ip srv_ports < ${RMGMT_STATUS_PARAM_FILE}
+    else
+        rmgmt_enable=0
+        rmgmt_limit_by_ip=0
+        srv_ports="161,162,23,22,80,443"
+    fi
+
+    rmgmt_start="0"
+
+    if [ -f ${RMGMT_START_STATUS_FILE} ]; then
+        rmgmt_start=`cat ${RMGMT_START_STATUS_FILE}`
+    fi
+
+    if [ $rmgmt_start = "0" ]; then
+        return 0
+    fi
+
+    if ! [ ${rmgmt_enable} = "1" -a ${rmgmt_limit_by_ip} = "0" ]; then
+        remote_mgmt_disable_chain ${nif} ${srv_ports}
+    fi
+
+    remote_mgmt_enable_chain ${nif} ${srv_ports}
+    echo "0" > ${RMGMT_START_STATUS_FILE}
+}
+
+remote_mgmt_do_start()
+{
+    # start remote management    
+    # arg1 = interface
+
+    nif=$1
+    if [ -f ${RMGMT_STATUS_PARAM_FILE} ]; then
+        read rmgmt_enable rmgmt_limit_by_ip srv_ports < ${RMGMT_STATUS_PARAM_FILE}
+    else
+        rmgmt_enable=0
+        rmgmt_limit_by_ip=0
+        srv_ports="161,162,23,22,80,443"
+    fi
+
+    rmgmt_start="0"
+
+    if [ -f ${RMGMT_START_STATUS_FILE} ]; then
+        rmgmt_start=`cat ${RMGMT_START_STATUS_FILE}`
+    else
+        remote_mgmt_enable_chain ${nif} ${srv_ports}
+    fi
+
+    if [ ${rmgmt_start} = "1" ]; then
+        return 0
+    fi
+
+    if [ ${rmgmt_enable} = "1" -a ${rmgmt_limit_by_ip} = "0" ]; then
+        remote_mgmt_disable_chain ${nif} ${srv_ports}
+    elif [ ${rmgmt_enable} = "1" -a ${rmgmt_limit_by_ip} = "1" ]; then
+        remote_mgmt_add_ip_access ${nif}
+    fi
+    echo "1" > ${RMGMT_START_STATUS_FILE}
+}
+
+remote_mgmt_do()
+{
+    echo "Loading Filter modules..."
+    load_iptables_cmd
+    load_netfilter_filter_tbl
+
+    # start/stop remote management
+    # arg1 = start/stop
+    # arg2 = interface
+
+    action=$1
+    nif=$2
+
+    if [ ${action} = "stop" ]; then
+        remote_mgmt_do_stop ${nif}
+    fi
+
+    if [ ${action} = "start" ]; then
+        remote_mgmt_do_start ${nif}
+    fi
+}
+
+#############################################################
+
+_add_firewall()
+{
+    # setup firewall rules for wanIf
+    wanIf=$1 ; shift
+    set -- `ifconfig ${wanIf} | sed -ne '/inet addr:/p' | sed -e 's/[^:]*://'`
+    wan_addr=$1
+    if [ "${wan_addr}" != "" ] ; then
+        _init_pf_firewall ${wanIf}
+        $IPT_MANGLE -A PREROUTING -i ${wanIf} -d 255.255.255.255 -j ACCEPT
+        # jump to new-chain for hotspot
+        $IPT_MANGLE -A PREROUTING -i ${wanIf} -j PREROUTING_HOTSPOT
+        $IPT_MANGLE -A PREROUTING -i ${wanIf} ! -d  ${wan_addr} -j DROP
+        
+        # fix internal port forward rules
+        internal_port_fw ${wanIf}
+    fi
+}
+
+_add_nat()
+{
+    # $IPT_NAT -A POSTROUTING -m mark --mark 1 -o ${1} -j MASQUERADE
+    post_rule=" POSTROUTING -o ${1} -j MASQUERADE"
+    $IPT_NAT -D ${post_rule} 2>/dev/null
+    $IPT_NAT -A ${post_rule} &&  _add_firewall ${1}
+    return $?
+}
+
+_add_mark()
+{
+    # $IPT_MANGLE -A PREROUTING -i ${1} -j MARK --set-mark 1
+    :
+}
+
+_exec_foreach_if()
+{
+    # synopsis: _exec_foreach_if <ocmd> <if_file> [<icmd>]
+    # ocmd operates on interfaces marked as 'o'
+    if [ $# -lt 2 ] ; then
+        return 1
+    fi
+    ocmd=$1
+    ifs=$2
+    icmd=$3
+    wans=
+    lans=
+    if [ -f "${ifs}" ] ; then
+        ( 
+            while read i io ; do
+                if [ "${io}" = "o" ] ; then
+                    wans="${wans} $i"
+                    ${ocmd} ${i}
+                else
+                    if [ "${icmd}" != "" ] ; then
+                        lans="${lans} $i"
+                        ${icmd} ${i}
+                    fi
+                fi
+            done
+            echo "exec ${ocmd} for ${wans}"
+        ) < ${ifs}
+    fi
+    return 0
+}
+
+fix_firewall()
+{
+    ROUTE_MODE=`cat /proc/sys/net/ipv4/ip_forward`
+    if [ "$ROUTE_MODE" = "1" ] ; then
+        echo "Loading Firewall modules..."
+        load_iptables_cmd
+        load_netfilter_mangle_tbl
+
+        $IPT_MANGLE -F PREROUTING
+        echo -n "Fixing firewall..."
+        _exec_foreach_if _add_firewall ${nat_if}
+        return $?
+    fi
+}
+
+nat_hotspot()
+{
+    wan_if=$1
+    uam_ip=$2
+    
+    if [ "${uam_ip}" != "" ] ; then
+    #just update the uam ip in the new chain,keep other rule un-touched
+	$IPT_MANGLE -F PREROUTING_HOTSPOT
+        $IPT_MANGLE -A PREROUTING_HOTSPOT -i ${wan_if} -d ${uam_ip} -j ACCEPT
+    fi
+}
+
+nat_enable()
+{
+    # parameters:
+    #     wanif [natIF ] [- [lanif1 [lanif2 ...]]]
+    # list of wan interfaces, terminating by '-' if lan interfaces follows
+    # natIf is a list of interface that want to activate NAT on.
+    # Including the video port and the management port (e.g. for ruckus04)
+    # LanIF values are not used anymore.
+    # should we use wanIF for firewall rules??
+    # list of wanif in ${nat_if}, wanif passed in no longer used
+    # NAT everything going to the WAN interfaces
+
+    if [ -f ${nat_if} ]; then
+        echo "Loading NAT/Firewall modules..."
+        load_iptables_cmd
+        load_netfilter_nat_tbl
+        load_netfilter_filter_tbl
+        load_netfilter_mangle_tbl
+
+        echo -n "Enabling NAT..."
+        $IPT_NAT -F
+        $IPT_MANGLE -F PREROUTING
+        # create the new-sub-chain in the prerouting chain
+	$IPT_MANGLE -N PREROUTING_HOTSPOT 2>/dev/null
+
+        # _exec_foreach_if _add_nat ${nat_if} _add_mark
+        _exec_foreach_if _add_nat ${nat_if}
+
+        mss_rule="FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+        ${IPT_FILTER} -D ${mss_rule} 2>/dev/null
+        ${IPT_FILTER} -A ${mss_rule}
+
+        echo 1 > /proc/sys/net/ipv4/ip_forward
+
+        if [ -f /etc/init.d/hotspot ]; then
+            /etc/init.d/hotspot nat
+        fi
+    fi
+}
+
+nat_disable() {
+    ROUTE_MODE=`cat /proc/sys/net/ipv4/ip_forward`
+    if [ "$ROUTE_MODE" = "1" ] ; then
+        echo "Disabling NAT... wan:$1 lan:$2 $3 $4"
+        $IPT_NAT -F
+        echo 0 > /proc/sys/net/ipv4/ip_forward
+    fi
+}
+
+##################################
+
+echo "+ $0 $*" >&2
+op=$1 ; nat_addr=$3; nat_mask=$4; shift
+case "${op}" in
+    enable)
+        nat_enable $*
+        port_fw_enable $*
+        ;;
+    portFw_enable)
+        # enable user specified portForwarding
+        # Private portForwarding for adapter management enable/disble with NAT
+        port_fw_enable $*
+        ;;
+    portFw_disable)
+        # disable user specified portForwarding
+        port_fw_disable
+        ;;
+    disable)
+        nat_disable $*
+        ;;
+    firewall)
+        # fix firewall setup
+        fix_firewall
+        ;;
+    hotspot)
+        # fix hotspot setup
+        nat_hotspot $*
+        ;;
+    remoteMgmt_start)
+        remote_mgmt_do "start" $*
+        ;;
+    remoteMgmt_stop)
+        remote_mgmt_do "stop" $*
+        ;;
+    *)
+        echo $"Usage: $0 {enable|disable|...} [wanif ... [- [lanif ...]]"
+        exit 1
+esac
+
+exit $?
+

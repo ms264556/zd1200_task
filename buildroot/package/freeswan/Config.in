@@ -1,0 +1,7 @@
+config BR2_PACKAGE_FREESWAN
+	bool "freeswan"
+	default n
+	help
+	  A package that inplements IPsec on Linux.
+
+	  http://www.freeswan.org/software/tar/

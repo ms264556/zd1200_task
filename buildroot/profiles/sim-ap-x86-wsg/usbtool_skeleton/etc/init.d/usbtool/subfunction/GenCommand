@@ -1,0 +1,47 @@
+#!/bin/sh
+
+. /etc/init.d/usbtool/subfunction/DefConfig
+
+#dependency checking...
+GenAutoCommand () {
+  if [ -f /mnt/$_DATAFSIMG ]; then
+    acommand="4 $acommand"
+    pokerhands="straightflush"
+  fi
+
+  #we accept rootfs+kernel or kernel only
+  if [ -f /mnt/$_KERNELIMG ]; then
+    acommand="3 $acommand"
+    if [ -f /mnt/$_ROOTFSIMG ]; then
+      acommand="2 $acommand"
+    else
+      pokerhands=""
+    fi
+  else
+    pokerhands=""
+  fi
+
+  #if bootfs+rootfs+kernel+datafs -> renew partition+all
+  #else bootfs only
+  if [ -f /mnt/$_BOOTFSIMG ]; then
+    if [ "$pokerhands" = "straightflush" ]; then
+      acommand="0 1 $acommand"
+    else
+      acommand="1 $acommand"
+    fi
+  fi
+
+  AUTOCMD="$acommand"
+  echo "Auto cmds:[$acommand]" >> $LOG
+}
+
+_unittest () {
+  _KERNELIMG="k"
+  _BOOTFSIMG="b"
+  _DATAFSIMG="d"
+  _ROOTFSIMG="r"
+  GenAutoCommand
+  echo "$acommand"
+}
+
+#_unittest

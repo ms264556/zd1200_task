@@ -1,0 +1,15 @@
+mem_top = 0xf77fe000
+High Mem (0xF77FDC00) size=396
+  magic:      0x54545454 0x52434B53
+  reset:      0  factory:    0  sw2_reset:      0  sw2_event:    0  post_fail:  0  recovery:   0
+  reboot_cnt: 0  total_boot: 0
+  reboot_reason: user reboot
+  reboot_time: UTC 2012-11-29 07:52:29
+  type:       0  index:      -1  fis.image: 
+  BootRom:
+  
+  miniboot:
+  magic:      0x6D696E69
+  reboot_cnt: 0
+
+  No Bootline

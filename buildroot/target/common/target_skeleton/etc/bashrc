@@ -1,0 +1,2 @@
+PATH=/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin
+export PATH

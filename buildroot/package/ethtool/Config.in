@@ -1,0 +1,7 @@
+config BR2_PACKAGE_ETHTOOL
+	bool "ethtool"
+	default n
+	help
+	  Display or change ethernet card settings.
+
+	  http://sourceforge.net/projects/gkernel/

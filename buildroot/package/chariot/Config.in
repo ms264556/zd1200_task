@@ -1,0 +1,6 @@
+config BR2_PACKAGE_CHARIOT
+	bool "chariot"
+	default n
+	help
+	    Ixia Chariot End Point utility
+

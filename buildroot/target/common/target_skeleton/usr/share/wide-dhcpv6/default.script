@@ -1,0 +1,34 @@
+#!/bin/sh
+
+RESOLV_CONF="/etc/resolv.conf"
+RESOLV4_CONF="/tmp/resolv4.conf"
+RESOLV6_CONF="/tmp/resolv6.conf"
+RESOLV_CONF_LOCK="/tmp/resolv.conf.lock"
+
+if [ -n "$new_domain_name" -o -n "$new_domain_name_servers" ]; then
+    echo -n > $RESOLV6_CONF
+    if [ -n "$new_domain_name" ]; then
+        echo search $new_domain_name >> $RESOLV6_CONF
+    fi
+    if [ -n "$new_domain_name_servers" ]; then
+        for nameserver in $new_domain_name_servers; do
+            echo nameserver $nameserver >> $RESOLV6_CONF
+        done
+    fi
+
+    while [ -f $RESOLV_CONF_LOCK ]
+    do
+        sleep 1
+    done
+
+    touch $RESOLV_CONF_LOCK
+    echo -n > $RESOLV_CONF
+    cat $RESOLV6_CONF > $RESOLV_CONF
+    cat $RESOLV4_CONF >> $RESOLV_CONF
+    rm $RESOLV_CONF_LOCK
+#else
+#    echo nameserver nothing >> $RESOLV6_CONF
+fi
+
+exit 0
+

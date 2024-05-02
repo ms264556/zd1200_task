@@ -1,0 +1,183 @@
+diff -Naur tool4tpm/C-INC/Globals.h /home/rchew/Downloads/tool4tpm/C-INC/Globals.h
+--- tool4tpm/C-INC/Globals.h	2013-04-19 07:57:28.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/C-INC/Globals.h	2014-03-28 12:36:43.033585036 -0700
+@@ -81,8 +81,12 @@
+ #ifdef __arm__
+ #define USE_DRIVER	2	/* 2= Use TPM Driver, currently only option on arm*/
+ #else
++#if defined(RCKS)
++#define USE_DRIVER	2	/* 0=Userspace Driver, 1= Use Mem/IO Driver, 2= Use TPM Driver */
++#else
+ #define USE_DRIVER	0	/* 0=Userspace Driver, 1= Use Mem/IO Driver, 2= Use TPM Driver */
+ #endif
++#endif
+ #define TTY_ACCESS	0	/* 0=Target platform has own keyboard/screen */
+ 				/* 1=Target platform is accessed over TTY only (evaluation boards) */
+ #define DISABLE_SLEEPS 0	// should all sleeps be skipped, this may make tool4tpm instable (but extremly fast)
+diff -Naur tool4tpm/C-INC/LowLevIO.h /home/rchew/Downloads/tool4tpm/C-INC/LowLevIO.h
+--- tool4tpm/C-INC/LowLevIO.h	2013-04-10 08:39:48.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/C-INC/LowLevIO.h	2014-03-25 12:46:40.203094423 -0700
+@@ -26,7 +26,11 @@
+ #ifdef linux
+ #define DEV_TPM_MEM "/dev/tpm-mem"
+ #define DEV_TPM_IO "/dev/tpm-io"
++#if defined(RCKS)
++#define DEV_TPM_TPM "/dev/tpm"
++#else
+ #define DEV_TPM_TPM "/dev/tpm0"
++#endif
+ 
+ #define IOCTL_SETPORTADDR 1
+ #define IOCTL_SETMEMADDR 1
+diff -Naur tool4tpm/C-INC/ProgInfo.h /home/rchew/Downloads/tool4tpm/C-INC/ProgInfo.h
+--- tool4tpm/C-INC/ProgInfo.h	2013-04-19 07:56:54.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/C-INC/ProgInfo.h	2014-03-28 20:42:42.313428138 -0700
+@@ -30,8 +30,13 @@
+ #define VERSION				"06.02.0.0"
+ #endif
+ 
++#if defined(RCKS)
++#define LOG_FILE_NAME		"/tmp/tool4tpm.log"
++#define CFG_FILE_NAME		"/usr/sbin/tool4tpm.cfg"
++#else
+ #define LOG_FILE_NAME		"tool4tpm.log"
+ #define CFG_FILE_NAME		"tool4tpm.cfg"
++#endif
+ 
+ //---------------------------------------------------------------
+ // File and data output definitions
+@@ -80,4 +85,4 @@
+ 	MODE_AUTOTEST
+ } T4T_MODE;
+ 
+-#endif // __PROGINFO_H__
+\ No newline at end of file
++#endif // __PROGINFO_H__
+diff -Naur tool4tpm/C-SRC/Console.c /home/rchew/Downloads/tool4tpm/C-SRC/Console.c
+--- tool4tpm/C-SRC/Console.c	2013-04-19 07:58:58.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/C-SRC/Console.c	2014-04-09 22:34:55.383093015 -0700
+@@ -214,6 +214,10 @@
+ --*/
+ void ClrScr(void)
+ {
++#if defined(RCKS)
++    system("clear");
++    return;
++#endif
+ #ifdef UEFI_X64
+ 	EFI_STATUS Status;
+ 	
+@@ -898,4 +902,4 @@
+ 	}
+ 	Log("\n");
+ 	return dwRCVal;
+-}
+\ No newline at end of file
++}
+diff -Naur tool4tpm/C-SRC/LowLevIO.c /home/rchew/Downloads/tool4tpm/C-SRC/LowLevIO.c
+--- tool4tpm/C-SRC/LowLevIO.c	2013-04-19 07:57:28.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/C-SRC/LowLevIO.c	2014-03-28 22:40:02.373093490 -0700
+@@ -1285,4 +1285,4 @@
+ 	return Status;
+ }
+ 
+-#endif
+\ No newline at end of file
++#endif
+diff -Naur tool4tpm/C-SRC/ProgFunc.c /home/rchew/Downloads/tool4tpm/C-SRC/ProgFunc.c
+--- tool4tpm/C-SRC/ProgFunc.c	2013-04-19 07:57:28.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/C-SRC/ProgFunc.c	2014-04-01 13:52:34.783093456 -0700
+@@ -57,13 +57,21 @@
+ --*/
+ UINT16 wSwitchEndian16(UINT16 wNum)
+ {
++#if defined(RCKS)
++    return wNum;
++#else
+ 	return (((wNum << 8) & 0xff00) | ((wNum >> 8) & 0x00ff));
++#endif
+ }
+ 
+ UINT32 dwSwitchEndian32(UINT32 dwNum)
+ {
++#if defined(RCKS)
++    return dwNum;
++#else
+ 	return (((dwNum << 24) & 0xff000000)
+ 		| ((dwNum << 8) & 0x00ff0000) | ((dwNum >> 8) & 0x0000ff00) | ((dwNum >> 24) & 0x000000ff));
++#endif
+ }
+ 
+ /*++
+@@ -84,15 +92,22 @@
+ --*/
+ void SwitchEndian16ByteArray(BYTE pbArray[2])
+ {
++#if defined(RCKS)
++    return;
++#else
+ 	UINT16 wHelp;
+ 
+ 	wHelp = ((pbArray[0]) << 8) | (pbArray[1]);
+ 	pbArray[0] = (BYTE) wHelp;
+ 	pbArray[1] = (BYTE) (wHelp >> 8);
++#endif
+ }
+ 
+ void SwitchEndian32ByteArray(BYTE pbArray[4])
+ {
++#if defined(RCKS)
++    return;
++#else
+ 	UINT32 dwHelp;
+ 
+ 	dwHelp = (pbArray[0] << 24) | (pbArray[1] << 16) | (pbArray[2] << 8) | (pbArray[3]);
+@@ -100,10 +115,14 @@
+ 	pbArray[1] = (BYTE)(dwHelp >> 8);
+ 	pbArray[2] = (BYTE)(dwHelp >> 16);
+ 	pbArray[3] = (BYTE)(dwHelp >> 24);
++#endif
+ }
+ 
+ void SwitchEndian64ByteArray(TPM_UINT64 * qwNum)
+ {
++#if defined(RCKS)
++    return;
++#else
+ 	BYTE bHelp;
+ 
+ 	bHelp = qwNum->bUINT64[0];
+@@ -121,6 +140,7 @@
+ 	bHelp = qwNum->bUINT64[3];
+ 	qwNum->bUINT64[3] = qwNum->bUINT64[4];
+ 	qwNum->bUINT64[4] = bHelp;
++#endif
+ }
+ 
+ /*++
+diff -Naur tool4tpm/Linux/makefile /home/rchew/Downloads/tool4tpm/Linux/makefile
+--- tool4tpm/Linux/makefile	2013-04-10 04:45:02.000000000 -0700
++++ /home/rchew/Downloads/tool4tpm/Linux/makefile	2014-03-24 20:23:16.193346248 -0700
+@@ -1,6 +1,9 @@
+-CC=$(CROSS_COMPILE)gcc
+-STRIP=$(CROSS_COMPILE)strip
+-CFLAGS+=-Os -Wno-unused-result
++#CC=$(CROSS_COMPILE)gcc
++#STRIP=$(CROSS_COMPILE)strip
++#CFLAGS+=-Os -Wno-unused-result
++CC=$(TOOLPREFIX)gcc
++STRIP=$(TOOLPREFIX)strip
++CFLAGS+=-Os
+ 
+ MAIN_TARGET=tool4tpm
+ OBJFILES=ASN1pars.o Console.o FileIO.o Hash.o LowLevIO.o LPC_Comm.o\
+diff -Naur tool4tpm/Linux/tool4tpm.cfg /home/rchew/Downloads/tool4tpm/Linux/tool4tpm.cfg
+--- tool4tpm/Linux/tool4tpm.cfg	2013-02-11 08:02:28.000000000 -0800
++++ /home/rchew/Downloads/tool4tpm/Linux/tool4tpm.cfg	2014-04-08 11:57:29.603520776 -0700
+@@ -1,5 +1,5 @@
+ [LOGGING_LEVEL]
+-LEVEL = 0
++LEVEL = 3
+ 
+ [CONSOLE]
+ 80x50_MODE = 1

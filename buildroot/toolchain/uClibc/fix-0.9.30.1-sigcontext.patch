@@ -1,0 +1,11 @@
+--- uClibc-0.9.30.1.orig/libc/sysdeps/linux/common/bits/sigcontext.h	2002-03-02 04:46:26.000000000 +0800
++++ uClibc-0.9.30.1/libc/sysdeps/linux/common/bits/sigcontext.h	2010-01-29 16:22:55.000000000 +0800
+@@ -25,5 +25,8 @@
+    we need sigcontext.  */
+ # define sigcontext_struct sigcontext
+ 
++# ifndef __user
++# define __user
++# endif
+ # include <asm/sigcontext.h>
+ #endif

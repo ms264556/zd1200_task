@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# Start the zapd...
+#
+
+start() {
+	echo "Starting zapd..."
+	/usr/sbin/zapd &
+}
+
+stop() {
+	echo "Stopping zapd..."
+	killall zapd
+}
+
+case "$1" in
+start)
+	start $*
+	;;
+stop)
+	stop
+	;;
+*)
+	echo $"Usage: $0 {start|stop}"
+	exit 1
+esac
+
+exit $?

@@ -1,0 +1,353 @@
+#!/bin/sh
+
+#Local
+. /etc/init.d/usbtool/subfunction/DefConfig
+. /etc/init.d/usbtool/subfunction/GetUser
+. /etc/init.d/usbtool/subfunction/Error
+
+dbg () {
+  echo ""
+}
+
+###########################################################
+#do reboot
+DoReboot () {
+  echo "=== Do reboot ===" >> $LOG 2>&1
+  sync; sync; sync; sync;
+
+  #interface down
+  ifconfig $G_PORT1 down >> $LOG 2>&1
+  ifconfig $G_PORT2 down >> $LOG 2>&1
+  echo $MSG_REBOOT
+  sleep 3
+  exit 0
+}
+
+#do clean
+DoClean () {
+  echo "=== Do clean ===" >> $LOG 2>&1
+
+  for sector in $G_SECTOR_CLEAN; do
+    echo $MSG_CLEAN_SECTOR $sector
+    echo $MSG_CLEAN_SECTOR $sector >>$LOG 2>&1
+    dd if=/dev/zero of=/dev/$_CFCARD count=1 skip=$sector >> $LOG 2>&1
+  done
+
+  sync; sync; sync; sync;
+  sleep 3
+}
+
+############################################################
+DisplayImageInfo () {
+  if [ "$1" != "" ]; then
+    echo $1
+  fi
+  echo "==================================================="
+  echo "  Protocol : $G_PROTOCOL"
+  echo "  Server IP: $G_SERVER_IP"
+  echo "  Path/File: $G_IMAGE"
+  echo "==================================================="
+}
+############################################################
+#dispaly current network settings
+DisplayNetowrkSet () {
+  if [ "$1" != "" ]; then
+    echo $1
+  fi
+  echo "==================================================="
+  for eth in $G_PORT1 $G_PORT2; do
+    ip_addr="Empty"
+    bcast="Empty"
+    mask="Empty"
+    nset=`ifconfig $eth| grep inet | sed s/.*inet//g` 2>/dev/null
+    if [ "$nset" != "" ] ; then
+      set $nset
+      while [ $# -gt 0 ]; do
+        param=`echo $1| cut -d: -f1`
+        value=`echo $1| cut -d: -f2`
+        shift
+
+        case $param in
+          "addr")
+            ip_addr=$value
+          ;;
+          "Bcast")
+            bcast=$value
+          ;;
+          "Mask")
+            mask=$value
+          ;;
+        esac
+      done
+    fi
+
+    echo "=>Port : $eth"
+    echo "  IP   : $ip_addr"
+    echo "  Bcast: $bcast"
+    echo "  Mask : $mask"
+  done
+  echo "==================================================="
+}
+
+############################################################
+NetworkSetDynamic () {
+  echo "Not implemented"
+}
+
+############################################################
+NetworkSetStatic () {
+  ret=0
+  GetUserInputs "port" "host_ip" "mask"
+  ifconfig $G_PORT $G_HOST_IP netmask $G_NET_MASK >> $LOG 2>&1
+  if [ $? -ne 0 ]; then
+    echo $ERR_SET_NIC
+    ret=1
+  else
+    DisplayNetowrkSet "$MSG_SET_NIC_DONE ($G_PORT)"
+  fi
+  return $ret
+}
+
+NetworkSet () {
+  AskUser "Static or dynamic IP?(s/d)"
+  case $INPUTSTR in
+  d)
+    NetworkSetDynamic
+    ;;
+  *)
+    NetworkSetStatic
+    ;;
+  esac
+}
+
+############################################################
+ServerSet () {
+  ret=0
+  AskUser "Select a protocol (Available: tftp, ftp, http, kermit)" $G_PROTOCOL
+  if [ "$INPUTSTR" != "" ]; then
+    G_PROTOCOL=$INPUTSTR
+  fi
+
+  if [ "$G_PROTOCOL" != "kermit" ]; then
+    AskUser "Type your server IP" $G_SERVER_IP
+    if [ "$INPUTSTR" != "" ]; then
+      G_SERVER_IP=$INPUTSTR
+    fi
+
+    AskUser "Type path and image name (Example: image/zd_upg.img)" $G_IMAGE
+    if [ "$INPUTSTR" != "" ]; then
+      G_IMAGE=$INPUTSTR
+    fi
+  else
+    G_SERVER_IP="Skipped"
+    G_IMAGE="Skipped"
+  fi
+
+  return $ret
+}
+
+############################################################
+GetImage () {
+  ret=0
+  case $G_PROTOCOL in
+    "tftp")
+      tftp -g -r $G_IMAGE -l $G_TEMP_FILE $G_SERVER_IP 2>/dev/null
+      ret=$?
+    ;;
+    "ftp")
+      wget -d -O $G_TEMP_FILE $G_PROTOCOL://$G_SERVER_IP/$G_IMAGE 2>/dev/null
+      ret=$?
+    ;;
+    "http")
+      wget -d -O $G_TEMP_FILE $G_PROTOCOL://$G_SERVER_IP/$G_IMAGE 2>/dev/null
+      ret=$?
+    ;;
+    "kermit")
+      gkermit -r -a $G_TEMP_FILE
+      ret=$?
+    ;;
+    *)
+      ret=1
+    ;;
+  esac
+
+  return $ret
+}
+
+############################################################
+#do network setting
+#TODO: move show interface to sub-function
+#TODO: move error to subfunction/Error
+DoNetworkSet () {
+  DisplayNetowrkSet "$MSG_CURRENT_NIC_SETTING ($G_PORT)"
+  NetworkSet
+  return $?
+}
+
+############################################################
+#do download setting
+#TODO: move error to subfunction/Error
+DoTFTP () {
+  ret=0
+
+  tfile=$2
+  tserver=$1
+
+  tftp -g -r $tfile -l $TMPDIR/$tfile $tserver >> $LOG 2>&1
+  if [ $? -ne 0 ]; then
+    echo $ERR_DOWNLOAD_FAIL
+    ret=1
+  else
+    echo $MSG_DOWNLOAD_SUCCESS "-> $TMPDIR/$tfile"
+  fi
+
+  return $ret
+}
+
+DoDownload () {
+  GetUserInputs "server_ip" "temp_file"
+  DoTFTP $G_SERVER_IP $G_TEMP_FILE
+  return $?
+}
+
+#do nfs boot
+#TODO: move error to subfunction/Error
+DoNFSBoot () {
+  ret=0
+
+  GetUserInputs "server_ip" "kernel" "nfsroot" "nfs_command"
+  echo $MSG_DOWNLOAD_KERNEL
+  tftp -g -r $G_KERNEL -l $TMPDIR/$G_KERNEL $G_SERVER_IP >> $LOG 2>&1
+
+  echo $MSG_LOAD_IMAGES
+  kexec -l $TMPDIR/$G_KERNEL --command-line=\"$G_NFS_KERNEL_CMD root=/dev/nfs nfsroot=$G_SERVER_IP:$G_NFS_ROOT ip=$G_HOST_IP:::::$G_PORT:any\" >> $LOG 2>&1
+  
+  if [ $? -eq 0 ]; then
+    AskUser "$MSG_BOOTUP"
+    if [ "$INPUTSTR" = "y" -o "$INPUTSTR" = "" ]; then
+      kexec -e
+      echo $ERR_BOOT_KERNEL_FAIL
+      ret=1
+    fi
+  else
+      echo $ERR_LOAD_KERNEL_FAIL
+      ret=2
+  fi
+
+  return $ret
+}
+
+#do tftp boot
+#TODO: move error to subfunction/Error
+DoTFTPBoot () {
+  ret=0
+
+  GetUserInputs "server_ip" "kernel" "initramfs" "tftp_command"
+  echo $MSG_DOWNLOAD_KERNEL
+  tftp -g -r $G_KERNEL -l $TMPDIR/$G_KERNEL $G_SERVER_IP >> $LOG 2>&1
+
+  if [ "$G_INITRAMFS" != "" ]; then
+    echo $MSG_DOWNLOAD_INITRAMFS >> $LOG
+    tftp -g -r $G_INITRAMFS -l $TMPDIR/$G_INITRAMFS $G_SERVER_IP >> $LOG 2>&1
+    initrdcmd="--initrd=$TMPDIR/$G_INITRAMFS"
+  fi
+
+  echo $MSG_LOAD_IMAGES
+  kexec -l $TMPDIR/$G_KERNEL $G_INITRAMFS --command-line=\"$G_TFTP_KERNEL_CMD\" >> $LOG 2>&1
+
+  if [ $? -eq 0 ]; then
+    AskUser "$MSG_BOOTUP"
+    if [ "$INPUTSTR" = "y" -o "$INPUTSTR" = "" ]; then
+      kexec -e
+      echo $ERR_BOOT_KERNEL_FAIL 
+      ret=1
+    fi
+  else
+      echo $ERR_LOAD_KERNEL_FAIL
+      ret=2
+  fi
+
+  return $ret
+}
+
+############################################################
+#check network setting
+CheckNetworkSet () {
+  ifconfig|grep eth > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo $MSG_SET_NIC 
+    DoNetworkSet
+  fi
+}
+
+#show log
+ShowLogs () {
+  echo "----------------------------------------------------------------"
+  if [ -f $LOG ]; then
+    cat $LOG | more
+  else
+    echo $MSG_NO_LOG
+  fi
+  echo "----------------------------------------------------------------"
+}
+
+AskBDSet() {
+  echo $1
+  if [ "$2" = "force" ]; then
+    if [ "$3" = "" ]; then
+       echo "$MSG_TYPE_ENTER"
+    else
+       echo "$3"
+    fi
+  fi
+
+  read -p ">" INPUTSTR
+}
+
+UpdateBoardData () {
+  echo "=== Set Board Data ==="
+  if [ "$G_BOARD_DATA_SRC" = "server" ]; then
+    AskUser "$MSG_BOARD_DATA_USE_SERVER_CONFIRM"
+    if [ "$INPUTSTR" = "y" -o "$INPUTSTR" = "" ]; then
+       CheckNetworkSet
+       GetUserInputs "server_ip" "boarddata_file"
+       DoTFTP $G_SERVER_IP $G_BOARD_DATA_FILE
+       if [ $? -eq 0 ]; then
+          G_BOARD_DATA=`cat $TMPDIR/$G_BOARD_DATA_FILE`
+          echo "$MSG_BOARD_DATA_DL_SUCCESS"
+       else
+          echo "$MSG_BOARD_DATA_DL_FAIL"
+       fi
+    fi
+  fi
+
+#  AskUser "$MSG_BOARD_DATA_REQUIRE $G_BOARD_DATA_FIELD" "$G_BOARD_DATA"
+  echo $G_BOARD_DATA
+  set $G_BOARD_DATA
+  G_BOARD_DATA=""
+  for item in $G_BOARD_DATA_FIELD; do
+#    AskBDSet "$MSG_TYPE_SET $item: [$1]" "force"
+#    if [ "$INPUTSTR" != "" ]; then
+#      G_BOARD_DATA="$G_BOARD_DATA $INPUTSTR"
+#    else
+      G_BOARD_DATA="$G_BOARD_DATA $1"
+#    fi
+    shift
+  done
+
+  /etc/init.d/usbtool/rbd.sh $G_BOARD_DATA >> $LOG 2>&1
+  echo "---------------------------------------------------------------"
+  echo "Board Data Written:"
+  echo -n "Board   :" ; cat /proc/v54bsp/name
+  echo -n "Model   :" ; cat /proc/v54bsp/model
+  echo -n "Serial  :" ; cat /proc/v54bsp/serial
+  echo -n "MAC1    :" ; rbd dump | grep eth0 | cut -d ' ' -f 8
+  echo -n "MAC2    :" ; rbd dump | grep eth1 | cut -d ' ' -f 8
+  echo "---------------------------------------------------------------"
+
+  echo "---------------------------------------------------------------" >>$LOG
+  rbd dump >>$LOG
+  echo "---------------------------------------------------------------" >>$LOG
+  echo "$MSG_APPLY_SETTING [$G_BOARD_DATA]"
+}
+

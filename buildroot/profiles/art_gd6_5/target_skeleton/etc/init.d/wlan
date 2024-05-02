@@ -1,0 +1,96 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+start_wlan() {
+ 	echo "Starting wireless networking..."
+ modprobe ath_ahb
+ wlanconfig ath0 create wlandev wifi0 wlanmode ap
+ iwconfig ath0 essid v54vikas
+ iwconfig ath0 channel 6
+ #iwpriv ath0 turbo 1
+ ifconfig ath0 192.168.11.1 netmask 255.255.255.0
+ ifconfig ath0 up
+}
+
+start_nat() {
+  echo " Starting NAT ..."
+   iptables --flush
+   iptables --table nat --flush
+   iptables --delete-chain
+   iptables --table nat --delete-chain
+
+   # Set up IP FORWARDing and Masquerading
+   iptables --table nat --append POSTROUTING --out-interface eth0 -j MASQUERADE
+   iptables --append FORWARD --in-interface ath0 -j ACCEPT
+
+   echo 1 > /proc/sys/net/ipv4/ip_forward
+}
+
+start_router() {
+ 	echo "Starting router..."
+  start_wlan
+  udhcpc -p /var/run/udhcpc.pid -i eth0
+  udhcpd /etc/udhcpd.conf
+  start_nat 
+}
+
+start_smartcast() {
+	echo "Starting smartcast..."
+	insmod /lib/modules/2.4.25-LSDK-5.0.0-RC5/net/v54smartmedia.o
+	/usr/sbin/ebtables -A FORWARD --pkttype multicast -p ipv4 --ip-proto udp -j DROP
+	/usr/bin/v54igmp &
+}
+
+start_bridge() {
+ 	echo "Starting ap..."
+ start_wlan
+ brctl addbr br0
+ brctl addif br0 ath0
+ brctl addif br0 eth0
+ ifconfig br0 192.168.11.54 netmask 255.255.255
+ ifconfig br0 up
+}	
+
+start() {
+	echo " Not Starting ap yet"
+}
+stop() {
+	echo -n "Stopping wireless network..."
+	/sbin/ifdown -a
+}
+restart() {
+	stop
+	start
+}	
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+  	stop
+	;;
+  start_wlan)
+  	start_wlan
+	;;
+  start_smartcast)
+  	start_smartcast
+	;;
+  start_nat)
+  	start_nat
+	;;
+  start_router)
+  	start_router
+	;;
+  restart|reload)
+  	restart
+	;;
+  *)
+	echo $"Usage: $0 {start|stop|restart|start_wlan|start_router|start_bridge|start_nat|start_smartcast}"
+	exit 1
+esac
+
+exit $?
+

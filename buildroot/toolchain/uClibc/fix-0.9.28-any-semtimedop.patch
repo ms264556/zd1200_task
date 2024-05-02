@@ -1,0 +1,55 @@
+--- uclibc/libc/misc/sysvipc/Makefile	2008-11-03 11:19:50.000000000 -0800
++++ uclibc/libc/misc/sysvipc/Makefile	2008-11-03 11:20:13.000000000 -0800
+@@ -27,7 +27,7 @@
+ DIRS=
+ 
+ MSRC=sem.c
+-MOBJ=semget.o semctl.o semop.o
++MOBJ=semget.o semctl.o semop.o semtimedop.o
+ 
+ MSRC2=shm.c
+ MOBJ2=shmat.o shmctl.o shmdt.o shmget.o
+--- uclibc/include/sys/sem.h	2008-11-03 10:50:57.000000000 -0800
++++ uclibc/include/sys/sem.h	2008-11-03 10:52:07.000000000 -0800
+@@ -53,6 +53,10 @@
+ /* Operate on semaphore.  */
+ extern int semop (int __semid, struct sembuf *__sops, size_t __nsops) __THROW;
+ 
++/* Operate on semaphore with timeout.  */
++extern int semtimedop (int __semid, struct sembuf *__sops, size_t __nsops,
++		       __const struct timespec *__timeout) __THROW;
++
+ __END_DECLS
+ 
+ #endif /* sys/sem.h */
+--- uclibc/libc/misc/sysvipc/ipc.h	2008-11-03 13:56:43.000000000 -0800
++++ uclibc/libc/misc/sysvipc/ipc.h	2008-11-03 13:57:21.000000000 -0800
+@@ -15,6 +15,7 @@
+ #define IPCOP_semop	 1
+ #define IPCOP_semget	 2
+ #define IPCOP_semctl	 3
++#define IPCOP_semtimedop 4
+ #define IPCOP_msgsnd	11
+ #define IPCOP_msgrcv	12
+ #define IPCOP_msgget	13
+--- uclibc/libc/misc/sysvipc/sem.c	2008-11-03 11:03:38.000000000 -0800
++++ uclibc/libc/misc/sysvipc/sem.c	2008-11-03 11:04:14.000000000 -0800
+@@ -88,3 +88,18 @@
+ }
+ #endif
+ #endif
++
++#ifdef L_semtimedop
++
++#ifdef __NR_semtimedop
++_syscall4(int, semtimedop, int, semid, struct sembuf *, sops, size_t, nsops, const struct timespec *, timeout)
++
++#else
++
++int semtimedop(int semid, struct sembuf *sops, size_t nsops,
++               const struct timespec *timeout)
++{
++    return __syscall_ipc(IPCOP_semtimedop, semid, (int) nsops, (int) timeout, sops);
++}
++#endif
++#endif

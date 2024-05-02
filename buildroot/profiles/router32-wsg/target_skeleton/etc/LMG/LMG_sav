@@ -1,0 +1,5 @@
+#!/bin/sh
+rpm -s wifi0/wlan-maxwlan* -s wifi0/wlan8/* -s wifi0/wlan9/* -s mesh* -s apmgr* -s networks/network0/* -s networks/dns* > /writable/LMG
+ifconfig wlan1 down
+bsp set factory 2
+reboot

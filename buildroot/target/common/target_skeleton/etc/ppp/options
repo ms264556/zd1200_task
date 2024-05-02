@@ -1,0 +1,8 @@
+noauth
+noccp
+nobsdcomp
+persist
+maxfail 0
+holdoff 7
+debug
+#dump

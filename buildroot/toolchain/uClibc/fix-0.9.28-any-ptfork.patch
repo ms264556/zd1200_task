@@ -1,0 +1,27 @@
+diff -Naur uClibc-0.9.28/libpthread/linuxthreads/ptfork.c uClibc-0.9.28.new/libpthread/linuxthreads/ptfork.c
+--- uClibc-0.9.28/libpthread/linuxthreads/ptfork.c	2005-08-18 06:49:49.000000000 +0800
++++ uClibc-0.9.28.new/libpthread/linuxthreads/ptfork.c	2008-07-14 23:44:16.000000000 +0800
+@@ -25,6 +25,7 @@
+ #include <unistd.h>
+ #include "pthread.h"
+ #include "internals.h"
++#include "../../libc/stdlib/malloc-standard/malloc.h"
+ 
+ struct handler_list {
+   void (*handler)(void);
+@@ -91,12 +92,15 @@
+   parent = pthread_atfork_parent;
+   pthread_mutex_unlock(&pthread_atfork_lock);
+   pthread_call_handlers(prepare);
++  LOCK;
+   pid = __libc_fork();
+   if (pid == 0) {
++    UNLOCK;
+     __pthread_reset_main_thread();
+     __fresetlockfiles();
+     pthread_call_handlers(child);
+   } else {
++    UNLOCK;
+     pthread_call_handlers(parent);
+   }
+   return pid;

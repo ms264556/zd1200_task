@@ -1,0 +1,18 @@
+config BR2_TARGET_RESTORETOOL_KIT
+	bool "Enable system restore tool kits"
+	default n
+	help
+	  Create system restore tool kits for system rescue.
+
+config BR2_RESTORE_TOOL_TARGET_DIR
+	string "System restore initramfs output path"
+	depends on BR2_TARGET_RESTORETOOL_KIT
+	default "$(TFTPBOOT)"
+	help
+	  Output path to the initramfs of system restore tool kit
+config BR2_RESTORE_TOOL_TARGET_VER
+	string "Version of system restore tool"
+	depends on BR2_TARGET_RESTORETOOL_KIT
+	default "0.1"
+	help
+	  Set restore tool version

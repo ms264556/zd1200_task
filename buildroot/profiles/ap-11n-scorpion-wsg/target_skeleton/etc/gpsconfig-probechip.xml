@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<glgps xmlns="http://www.glpals.com/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.glpals.com/ glconfig.xsd" >
+
+<!-- It is highly recommended to view/edit this file with syntax-highlighting 
+    editors such as notepad++ or vim. This way, one can easily distinguish 
+    comments and valid code.
+    
+    This file is a primary template for Linux-like platforms.
+-->
+
+<!-- HAL essentials: Serial port, log, NMEA, IRM, NVRAM, LTO -->
+<hal 
+    acPortName="/dev/ttyS1"
+    lBaudRate="115200"  
+    cLogEnableInitState="true"
+    acLogDirectory="/tmp/gps"
+    acNmeaOutName="/var/tmp/nmeapipe"
+    ctrlPipe="/var/tmp/gpsirmctrl"
+    gpioNStdbyPath="/proc/v54bsp/gps_en"
+/>
+
+<!----------------------------------------------------------------------------->
+<!-- GLL Engine: See glgpsapi.h for supported parameters -->
+<gll
+    LogPriMask="LOG_DEBUG"
+    LogFacMask="LOG_GLLAPI | LOG_NMEA | LOG_RAWDATA | LOG_ASIC_IO" 
+    FrqPlan="FRQ_PLAN_26MHZ_2PPM"
+    RfType="GL_RF_4751_DANUBE_EXT_LNA"
+    WarmStandbyTimeout1Seconds="0"
+    WarmStandbyTimeout2Seconds="0"
+/>
+
+<!----------------------------------------------------------------------------->
+<!-- List of jobs can be performed by the GPS controller    -->
+
+<job id="probe-chip">
+    <task repeat="1">
+        <req_pos_single acc="50" timeout="1" />
+    </task>
+</job>
+</glgps>

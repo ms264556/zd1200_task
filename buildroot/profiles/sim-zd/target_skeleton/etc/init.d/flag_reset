@@ -1,0 +1,205 @@
+#!/bin/sh
+
+DEFAULT_PT=0
+
+tg_fs=
+_grep_fs()
+{
+    while read major minor blocks name; do
+        case "${minor}" in
+        $1)
+             tg_fs=${name}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/partitions
+}
+_grep_fs 1
+
+current_pat=""
+_check_pt()
+{
+   current_pat=`mount|grep ' / '|cut -d' ' -f1`
+   /etc/init.d/chk_integrity.sh check $current_pat
+   if [ $? -ne 0 ]; then
+      /bin/send_event -m "MSG_admin_system_integrity_check_fail" -n xevent -s warn -c system -v "image $1"
+   else
+      /bin/send_event -m "MSG_admin_system_integrity_check_success" -n xevent -s info -c system -v "image $1"
+   fi
+}
+
+###Stage 1, reset boot flag==========================================
+OLD_DEFAULT=/boot/lib/grub/i386-pc/default
+NEW_DEFAULT=/boot/lib/grub/default
+GRUB_SET_CMD=/boot/sbin/grub-set-default
+
+if [ "$tg_fs" != "" ]; then
+  umount_flag="no"
+  mount | grep "$tg_fs" >/dev/null
+  if [ $? -ne 0 ] ; then
+    umount_flag="yes"
+    mount -o rw,sync /dev/$tg_fs /boot
+  fi
+
+  if [ $? -eq 0 ]; then
+    next_pt=`cat $OLD_DEFAULT | grep '#' -v`
+    DEFAULT_PT=`expr $next_pt - 1`
+    if [ $DEFAULT_PT -lt 0 ]; then
+      DEFAULT_PT=0
+    fi
+
+    $GRUB_SET_CMD --root-directory=/boot/lib/ $DEFAULT_PT
+    if [ $? -eq 0 ]; then
+      mv $NEW_DEFAULT $OLD_DEFAULT
+      echo "Y">/dev/watchdog
+    else
+      echo "[$0] Cannot reset boot-up flag" >&2
+      echo "[$0] Boot-up another partition in next boot -- FIXME" >&2
+    fi
+
+    sync; sync; sync;
+    sleep 3
+    if [ "$umount_flag" = "yes" ]; then
+      umount /boot
+    fi
+  else
+    echo "[$0] Cannot mount bootfs partition" >&2
+    echo "[$0] Skip reset boot-up flag -- FIXME" >&2
+  fi
+else
+  echo "[$0] Cannot find bootfs partition" >&2
+  echo "[$0] Skip reset boot-up flag -- FIXME" >&2
+fi
+
+###Stage 2 system integrity==========================================
+IMGDIR=/etc/airespider-images
+FIRMWARE_DIR=$IMGDIR/firmwares
+UPGRADE_LOG=/etc/airesipder/dump/web_upg.log
+DUPLICATE_FLAG=$IMGDIR/duplicate
+PRE_VERSION=$IMGDIR/upgraded.fromver
+PRE_BUILD=$IMGDIR/upgraded.frombld
+ZD_BOOTMENU=/boot/lib/grub/i386-pc/menu.lst
+
+if [ -f $DUPLICATE_FLAG ]; then
+   new_pat=`cat $DUPLICATE_FLAG`
+   index_pat=`echo $new_pat|sed "s/...//g"`
+   index_pat=`expr 5 - $index_pat`
+   _grep_fs $index_pat
+
+   mount | grep "$new_pat" >/dev/null
+   if [ $? -eq 0 ]; then
+     /etc/init.d/chk_integrity.sh check-ap-image;
+     if [ $? -eq 0 ]; then
+        #new rootfs good, ap image good
+        if [ -f $PRE_VERSION -a -f $PRE_BUILD ]; then
+           pre_vb=`cat $PRE_VERSION`.`cat $PRE_BUILD`
+           cur_vb=`cat /bin/VERSION`.`cat /bin/BUILD`
+           echo "Starting system backup..." >&2 
+           echo "Your previous web upgrade succeed, from $pre_vb to $cur_vb" >&2
+           /bin/sys_wrapper.sh "upgrade-done" "success"
+           rm -f $PRE_VERSION $PRE_BUILD
+        fi
+        source_pat=/dev/$new_pat
+        target_pat=/dev/$tg_fs
+        rm -rf $FIRMWARE_DIR.$tg_fs
+     else
+        #new rootfs good, ap imgae corrupt
+        pre_vb=`cat $PRE_VERSION`.`cat $PRE_BUILD`
+        echo "Your previous web upgrade failed..." >&2
+        echo "AP image(s) is/are corrupted, system will reboot and rollback to $pre_vb" >&2
+        /bin/sys_wrapper.sh "upgrade-done" "reboot_rollback"
+        #rm -f $PRE_VERSION $PRE_BUILD
+
+        #Swap partition
+        sed -i -e 's/hd0\,1/hd0\,99/' -e 's/hda2/hda99/' -e 's/hd0\,2/hd0\,1/' -e 's/hda3/hda2/' -e 's/hd0\,99/hd0\,2/' -e 's/hda99/hda3/' -e 's/sda2/sda99/' -e 's/sda3/sda2/' -e 's/sda99/sda3/' $ZD_BOOTMENU;
+        $GRUB_SET_CMD --root-directory=/boot/lib/ 0;
+        if [ $? -eq 0 ]; then
+            mv $NEW_DEFAULT $OLD_DEFAULT;
+        fi
+
+        /bin/sys_wrapper.sh "restart" 0
+     fi
+   else
+     #new rootfs bad
+     if [ -f $PRE_VERSION -a -f $PRE_BUILD ]; then
+        pre_vb=`cat $PRE_VERSION`.`cat $PRE_BUILD`
+        echo "Your previous web upgrade failed...">&2
+        echo "Root file system is corrupted, system is rollback to $pre_vb" >&2
+        /bin/sys_wrapper.sh "upgrade-done" "rollback"
+        rm -f $PRE_VERSION $PRE_BUILD
+     fi
+     source_pat=/dev/$tg_fs
+     target_pat=/dev/$new_pat
+
+     #Ok to remove AP images without checking.
+     if [ -d $FIRMWARE_DIR.$tg_fs ]; then
+       rm -rf $FIRMWARE_DIR/*
+       mv $FIRMWARE_DIR.$tg_fs/* $FIRMWARE_DIR/
+       rm -rf $FIRMWARE_DIR.$tg_fs
+     else
+       echo "[$0] Your AP image may not consistency -- FIXME" >&2
+     fi
+   fi
+
+   if [ -f /file_list.txt ]; then
+     echo "
+        /etc/init.d/chk_integrity.sh clone $target_pat;
+        if [ \$? -ne 0 ]; then
+           echo [$0] Duplication/rollback failed, will retry in next bootup. >&2;
+        else
+           rm -f $DUPLICATE_FLAG;
+        fi
+     " | sh &
+   else
+   # old fashion, just keep it!!
+     echo "
+        dd if=$source_pat of=$target_pat;
+        if [ \$? -ne 0 ]; then 
+           echo [$0] Duplication/rollback failed, will retry in next bootup. >&2;
+        else
+           rm -f $DUPLICATE_FLAG;
+        fi
+     " | sh &
+   fi
+elif [ $DEFAULT_PT -eq 1 ]; then
+   #in backup image:
+   #1. do system integrity checking, if error, show msg
+   echo "Starting system integrity checking ..."
+   _check_pt "backup"
+
+   #1. clone backup image to alternative partition
+   #   a. if error, show msg
+   #   b. otherwise, swith boot flag (current <--> backup)
+   pat_prefix=`echo $current_pat|sed 's/\(.*\)./\1/g'`
+   index_pat=`echo $current_pat|sed 's/.*\(.\)/\1/g'`
+   alter_pat=$pat_prefix`expr 5 - $index_pat`
+
+   echo "
+      /etc/init.d/chk_integrity.sh clone $alter_pat; 
+      if [ $? -ne 0 ]; then
+         /bin/send_event -m 'MSG_admin_system_auto_recovery_fail' -n xevent -s error -c system;
+      else
+         sed -i -e 's/hd0\,1/hd0\,99/' -e 's/hda2/hda99/' -e 's/hd0\,2/hd0\,1/' -e 's/hda3/hda2/' -e 's/hd0\,99/hd0\,2/' -e 's/hda99/hda3/' -e 's/sda2/sda99/' -e 's/sda3/sda2/' -e 's/sda99/sda3/' $ZD_BOOTMENU;
+         $GRUB_SET_CMD --root-directory=/boot/lib/ 0;
+         if [ $? -eq 0 ]; then
+             mv $NEW_DEFAULT $OLD_DEFAULT;
+             /bin/send_event -m 'MSG_admin_system_auto_recovery_success' -n xevent -s info -c system;
+         fi
+      fi
+   " | sh &
+else
+   if [ -f $PRE_VERSION -a -f $PRE_BUILD ]; then
+      pre_vb=`cat $PRE_VERSION`.`cat $PRE_BUILD`
+      echo "Your previous web upgrade failed..." >&2 
+      echo "System already rollback to $pre_vb" >&2
+      /bin/sys_wrapper.sh "upgrade-done" "rollback"
+      rm -f $PRE_VERSION $PRE_BUILD
+   fi
+
+   #in current image:
+   #1. do system integrity checking, if error, show msg
+   echo "Starting system integrity checking ..."
+   _check_pt "current"
+fi
+
+

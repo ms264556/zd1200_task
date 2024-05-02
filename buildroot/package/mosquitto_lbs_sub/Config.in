@@ -1,0 +1,6 @@
+config BR2_PACKAGE_MOSQUITTO_LBS_SUB
+	bool "LBS SUB CLIENT DAEMON"
+    default n
+	help
+	  LBS subscriber daemon
+

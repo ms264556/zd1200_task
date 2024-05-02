@@ -1,0 +1,5 @@
+config BR2_PACKAGE_IRQBALANCE
+	bool "irqbalance"
+	default n
+	help
+	  Build irqbalance daemon

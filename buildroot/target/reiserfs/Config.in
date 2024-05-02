@@ -1,0 +1,57 @@
+config BR2_TARGET_REISERFS
+	bool "reiser filesystem"
+	default n 
+	help
+	  Build reiser filesystems
+
+config BR2_TARGET_DATAFS_REISERFS
+	bool "reiser data filesystem"
+	default y
+	depends on BR2_TARGET_REISERFS
+	help
+	  Build a reiser data filesystem
+
+config BR2_TARGET_DATAFS_BLOCKS
+	string "size in blocks (leave at 0 for auto calculation)"
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default 0
+	help
+	  Number of blocks in datafs
+
+config BR2_TARGET_DATAFS_RESERVED_BLOCKS
+	string "reserved blocks"
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default 1024
+	help
+	  Number of reserved blocks in datafs
+
+config BR2_TARGET_DATAFS_JOURNAL_BLOCKS
+	string "journal size in blocks (leave at 0 for default 8193)"
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default 0
+	help
+	  Number of journal blocks in datafs (513~32749)
+
+config BR2_TARGET_DATAFS_BLOCK_SIZE
+	string "block size in bytes (leave at 0 for default 4096)"
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default 0
+	help
+	  Block size in bytes
+
+config BR2_TARGET_DATAFS_REISERFS_ROOT
+	bool "Make all files be owned by root"
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default y
+	
+config BR2_TARGET_DATAFS_REISERFS_OUTPUT
+	string "Output File"
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default "$(BUILD_DIR)/datafs.reiserfs.$(PROFILE)"
+
+config BR2_TARGET_DATAFS_REISERFS_COPYTO
+	string "also copy the image to..."
+	depends on BR2_TARGET_DATAFS_REISERFS
+	default "/tftpboot"
+	help
+		Copies the resulting image to a secondary location.

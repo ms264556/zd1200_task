@@ -1,0 +1,16 @@
+config BR2_PACKAGE_UBOOT
+	bool "uboot"
+	default n
+	help
+	  The uboot bootloader
+
+config BR2_UBOOT_CLEAN_BUILD
+	bool "uboot_clean_build"
+	depends on BR2_PACKAGE_UBOOT
+	help
+	  The uboot bootloader clean build
+
+config BR2_PACKAGE_UBOOT_PATH
+	string "path to uboot source directory"
+#	depends on BR2_PACKAGE_UBOOT
+#	default "../atheros/linux/boot/u-boot"

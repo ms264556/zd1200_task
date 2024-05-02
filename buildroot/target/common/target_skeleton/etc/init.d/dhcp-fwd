@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Start the dhcp-fwd...
+#
+
+start() {
+	pidfile='/var/run/dhcp-fwd.pid'
+	if [ -r $pidfile ]; then
+		echo "Stopping dhcp-fwd..."
+		pid=`cat $pidfile`
+		kill $pid
+		rm $pidfile
+	fi
+	if [ ! -r $pidfile ]; then
+		echo "Starting dhcp-fwd..."
+		/usr/sbin/dhcp-fwd -c /tmp/dhcp-fwd.conf
+	fi
+}
+
+stop() {
+	pidfile='/var/run/dhcp-fwd.pid'
+	if [ -r $pidfile ]; then
+		echo "Stopping dhcp-fwd..."
+		pid=`cat $pidfile`
+		kill $pid
+		rm $pidfile
+	fi
+}
+
+case "$1" in
+start)
+	start $*
+	;;
+stop)
+	stop
+	;;
+*)
+	echo $"Usage: $0 {start|stop}"
+	exit 1
+esac
+
+exit $?

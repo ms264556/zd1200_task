@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LIBIPC_SOCK
+	bool "Ruckus ipc socket library"
+	default n
+	help
+	  Ruckus ipc socket library.

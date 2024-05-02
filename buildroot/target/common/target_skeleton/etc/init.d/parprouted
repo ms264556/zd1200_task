@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# Start the parprouted...
+#
+
+start() {
+	pidfile='/var/run/parprouted.pid'
+	if [ -r $pidfile ]; then
+		echo "Stopping parprouted..."
+		pid=`cat $pidfile`
+		kill $pid
+		sleep 3
+		echo 0 > /proc/sys/net/ipv4/ip_forward
+	fi
+	if [ ! -r $pidfile ]; then
+		echo "Starting parprouted..."
+		/usr/sbin/parprouted $1 $2
+		echo 1 > /proc/sys/net/ipv4/ip_forward
+	fi
+}
+
+stop() {
+	pidfile='/var/run/parprouted.pid'
+	if [ -r $pidfile ]; then
+		echo "Stopping parprouted..."
+		pid=`cat $pidfile`
+		kill $pid
+		echo 0 > /proc/sys/net/ipv4/ip_forward
+	fi
+}
+
+case "$1" in
+start)
+	shift;
+	start $*
+	;;
+stop)
+	stop
+	;;
+*)
+	echo $"Usage: $0 {start|stop}"
+	exit 1
+esac
+
+exit $?

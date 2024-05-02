@@ -1,0 +1,9 @@
+config BR2_PACKAGE_IPSEC_TOOLS
+	bool "ipsec-tools"
+	default n
+	help
+	  IPsec-Tools is a port of KAME's IPsec utilities to the Linux-2.6
+          IPsec implementation.
+
+	  http://ipsec-tools.sourceforge.net/
+

@@ -1,0 +1,64 @@
+--- nuttcp-5.3.1/nuttcp-5.3.1.c	2006-06-08 14:52:14.000000000 +0800
++++ /root/depot/mainline/buildroot/build/metro32/build_mips_release/nuttcp-5.3.1/nuttcp-5.3.1.c	2007-01-27 18:46:24.000000000 +0800
+@@ -446,6 +446,10 @@
+ #undef IPV6_V6ONLY
+ #endif
+ 
++//Add by CHT "1/27/2007"
++#define RSM_NUTTCP_PIDFILE                "/var/run/nuttcp.pid"
++
++
+ void sigpipe( int signum );
+ void sigint( int signum );
+ void ignore_alarm( int signum );
+@@ -709,6 +713,7 @@
+ double cput = 0.000001, realt = 0.000001;	/* user, real time (seconds) */
+ double realtd = 0.000001;	/* real time delta - for interval reporting */
+ 
++
+ #ifdef SIGPIPE
+ void
+ sigpipe( int signum )
+@@ -973,6 +978,11 @@
+ 	int skiparg;
+ 	int reqval;
+ 
++
++//Add by CHT "1/27/2007"
++	FILE *fd_rks = fopen(RSM_NUTTCP_PIDFILE, "w");
++
++
+ 	sendwin = 0;
+ 	rcvwin = 0;
+ 	srvrwin = -1;
+@@ -1653,8 +1663,20 @@
+ 	if (clientserver && !inetd && !nofork) {
+ 		if ((pid = fork()) == (pid_t)-1)
+ 			err("can't fork");
+-		if (pid != 0)
++		if (pid != 0){
++				//Add by CHT "1/27/2007"
++				if (fd_rks != NULL) {
++					fprintf(fd_rks, "%d\n", pid);
++					fclose(fd_rks);
++				}
++				else
++				{
++					printf("error can't create pid file");
++				  return;
++				}
++				//Add by CHT "1/27/2007" end
+ 			exit(0);
++		}
+ 	}
+ 
+ #ifdef HAVE_SETPRIO
+@@ -2951,7 +2973,7 @@
+ 			if ((pid = fork()) == (pid_t)-1)
+ 				err("can't fork");
+ 			if (pid == 0) {
+-				while (fgets(linebuf, sizeof(linebuf),
++					while (fgets(linebuf, sizeof(linebuf),
+ 					     stdin) && !intr) {
+ 					if (strncmp(linebuf, "DONE", 4)
+ 							== 0)

@@ -1,0 +1,329 @@
+diff -rupN lldpd-0.7.1.org/config.h.in lldpd-0.7.1/config.h.in
+--- lldpd-0.7.1.org/config.h.in	2013-01-12 15:34:28.000000000 -0800
++++ lldpd-0.7.1/config.h.in	2013-02-26 15:01:02.292322968 -0800
+@@ -175,6 +175,9 @@
+ /* Which user to use for privilege separation */
+ #undef PRIVSEP_USER
+ 
++/* Define to Ruckus lldp changes */
++#undef RCKS_LLDP
++
+ /* Define to 1 if you have the ANSI C header files. */
+ #undef STDC_HEADERS
+ 
+diff -rupN lldpd-0.7.1.org/configure lldpd-0.7.1/configure
+--- lldpd-0.7.1.org/configure	2013-01-12 15:34:26.000000000 -0800
++++ lldpd-0.7.1/configure	2013-02-26 15:01:02.292322968 -0800
+@@ -18941,69 +18941,6 @@ case ".${ac_res}" in
+  ;;
+ esac
+ 
+-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking CFLAGS for gcc -fstack-protector" >&5
+-$as_echo_n "checking CFLAGS for gcc -fstack-protector... " >&6; }
+-if ${ac_cv_cflags_gcc_option__fstack_protector+:} false; then :
+-  $as_echo_n "(cached) " >&6
+-else
+-  ac_cv_cflags_gcc_option__fstack_protector="no, unknown"
+-
+- ac_ext=c
+-ac_cpp='$CPP $CPPFLAGS'
+-ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+-ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+-ac_compiler_gnu=$ac_cv_c_compiler_gnu
+-
+- ac_save_CFLAGS="$CFLAGS"
+-for ac_arg in "-pedantic -Werror % -fstack-protector"     "-pedantic % -fstack-protector %% no, obsolete"     #
+-do CFLAGS="$ac_save_CFLAGS "`echo $ac_arg | sed -e 's,%%.*,,' -e 's,%,,'`
+-   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+-/* end confdefs.h.  */
+-
+-int
+-main ()
+-{
+-return 0;
+-  ;
+-  return 0;
+-}
+-_ACEOF
+-if ac_fn_c_try_compile "$LINENO"; then :
+-  ac_cv_cflags_gcc_option__fstack_protector=`echo $ac_arg | sed -e 's,.*% *,,'` ; break
+-fi
+-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+-done
+- CFLAGS="$ac_save_CFLAGS"
+- ac_ext=c
+-ac_cpp='$CPP $CPPFLAGS'
+-ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+-ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+-ac_compiler_gnu=$ac_cv_c_compiler_gnu
+-
+-
+-fi
+-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_cflags_gcc_option__fstack_protector" >&5
+-$as_echo "$ac_cv_cflags_gcc_option__fstack_protector" >&6; }
+-ac_res=$ac_cv_cflags_gcc_option__fstack_protector
+-case ".${ac_res}" in
+-     .ok|.ok,*)  ;;
+-   .|.no|.no,*)  ;;
+-   *)
+-   if echo " $CFLAGS " | grep " ${ac_res} " 2>&1 >/dev/null
+-   then { { $as_echo "$as_me:${as_lineno-$LINENO}: : CFLAGS does contain \${ac_res}"; } >&5
+-  (: CFLAGS does contain ${ac_res}) 2>&5
+-  ac_status=$?
+-  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+-  test $ac_status = 0; }
+-   else { { $as_echo "$as_me:${as_lineno-$LINENO}: : CFLAGS=\"\$CFLAGS \${ac_res}\""; } >&5
+-  (: CFLAGS="$CFLAGS ${ac_res}") 2>&5
+-  ac_status=$?
+-  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+-  test $ac_status = 0; }
+-                      CFLAGS="$CFLAGS ${ac_res}"
+-   fi
+- ;;
+-esac
+ 
+ { $as_echo "$as_me:${as_lineno-$LINENO}: checking CFLAGS for gcc -D_FORTIFY_SOURCE=2" >&5
+ $as_echo_n "checking CFLAGS for gcc -D_FORTIFY_SOURCE=2... " >&6; }
+@@ -21316,7 +21253,7 @@ _ACEOF
+ else
+ 
+ cat >>confdefs.h <<_ACEOF
+-#define PRIVSEP_USER "_lldpd"
++#define PRIVSEP_USER "root"
+ _ACEOF
+ 
+ fi
+@@ -21334,11 +21271,15 @@ _ACEOF
+ else
+ 
+ cat >>confdefs.h <<_ACEOF
+-#define PRIVSEP_GROUP "_lldpd"
++#define PRIVSEP_GROUP "root"
+ _ACEOF
+ 
+ fi
+ 
++cat >>confdefs.h <<_ACEOF
++#define RCKS_LLDP   1
++_ACEOF
++
+ 
+ 
+ 
+@@ -21365,7 +21306,7 @@ fi
+ if test "${enable_cdp+set}" = set; then :
+   enableval=$enable_cdp; enable_cdp=$enableval
+ else
+-  enable_cdp=yes
++  enable_cdp=no
+ fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether to enable Cisco Discovery Protocol" >&5
+@@ -21386,7 +21327,7 @@ $as_echo "no" >&6; }
+ if test "${enable_fdp+set}" = set; then :
+   enableval=$enable_fdp; enable_fdp=$enableval
+ else
+-  enable_fdp=yes
++  enable_fdp=no
+ fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether to enable Foundry Discovery Protocol" >&5
+@@ -21407,7 +21348,7 @@ $as_echo "no" >&6; }
+ if test "${enable_edp+set}" = set; then :
+   enableval=$enable_edp; enable_edp=$enableval
+ else
+-  enable_edp=yes
++  enable_edp=no
+ fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether to enable Extreme Discovery Protocol" >&5
+@@ -21428,7 +21369,7 @@ $as_echo "no" >&6; }
+ if test "${enable_sonmp+set}" = set; then :
+   enableval=$enable_sonmp; enable_sonmp=$enableval
+ else
+-  enable_sonmp=yes
++  enable_sonmp=no
+ fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether to enable SynOptics Network Management Protocol" >&5
+@@ -21472,7 +21413,7 @@ $as_echo "no" >&6; }
+ if test "${enable_dot1+set}" = set; then :
+   enableval=$enable_dot1; enable_dot1=$enableval
+ else
+-  enable_dot1=yes
++  enable_dot1=no
+ fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether to enable Dot1 extension (VLAN stuff)" >&5
+@@ -21493,7 +21434,7 @@ $as_echo "no" >&6; }
+ if test "${enable_dot3+set}" = set; then :
+   enableval=$enable_dot3; enable_dot3=$enableval
+ else
+-  enable_dot3=yes
++  enable_dot3=no
+ fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether to enable Dot3 extension (PHY stuff)" >&5
+diff -rupN lldpd-0.7.1.org/src/daemon/event.c lldpd-0.7.1/src/daemon/event.c
+--- lldpd-0.7.1.org/src/daemon/event.c	2013-01-12 14:31:58.000000000 -0800
++++ lldpd-0.7.1/src/daemon/event.c	2013-02-26 15:01:02.292322968 -0800
+@@ -400,7 +400,11 @@ levent_update_and_send(evutil_socket_t f
+ 	(void)fd; (void)what;
+ 	lldpd_loop(cfg);
+ 	if (cfg->g_iface_event != NULL)
++#if defined(RCKS_LLDP)
++		tv.tv_sec *= 6; // c_tx_internal * 6
++#else
+ 		tv.tv_sec *= 20;
++#endif
+ 	event_add(cfg->g_main_loop, &tv);
+ }
+ 
+diff -rupN lldpd-0.7.1.org/src/daemon/interfaces.c lldpd-0.7.1/src/daemon/interfaces.c
+--- lldpd-0.7.1.org/src/daemon/interfaces.c	2013-01-12 13:57:01.000000000 -0800
++++ lldpd-0.7.1/src/daemon/interfaces.c	2013-02-26 15:01:02.292322968 -0800
+@@ -386,6 +386,34 @@ interfaces_helper_mgmt(struct lldpd *cfg
+ 
+ 	lldpd_chassis_mgmt_cleanup(LOCAL_CHASSIS(cfg));
+ 
++#if defined(RCKS_LLDP)
++	if (cfg->g_config.c_mgmt_pattern != NULL) {
++        struct in_addr sin_addr;
++        af = LLDPD_AF_IPV4;
++        if (inet_pton(lldpd_af(af), cfg->g_config.c_mgmt_pattern,
++            addrstrbuf) == 1) {
++			sin_addr_size = sizeof(struct in_addr);
++        } else {
++            af = LLDPD_AF_IPV6;
++            if (inet_pton(lldpd_af(af), cfg->g_config.c_mgmt_pattern,
++                addrstrbuf) == 1) {
++				sin_addr_size = sizeof(struct in6_addr);
++            } else {
++			    log_debug("interfaces", "unable to convert a string to IP address");
++                return;
++            }
++        }
++        sin_addr_ptr = addrstrbuf;
++		mgmt = lldpd_alloc_mgmt(af, sin_addr_ptr, sin_addr_size, 0);
++		if (mgmt == NULL) {
++			assert(errno == ENOMEM); /* anything else is a bug */
++			log_warn("interfaces", "out of memory error");
++			return;
++		}
++		log_debug("interfaces", "add management address %s", cfg->g_config.c_mgmt_pattern);
++		TAILQ_INSERT_TAIL(&LOCAL_CHASSIS(cfg)->c_mgmt, mgmt, m_entries);
++    }
++#else
+ 	/* Is the pattern provided all negative? */
+ 	if (cfg->g_config.c_mgmt_pattern == NULL) allnegative = 1;
+ 	else if (cfg->g_config.c_mgmt_pattern[0] == '!') {
+@@ -447,6 +475,7 @@ interfaces_helper_mgmt(struct lldpd *cfg
+ 			}
+ 		}
+ 	}
++#endif
+ }
+ 
+ /* Fill up port name and description */
+diff -rupN lldpd-0.7.1.org/src/daemon/lldpd.c lldpd-0.7.1/src/daemon/lldpd.c
+--- lldpd-0.7.1.org/src/daemon/lldpd.c	2013-01-12 15:02:14.000000000 -0800
++++ lldpd-0.7.1/src/daemon/lldpd.c	2013-02-26 15:01:02.292322968 -0800
+@@ -931,9 +931,16 @@ lldpd_update_localchassis(struct lldpd *
+ 	*/
+ 	if (LOCAL_CHASSIS(cfg)->c_id == NULL) {
+ 		log_debug("localchassis", "no chassis ID is currently set, use chassis name");
++#if defined(RCKS_LLDP)
++        // v54: use mac address pool base as chassis id
++		if (!(LOCAL_CHASSIS(cfg)->c_id = strdup(cfg->g_config.c_cid_pattern)))
++			fatal("localchassis", NULL);
++		LOCAL_CHASSIS(cfg)->c_id_len = 18;
++#else
+ 		if (!(LOCAL_CHASSIS(cfg)->c_id = strdup(LOCAL_CHASSIS(cfg)->c_name)))
+ 			fatal("localchassis", NULL);
+ 		LOCAL_CHASSIS(cfg)->c_id_len = strlen(LOCAL_CHASSIS(cfg)->c_name);
++#endif
+ 		LOCAL_CHASSIS(cfg)->c_id_subtype = LLDP_CHASSISID_SUBTYPE_LOCAL;
+ 	}
+ }
+@@ -1107,8 +1114,17 @@ lldpd_main(int argc, char *argv[])
+ 	char *mgmtp = NULL;
+ 	char *cidp = NULL;
+ 	char *interfaces = NULL;
++#if defined(RCKS_LLDP)
++    // v54: tx interval option -g
++    int interval = 0;
++    // v54: time to live option -t
++    int timelive = 0;
++	char *popt, opts[] = 
++		"H:vhkrdD:xX:g:t:m:4:6:I:C:p:M:P:S:i@                    ";
++#else
+ 	char *popt, opts[] = 
+ 		"H:vhkrdD:xX:m:4:6:I:C:p:M:P:S:i@                    ";
++#endif
+ 	int i, found, advertise_version = 1;
+ #ifdef ENABLE_LLDPMED
+ 	int lldpmed = 0, noinventory = 0;
+@@ -1153,6 +1169,14 @@ lldpd_main(int argc, char *argv[])
+ 		case 'r':
+ 			receiveonly = 1;
+ 			break;
++#if defined(RCKS_LLDP)
++		case 'g':
++			interval = atoi(optarg);
++			break;
++		case 't':
++			timelive = atoi(optarg);
++			break;
++#endif
+ 		case 'm':
+ 			mgmtp = optarg;
+ 			break;
+@@ -1335,6 +1359,12 @@ lldpd_main(int argc, char *argv[])
+ 	log_debug("main", "get an ioctl socket");
+ 	if ((cfg->g_sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+ 		fatal("main", "failed to get ioctl socket");
++#if defined(RCKS_LLDP)
++    // v54: tx internal range 1..300s, default is 30s
++    if ((interval >= 1) && (interval <= 300))
++	    cfg->g_config.c_tx_interval = interval;
++	else
++#endif
+ 	cfg->g_config.c_tx_interval = LLDPD_TX_INTERVAL;
+ 
+ 	/* Description */
+@@ -1369,6 +1399,12 @@ lldpd_main(int argc, char *argv[])
+ 		cfg->g_config.c_noinventory = 1;
+ #endif
+ 
++#if defined(RCKS_LLDP)
++    // v54: time to live range 60..1200s, default is 120s
++    if ((timelive >= 60) && (timelive <= 1200))
++	    lchassis->c_ttl = timelive;
++	else
++#endif
+ 	/* Set TTL */
+ 	lchassis->c_ttl = LLDPD_TTL;
+ 
+diff -rupN lldpd-0.7.1.org/src/lib/atom-private.c lldpd-0.7.1/src/lib/atom-private.c
+--- lldpd-0.7.1.org/src/lib/atom-private.c	2013-01-12 13:57:01.000000000 -0800
++++ lldpd-0.7.1/src/lib/atom-private.c	2013-02-26 15:01:02.302633814 -0800
+@@ -260,8 +260,19 @@ static lldpctl_map_t port_med_pow_source
+ 	{ 0, NULL }
+ };
+ 
++#if defined(RCKS_LLDP)
++static lldpctl_map_t port_dot3_power_priority_map_copy[] = {
++	{ 0,                          "unknown" },
++	{ LLDP_MED_POW_PRIO_CRITICAL, "critical" },
++	{ LLDP_MED_POW_PRIO_HIGH,     "high" },
++	{ LLDP_MED_POW_PRIO_LOW,      "low" },
++	{ 0, NULL },
++};
++static lldpctl_map_t *port_med_pow_priority_map = port_dot3_power_priority_map_copy;
++#else
+ static lldpctl_map_t *port_med_pow_priority_map = port_dot3_power_priority_map;
+ #endif
++#endif
+ 
+ static const char*
+ map_lookup(lldpctl_map_t *list, int n)

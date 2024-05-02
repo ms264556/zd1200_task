@@ -1,0 +1,250 @@
+#!/bin/sh
+
+# NOTE
+# 
+# sys_init should prepare the file system to a ready state
+# i.e. after sys_init, it can be running for all platforms
+# 
+
+
+_sys_start()
+{
+mount -o remount,ro /
+mount -a
+
+#
+# adjust buffer cache behavior
+#
+echo "10"  >/proc/sys/vm/dirty_ratio
+echo "5"   >/proc/sys/vm/dirty_background_ratio
+echo "200" >/proc/sys/vm/dirty_writeback_centisecs
+echo "1500">/proc/sys/vm/dirty_expire_centisecs
+
+#
+# mount bootfs
+boot_fs=
+_grep_bootfs()
+{
+    while read major minor blocks name; do
+        case "${minor}" in
+        $1)
+             boot_fs=${name}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/partitions
+}
+_grep_bootfs 1
+
+if [ "${boot_fs}" != "" ]; then
+    mount -o sync /dev/${boot_fs} /boot
+else
+    echo "[sys_init] Cannot find bootfs partition" >&2i
+    echo "[sys_init] himem not avaliable -- FIXME" >&2
+fi
+
+#force rescan board data/board config
+echo "1" >/proc/v54bsp/Rescan
+
+#
+#insmod v54_bsp
+#
+
+#start led, blinking red
+/bin/led.sh red blink
+
+#
+# mount datafs
+data_fs=
+_grep_datafs()
+{
+    while read major minor blocks name; do
+        case "${minor}" in
+        $1)
+             data_fs=${name}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/partitions
+}
+_grep_datafs 4
+
+if [ "${data_fs}" != "" ]; then
+    # In rare case, datafs takes 3~4 minutes to consistance checking, 
+    # disable watchdog before mounting
+    echo "D">/dev/watchdog
+    echo "Mount is writable. If the system is rebooting after a crash, rebooting may take a few minutes."
+    mount -o sync /dev/${data_fs} /writable
+    echo "E">/dev/watchdog
+    if [ ! -d /writable/etc ]; then
+        mkdir /writable/etc
+    fi
+else
+    echo "[sys_init] Cannot find datafs partition" >&2
+    echo "[sys_init] use tmpfs for datafs -- FIXME" >&2
+    mount -t tmpfs /writable
+    mkdir -p /writable/etc
+fi
+
+#mount stg0 and apimg
+_grep_mtd()
+{
+    mount | grep "${data_fs}"
+    if [ ${?} -eq 0 ]; then
+        if [ ! -d "$1" ] ; then
+                mkdir "$1"
+        fi
+    else
+        echo "[sys_init] Cannot find $1 partition" >&2
+        echo "[sys_init] use tmpfs for $2 -- FIXME"
+        mkdir -p "$2"
+        mount -t tmpfs "$2"
+    fi
+}
+_grep_mtd /writable/etc/airespider-images
+
+# mount supportxt/ as tmpfs
+# this is a tricky arrangement to satisfy:
+# - tftp cannot follow links to a different rooted directory
+#   (i.e. create a /path/to/tftproot/ ->/tmp/supportxt/ won't work)
+# - it's preferred to use RAM to store the data rather than flash
+#   (as periodically supportxt retrieval from AP is implemented, this is a must)
+mkdir -p /writable/etc/airespider-images/firmwares/supportxt
+mount -t tmpfs -o size=4m tmpfs /writable/etc/airespider-images/firmwares/supportxt
+
+# change kernel parameters
+#sysctl -w net.unix.max_dgram_qlen=200
+#sysctl -w net.core.rmem_default=262144
+#sysctl -w net.core.rmem_max=262144
+sysctl -w net.unix.max_dgram_qlen=50000
+sysctl -w net.core.rmem_default=8388608
+sysctl -w net.core.rmem_max=16777216
+sysctl -w net.core.wmem_default=8388608
+sysctl -w net.core.wmem_max=16777216
+sysctl -w net.core.netdev_max_backlog=5000
+sysctl -w kernel.shmmax=100663296
+
+#to defend DDOS attack+SYN Flooding
+echo 1 > /proc/sys/net/ipv4/tcp_syncookies
+
+#
+
+#
+# set up /tmp directories
+if [ ! -d /tmp/non_persist ]; then
+    mkdir /tmp/non_persist
+fi
+#
+# fix links for /var
+vardirs="run log spool lock ftp"
+for d in ${vardirs} ;do
+#	rm -f  /var/${d}
+	mkdir -p /tmp/var/${d}
+# symlink for these are already in target_skeleton
+#	ln -fs /tmp/var/${d} /var/${d}
+done
+
+# urandom
+/etc/init.d/urandom start
+
+# random seed
+mkdir -p /writable/etc/system
+
+_is_bad_ver()
+{
+    _ver=$1
+    _build=$2
+    _is_bad="no"
+
+    case "$_ver" in
+    "9.3.2.0") 
+        #9.3.2.0.7 ~ 9.3.2.0.16
+        if [ "$_build" -ge "7" -a "$_build" -le "16" ] ; then
+            _is_bad="yes"
+        fi
+    ;;
+    "9.3.2.6") 
+        #9.3.2.6.1 ~ 9.3.2.6.19
+        if [ "$_build" -ge "1" -a "$_build" -le "19" ] ; then
+            _is_bad="yes"
+        fi
+    ;;
+    "9.4.0.0") 
+        #9.4.0.0.112 ~ 9.4.0.0.117
+        if [ "$_build" -ge "112" -a "$_build" -le "117" ] ; then
+            _is_bad="yes"
+        fi
+    ;;
+    "9.4.2.0") 
+        #9.4.2.0.1 ~ 9.4.2.0.4
+        if [ "$_build" -ge "1" -a "$_build" -le "4" ] ; then
+            _is_bad="yes"
+        fi
+    ;;
+    "9.5.0.0") 
+        #9.5.0.0.1 ~  9.5.0.0.50
+        if [ "$_build" -ge "1" -a "$_build" -le "50" ] ; then
+            _is_bad="yes"
+        fi
+    ;;
+    esac
+
+    echo $_is_bad
+}
+
+#ignore factory default if upgrade/downgrade between normal build and troublesome build
+_ignore_factory()
+{
+    _ignore="no"
+
+    _platform=`cat /proc/rks_hw_info/platform`
+    if [  "$_platform" = "T5520UR" ] ; then
+        if [ -f /etc/airespider-images/upgraded.fromver -a -f /etc/airespider-images/upgraded.frombld ] ; then
+            _from_ver=`cat /etc/airespider-images/upgraded.fromver`
+            _from_build=`cat /etc/airespider-images/upgraded.frombld`
+            _from_bad_ver=`_is_bad_ver $_from_ver $_from_build`
+
+            _cur_ver=`cat /bin/VERSION`
+            _cur_build=`cat /bin/BUILD`
+            _cur_bad_ver=`_is_bad_ver $_cur_ver $_cur_build`
+
+            #echo "_from_ver=$_from_ver _from_build=$_from_build _from_bad_ver=$_from_bad_ver _cur_ver=$_cur_ver _cur_build=$_cur_build _cur_bad_ver=$_cur_bad_ver" >> /tmp/dbgfctdfl
+            if [ "$_from_bad_ver" != "$_cur_bad_ver" ] ; then
+                _ignore="yes"
+            fi
+        fi
+    fi
+
+    #echo "_ignore=$_ignore" >> /tmp/dbgfctdfl
+    echo $_ignore
+}
+
+
+
+# BSP doesn't exists. Platform porting needed
+echo "[sys_init] /proc/v54bsp/ doesn't exist"
+echo "[sys_init] Already fake /bin/MODEL and /bin/SERIAL -- FIXME"   
+
+mount -t tmpfs tmpfs /proc/v54bsp
+
+cp -av /etc/fakeBsp/* /proc/v54bsp/
+
+    
+
+#mount -o remount,ro /
+mount
+}
+
+_sys_stop()
+{
+	mount -o remount,rw /
+	/etc/init.d/urandom stop
+}
+
+
+case "$1" in
+start|"")
+	_sys_start ;;
+stop)	_sys_stop ;;
+*)	;;
+esac

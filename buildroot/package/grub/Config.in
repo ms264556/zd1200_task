@@ -1,0 +1,66 @@
+config BR2_PACKAGE_GRUB
+	bool "grub"
+	default n
+	help
+	  The grub bootloader
+
+config BR2_PACKAGE_GRUB_BUILD
+	string "Ruckus Grub version.build"
+	depends BR2_PACKAGE_GRUB
+	default "1.0"
+	help
+	  Ruckus version.build for Grub.
+
+config BR2_PACKAGE_GRUB_OUTPUT_PATH
+	string "grub target directory"
+	depends BR2_PACKAGE_GRUB
+	default "$(BUILD_DIR)/grub_bld"
+	help
+	  Point to path of output binary
+
+config BR2_PACKAGE_GRUB_COPYTO
+	string "also install grub for USB tool"
+	depends BR2_PACKAGE_GRUB
+	depends on BR2_TARGET_USBTOOL_KIT
+	default "$(TFTPBOOT)/grub"
+	help
+	  Install Grub boot loader to another location
+	  for USB tool kits
+
+#config BR2_PACKAGE_GRUB_USBTOOL
+#	bool "Intall grub for usb tool"
+#	default y
+#	depends on BR2_PACKAGE_GRUB
+#	depends on BR2_TARGET_USBTOOL_KIT
+#	help
+#	  Install grub for usb tool
+
+config BR2_PACKAGE_GRUB_EXT2
+	bool "grub ext2fs support"
+	depends BR2_PACKAGE_GRUB
+	default n
+	help
+	  ext2fs support in Stage 2.
+
+
+config BR2_PACKAGE_GRUB_REISER
+	bool "grub resierfs support"
+	depends BR2_PACKAGE_GRUB
+	default n
+	help
+	  ReiserFS support in Stage 2.
+
+
+config BR2_PACKAGE_GRUB_FAT
+	bool "grub FATfs support"
+	depends BR2_PACKAGE_GRUB
+	default n
+	help
+	  FAT support in Stage 2.
+
+config BR2_PACKAGE_GRUB_E1000
+	bool "grub E1000 support"
+	depends BR2_PACKAGE_GRUB
+	default n
+	help
+	  Intel E1000 driver support.

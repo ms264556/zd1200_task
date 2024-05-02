@@ -1,0 +1,12 @@
+# change console output level for kernel print
+if [ $# -eq 1 ] ; then
+case $1 in
+[1-7])
+echo "${1} 4 1 7" > /proc/sys/kernel/printk
+;;
+*) 
+;;
+esac
+else
+cat /proc/sys/kernel/printk
+fi

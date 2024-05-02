@@ -1,0 +1,14 @@
+#! /bin/sh
+
+# mount point needs to match what is setup in
+# .../controller/ac/rootfs_fix.sh
+ramd=rd1
+rd1=${ramd}.img
+rd_img=/writable/ac/${rd1}
+
+if [ -f ${rd_img} ] ; then
+mount -t squashfs -o loop,ro ${rd_img} /${ramd} 
+    if [ $? -ne 0 ] ; then
+        rm -rf ${rd_img}
+    fi
+fi

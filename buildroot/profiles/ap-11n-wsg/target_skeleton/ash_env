@@ -1,0 +1,76 @@
+alias adbg0='athdebug -i wifi0'
+alias adbg1='athdebug -i wifi1'
+alias ampdu='iwpriv wlan0 ampdu'
+alias gampdu='iwpriv wlan0 get_ampdu'
+# setting phyrpt twice is not a bug here.  it is a workaround for a driver bug
+aniphy () { M=`cat /proc/sys/dev/wifi$1/phyrpt`; sysctl -w dev.wifi$1.phyrpt=1; sysctl -w dev.wifi$1.phyrpt=1; ani reset; sleep 1; ani phy; sysctl -w dev.wifi$1.phyrpt=$M; }
+alias api='apmgrinfo -a -t'
+aths() { athstats -a -i wifi$1; }
+aths1() { athstats -a -i wifi$1 1; }
+alias bc='cat /proc/v54bsp/total_boot'
+alias bl='cat /proc/net/softnet_stat'
+bbgain() { iwpriv wifi$1 hal_bbgain $2; echo 1 > /proc/sys/dev/wifi$1/ath_reset; }
+gbbgain() { iwpriv wifi$1 get_hal_bbgain; reg 0x9848; }
+blnaatn() { iwpriv wifi$1 hal_blnaatn $2; echo 1 > /proc/sys/dev/wifi$1/ath_reset; }
+gblnaatn() { iwpriv wifi$1 get_hal_blnaatn; reg 0xa20c; }
+bswatn() { iwpriv wifi$1 hal_bswatn $2; echo 1 > /proc/sys/dev/wifi$1/ath_reset; }
+gbswatn() { iwpriv wifi$1 get_hal_bswatn; reg 0xa20c; }
+chipreset() { sysctl -w dev.wifi$1.chipreset=1; }
+alias eths='cat /proc/net/eth/mac'
+alias h='sysctl -w dev.wifi0.hackedreset=\'
+alias h1='sysctl -w dev.wifi1.hackedreset=\'
+alias iveron="rpm -p apmgr-ignore-ver='t'"
+alias iveroff="rpm -d apmgr-ignore-ver"
+alias giver="rpm -s apmgr-ignore-ver"
+fstephi() { sysctl -w dev.wifi$1.firstep_high=$2; }
+fsteplo() { sysctl -w dev.wifi$1.firstep_low=$2; }
+gfirstep() { sysctl dev.wifi$1.firstep_high;  sysctl dev.wifi$1.firstep_low;  }
+alias ip='ifconfig | fgrep inet'
+alias ll='ls -la'
+lcm()  { iwpriv wifi$1 tx_cm_legacy $2; }
+glcm() { iwpriv wifi$1 get_tx_cm_legacy; }
+alias mac='cat /proc/v54bsp/MACbase'
+alias md='meshd -d'
+alias mi='meshd -I'
+alias mim='meshd -I | more'
+alias mkeys='rpm -s mesh*'
+alias mloop='( meshd -I | egrep "Loop|Unexpected|Eth" | fgrep -v engage; logread | fgrep Root; )'
+alias mm='meshd -m0xfffffffc'
+alias mn='meshd -m0xfffff7fe'
+mqstats() { rkscli -c "get mqstats wlan$1 all"; }
+mqstatsnon() { rkscli -c "get mqstats wlan$1 nonassoc"; }
+mqstatsclr() { rkscli -c "set mqstats wlan$1 clear all"; }
+alias n='sysctl -w dev.wifi0.nf=\'
+alias n1='sysctl -w dev.wifi1.nf=\'
+alias gn='athstats | grep NF'
+alias gn1='athstats -i wifi1 | grep NF'
+alias oops='cat /proc/v54bsp/oops | more'
+noreset() { sysctl -w dev.wifi$1.noreset=$2; }
+gnoreset() { sysctl dev.wifi$1.noreset; }
+alias ns=nodestats
+qos() { cat /proc/media/ifs/eth$1/qos; }
+alias r='rkscli -c'
+alias rr='cat /writable/etc/system/reboot_reason'
+rcm() { iwpriv wifi$1 rx_cm $2; }
+grcm() { iwpriv wifi$1 get_rx_cm; }
+alias rxdis='reg 0x8048=0x40000020'
+alias rxen='reg 0x8048=0x40000000'
+rxinact() { sysctl -w dev.wifi$1.rxinactthr_ms=$2; }
+grxinact() { sysctl dev.wifi$1.rxinactthr_ms; }
+alias saved='cat /writable/sysinfo/reboot_support.gz | minigzip -d'
+alias setsock='sysctl -w net.core.rmem_default=2000000; sysctl -w net.core.rmem_max=2000000'
+showcounts() { brctl showcounters br$1; }
+showips() { brctl showips br$1; }
+showmacs() { brctl showmacs br$1; }
+alias support='rkscli -c "support"; more /tmp/support'
+tcm() { iwpriv wifi$1 tx_cm $2; }
+gtcm() { iwpriv wifi$1 get_tx_cm; }
+thr62() { iwpriv wifi$1 hal_thr62 $2; echo 1 > /proc/sys/dev/wifi$1/ath_reset; }
+gthr62() { iwpriv wifi$1 get_hal_thr62; reg 0x9864; }
+tftps () { tftp -r $2 -l $2 -g $1; }
+alias ver='cat /etc/version'
+alias wd='ani weak_detect'
+wl() { wlanconfig wlan$1 list; }
+wlall () { iwconfig 2> /dev/null | fgrep wlan | awk '{ print $1 }' | while read iface; do echo $iface; wlanconfig $iface list; done; }
+alias wpa='wpa_cli status verbose'
+alias wt='ani weak_threshold'

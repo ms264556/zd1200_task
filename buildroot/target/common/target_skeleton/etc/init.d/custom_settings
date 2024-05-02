@@ -1,0 +1,91 @@
+# save/restore previous configuration data during conversion
+# after restore ${save_key_file} is renamed.  This is a one time process
+# restore also handle add/convert keys
+#
+save_dir=/tmp/custom_fix
+save_key_file=${save_dir}/upgrade.keys
+
+_convert_keys()
+{
+    while read old_key new_key ; do
+        # use new -q option
+        key_val=`rkscli -c "get rpmkey ${old_key} -q"`
+        if [ "${key_val}" != "" ] ; then
+            echo "${new_key}:${key_val}"
+        fi
+    done
+}
+
+_save_defaults()
+{
+# list of keys to be saved for later restore
+customer=$1
+if [ "${customer}" = "" ]; then
+    return 2
+fi
+
+save_list=/custom/${customer}/save_keys
+add_list=/custom/${customer}/add_keys
+conv_list=/custom/${customer}/convert_keys
+delete_list=/custom/${customer}/delete_keys
+
+if [ ! -d ${save_dir} ];then
+    rm -f ${save_dir}
+    mkdir -p ${save_dir}
+    if [ $? -ne 0 ]; then
+        echo "mkdir ${save_dir} failed" >&2
+        return 255
+    fi
+fi
+
+if [ -f ${save_list} ]; then
+    rpm -S ${save_list} > ${save_key_file}
+fi
+
+# also add new keys
+if [ -f ${add_list} ] ; then
+cat ${add_list} >> ${save_key_file}
+fi
+
+# convert keys
+if [ -f ${conv_list} ] ; then
+    rpm -c ${conv_list} >> ${save_key_file}
+fi
+
+return 0
+}
+
+_restore_defaults()
+{
+rc1=0
+if [ -f ${save_key_file} ]; then
+    rpm -r ${save_key_file}"
+    rc1=$?
+    if [ $rc1 -eq 0 ] ; then
+        mv -f ${save_key_file} ${save_key_file}.done
+    else
+        echo "Updating RPM keys failed\n" >&2
+    fi
+fi
+return ${rc1}
+}
+
+
+######
+
+case "${1}" in
+"save")
+    _save_defaults $2
+    rc=$?
+;;
+"restore")
+    _restore_defaults
+    rc=$?
+;;
+*) 
+echo "Usage: $0 save|restore [<customer>]" >&2
+return 1
+;;
+esac
+
+return ${rc}

@@ -1,0 +1,56 @@
+#!/bin/ash -x
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
+
+#PPP interface names are more meaningful than they look:
+#ppp0: PPPoE
+#ppp3: PPPoE. when management vlan is enabled
+#ppp7: PPPoL2TP
+#ppp9: Aruba RAP
+export PPPOX=pppox
+if [ "$IFNAME" = "ppp0" ]; then
+	export PPPOX=pppoe	
+        # fix firewall for NAT'ed interfaces
+        /etc/init.d/nat firewall
+fi
+if [ "$IFNAME" = "ppp3" ]; then
+	export PPPOX=pppoe	
+        # fix firewall for NAT'ed interfaces
+        /etc/init.d/nat firewall
+fi
+if [ "$IFNAME" = "ppp7" ]; then
+	export PPPOX=pppol2tp
+fi
+
+if [ "$IFNAME" = "ppp0" -o "$IFNAME" = "ppp3" ]; then
+    # set br0/br0.vid IP to 0.0.0.0
+    /sbin/ifconfig $DEVICE 0.0.0.0 2>/dev/null
+fi
+
+echo "pppd completed IPCP IPLOCAL=$IPLOCAL IPREMOTE=$IPREMOTE DNS1=$DNS1 DNS2=$DNS2 IFNAME=$IFNAME" > /tmp/$PPPOX.debug
+#echo "pppd completed IPCP IPLOCAL=$IPLOCAL IPREMOTE=$IPREMOTE DNS1=$DNS1 DNS2=$DNS2 IFNAME=$IFNAME"
+
+# The following route change is needed for PPPoE, not for PPPoL2TP
+# when "ppp7" is the PPP interface name.
+if [ "$IFNAME" != "ppp7" ]; then
+    route del default  >> /tmp/$PPPOX.debug 2>&1
+    route add default gw $IPREMOTE  >> /tmp/$PPPOX.debug 2>&1
+fi
+cat /dev/null > /etc/resolv.conf
+echo "nameserver $DNS1" > /etc/resolv.conf
+echo "nameserver $DNS2" >> /etc/resolv.conf
+
+cat /dev/null > /tmp/resolv4.conf
+echo "nameserver $DNS1" > /tmp/resolv4.conf
+echo "nameserver $DNS2" >> /tmp/resolv4.conf
+rm -f /tmp/$PPPOX.down.$IFNAME
+touch /tmp/$PPPOX.completed.$IFNAME
+
+# AeroScout update local IP/MAC address
+if [ "$IFNAME" = "ppp0" ]; then
+	AEROSCTD=/usr/bin/aerosctd
+	[ -e $AEROSCTD ] && $AEROSCTD -n > /dev/null 2>&1
+fi
+
+exit 0

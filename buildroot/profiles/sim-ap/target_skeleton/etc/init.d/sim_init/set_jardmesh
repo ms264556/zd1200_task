@@ -1,0 +1,12 @@
+#!/bin/sh
+
+params="mscan mevt mdep mrole mgrp"
+
+echo "Set Jard Mesh Data"
+for param in $params; do
+	value=`eval echo "$""$param"`
+	if [ -n $value ]; then
+		echo "-->Jardmeshd: param=$param value=$value"
+	fi
+done
+

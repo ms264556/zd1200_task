@@ -1,0 +1,11 @@
+config BR2_PACKAGE_TROUSERS
+    bool "TROUSERS"
+    default n
+    help
+        Trousers is an open-source TCG Software Stack (TSS), released under
+        the BSD License. Trousers aims to be compliant with the
+        1.1b and 1.2 TSS specifications available from the Trusted Computing
+        Group website:
+
+        http://www.trustedcomputinggroup.org
+        http://sourceforge.net/projects/trousers/files/latest/download

@@ -1,0 +1,18 @@
+#!/bin/sh
+
+
+# Start all init scripts in /etc/init.d
+# executing them in numerical order.
+#
+/etc/init.d/sys_init start
+if test -e /writable/data/persist-stg/networks/network0/ipaddress ;then
+IPADDR=`cat /writable/data/persist-stg/networks/network0/ipaddress`
+else
+IPADDR=192.168.10.233
+fi
+insmod ae531x
+telnetd
+ifconfig eth0 $IPADDR up
+echo "Set ipaddress to $IPADDR"
+insmod art_driver.o
+art_client

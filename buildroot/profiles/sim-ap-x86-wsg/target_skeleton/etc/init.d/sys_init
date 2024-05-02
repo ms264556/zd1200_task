@@ -1,0 +1,238 @@
+#!/bin/sh
+_sys_start()
+{
+#mount -o remount,rw /
+#mount -a
+mount -t proc /proc /proc
+mount -t tmpfs -o defaults,size=4M tmpfs /tmp
+
+#
+# v54_bsp now linked in kernel
+# insmod v54_bsp
+sysctl -w net.ipv4.ip_local_port_range="32768 61000"
+if [ -e /etc/sysctl.conf ]; then
+sysctl -p
+fi
+#
+
+# set unix_socket max rcv message number to 100 from 10
+echo 100 > /proc/sys/net/unix/max_dgram_qlen 
+
+if [ ${_init_} -gt 1 ] ; then
+#
+# mount bootfs
+boot_fs=
+_grep_bootfs()
+{
+    while read major minor blocks name; do
+        case "${minor}" in
+        $1)
+             boot_fs=${name}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/partitions
+}
+_grep_bootfs 1
+
+if [ "${boot_fs}" != "" ]; then
+    mount -o sync /dev/${boot_fs} /boot
+else
+    echo "[sys_init] Cannot find bootfs partition" >&2i
+    echo "[sys_init] himem not avaliable -- FIXME" >&2
+fi
+
+
+#
+# mount datafs
+data_fs=
+_grep_datafs()
+{
+    while read major minor blocks name; do
+        case "${minor}" in
+        $1)
+             data_fs=${name}
+             break ;;
+        *) ;;
+        esac
+    done < /proc/partitions
+}
+_grep_datafs 4
+
+if [ "${data_fs}" != "" ]; then
+    # In rare case, datafs takes 3~4 minutes to consistance checking, 
+    # disable watchdog before mounting
+    #echo "D">/dev/watchdog
+    echo "Mount is writable. If the system is rebooting after a crash, rebooting may take a few minutes."
+    mount -o rw,async,noatime,nolog /dev/${data_fs} /writable
+    #echo "E">/dev/watchdog
+    if [ ! -d /writable/etc ]; then
+        mkdir /writable/etc
+    fi
+else
+    echo "[sys_init] Cannot find datafs partition" >&2
+    echo "[sys_init] use tmpfs for datafs -- FIXME" >&2
+    mount -t tmpfs /writable
+    mkdir -p /writable/etc
+fi
+
+#
+# mount datafs
+#data_num=99
+#_grep_datafs()
+#{
+#    while read pn sz esz name ; do
+#        case "${name}" in
+#        '"datafs"')  data_num=${pn#mtd}
+#             data_num=${data_num%:}
+#             break ;;
+#        *) ;;
+#        esac
+#    done < /proc/mtd
+#}
+#_grep_datafs
+#if [ ${data_num} -lt 20 ]; then
+#    mount -t jffs2 /dev/mtdblock${data_num} /writable
+#	if [ ! -d /writable/etc ]; then
+#		mkdir /writable/etc
+#	fi
+#else
+#    echo "*** Cannot find datafs partition" >&2
+#fi
+
+
+# save current running version
+if [ -d /writable/etc ] ; then
+    if [ -f /writable/etc/version ] ; then
+        mv -f /writable/etc/version /writable/etc/last_version
+    fi
+    cp /etc/version /writable/etc/
+fi
+
+#
+# set up /tmp directories
+
+#
+# fix links for /var
+vardirs="run log spool lock ftp"
+for d in ${vardirs} ;do
+#	rm -f  /var/${d}
+	mkdir -p /tmp/var/${d}
+# symlink for these are already in target_skeleton
+#	ln -fs /tmp/var/${d} /var/${d}
+done
+
+# create link directories for dnsmasq and iptables
+mkdir -p /tmp/dnsmasq
+mkdir -p /tmp/iptables
+
+# create core dump directory, see video54/lib/libRutil/coredump.c
+mkdir -p /tmp/ap-dump
+
+#
+# create directory for applications
+#
+
+### apmgr
+mkdir -p /writable/etc/apmgr_cfg
+
+### CA certificate store
+CA_DIR=/writable/data/webs-certs/trustedCAs_dir
+mkdir -p ${CA_DIR}
+USER_CERT_PATH=/writable/data/user-certs
+mkdir -p ${USER_CERT_PATH}
+PORTAL_CERT_PATH=/writable/data/portal-certs
+mkdir -p ${PORTAL_CERT_PATH}
+
+# obsolete
+rm -f /writable/data/tr069/combinedcert.pem
+
+### firmware update
+mkdir -p /writable/custom
+mkdir -p /writable/fw/custom
+
+### reboot reason, temperature records...
+mkdir -p /writable/etc/system
+mkdir -p /writable/sysinfo
+
+### tr069
+mkdir -p /writable/data/tr069/data
+mkdir -p /writable/data/tr069/filetrans
+mkdir -p /writable/data/tr069/options
+mkdir -p /writable/data/tr069/parameter
+mkdir -p /writable/data/tr069/persistent_options
+mkdir -p /writable/data/tr069/transferlist
+mkdir -p /writable/data/tr069/Vouchers
+
+### WebUI
+mkdir -p /writable/web
+mkdir -p /writable/web/images
+mkdir -p /writable/web/css
+mkdir -p /writable/web/administrator
+
+### don't want any more
+rm -f /writable/non_persist
+
+# urandom
+/etc/init.d/urandom start
+
+
+# Do not edit the line below (sed is looking for it)
+# Load CA Store
+
+
+# for scripting
+mkdir -p /writable/data/scripts/start/
+mkdir -p /writable/data/scripts/stop/
+
+
+#
+# load rpmkeys
+#
+mkdir -p /writable/data/config
+rpmd start
+
+#
+# see if we want factory defaults
+#
+/etc/init.d/fix_defaults
+#
+
+# save version of current booted image
+if [ -f /etc/init.d/save_version ] ; then
+. /etc/init.d/save_version
+fi
+
+# endif for _init_ -gt 1
+fi
+
+if [ -x /proc/bus/usb ] ; then
+    mount -t usbfs none /proc/bus/usb
+fi
+
+# create gps folder
+mkdir -p /tmp/gps
+
+mount -o remount,ro /
+mount
+}
+
+_sys_stop()
+{
+	mount -o remount,rw /
+	/etc/init.d/urandom stop
+}
+
+
+if [ "$INIT" != "" ] ; then
+    _init_=${INIT}
+else
+    _init_=3
+fi
+case "$1" in
+start|"")
+	_sys_start ;;
+stop)
+	_sys_stop ;;
+*)	;;
+esac

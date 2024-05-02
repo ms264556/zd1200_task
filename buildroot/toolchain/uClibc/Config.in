@@ -1,0 +1,63 @@
+# Choose uClibc options
+#
+
+comment "uClibc Options"
+
+config BR2_UCLIBC_VERSION
+	string "uClibc version"
+	default "0.9.28"
+
+config BR2_UCLIBC_CONFIG
+	string "Config file for uClibc"
+	default "$(BR2_UCLIBC_CONFIG)"
+
+
+config BR2_UCLIBC_VERSION_SNAPSHOT
+	bool "Use a daily snapshot of uClibc?"
+	default n
+	help
+ 	    Would you like to use a daily snapshot?
+
+config BR2_USE_UCLIBC_SNAPSHOT
+	string "Date (yyyymmdd) of snapshot or 'snapshot' for latest"
+	default "snapshot"
+	depends on BR2_UCLIBC_VERSION_SNAPSHOT
+	help
+	    Use latest snapshot or one from a specific date?
+
+config BR2_UCLIBC_BUILD_DEBUG
+	bool "Debug build with symbol (no stripped)?"
+	default n
+	help
+	   Build debug version of uClibc with symbol (no stripped)?
+
+config BR2_ENABLE_LOCALE
+	bool "Enable locale/gettext/i18n support?"
+	default n
+	help
+	    Enable locale/gettext/i18n support?
+
+config BR2_UCLIBC_USBTOOL
+	bool "Enable uClibc for USB tool kit"
+	default n
+	depends on BR2_TARGET_USBTOOL_KIT 
+	help
+	    Enable uClibc for USB tool
+choice
+	prompt "Thread library implementation"
+	default BR2_PTHREADS_OLD
+	help
+	  Select the version of libpthreads you want to use.
+
+	config BR2_PTHREADS_NONE
+		bool "none"
+
+	config BR2_PTHREADS
+		bool "linuxthreads"
+
+	config BR2_PTHREADS_OLD
+		bool "linuxthreads (stable/old)"
+
+	config BR2_PTHREADS_NATIVE
+		bool "Native POSIX Threading (NPTL)"
+endchoice
