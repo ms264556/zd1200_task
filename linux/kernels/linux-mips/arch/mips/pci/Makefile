@@ -18,6 +18,11 @@ obj-$(CONFIG_PCI_TX4927)	+= ops-tx4927.o
 obj-$(CONFIG_BCM47XX)		+= pci-bcm47xx.o
 obj-$(CONFIG_BCM63XX)		+= pci-bcm63xx.o fixup-bcm63xx.o \
 					ops-bcm63xx.o
+# V54_BSP
+obj-$(CONFIG_MACH_AR7100)	+= fixup-ar7100.o ops-ar7100.o pci-ar7100.o
+# HUSKY: PCI
+# obj-$(CONFIG_AR531X)            += fixup-ar531x.o ops-ar531x.o pci-ar531x.o
+# end V54_BSP
 
 #
 # These are still pretty much in the old state, watch, go blind.

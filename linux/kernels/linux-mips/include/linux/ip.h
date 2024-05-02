@@ -102,7 +102,11 @@ struct iphdr {
 	__be32	saddr;
 	__be32	daddr;
 	/*The options start here. */
+#if defined(CONFIG_AR7100) && !defined(CONFIG_AR7240) && !defined(CONFIG_AR934x)
+} __attribute__((packed));
+#else
 };
+#endif
 
 #ifdef __KERNEL__
 #include <linux/skbuff.h>

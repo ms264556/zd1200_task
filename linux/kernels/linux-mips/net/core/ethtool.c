@@ -1161,6 +1161,7 @@ int dev_ethtool(struct net *net, struct ifreq *ifr)
 	return rc;
 }
 
+EXPORT_SYMBOL(dev_ethtool);
 EXPORT_SYMBOL(ethtool_op_get_link);
 EXPORT_SYMBOL(ethtool_op_get_sg);
 EXPORT_SYMBOL(ethtool_op_get_tso);

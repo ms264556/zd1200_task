@@ -13,6 +13,10 @@
 #ifndef _LINUX_IF_VLAN_H_
 #define _LINUX_IF_VLAN_H_
 
+
+#define VLAN_GROUP_ARRAY_LEN          4096
+
+
 #ifdef __KERNEL__
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -72,7 +76,6 @@ extern void vlan_ioctl_set(int (*hook)(struct net *, void __user *));
  * depends on completely exhausting the VLAN identifier space.  Thus
  * it gives constant time look-up, but in many cases it wastes memory.
  */
-#define VLAN_GROUP_ARRAY_LEN          4096
 #define VLAN_GROUP_ARRAY_SPLIT_PARTS  8
 #define VLAN_GROUP_ARRAY_PART_LEN     (VLAN_GROUP_ARRAY_LEN/VLAN_GROUP_ARRAY_SPLIT_PARTS)
 
@@ -107,6 +110,10 @@ static inline void vlan_group_set_device(struct vlan_group *vg,
 
 #define vlan_tx_tag_present(__skb)	((__skb)->vlan_tci)
 #define vlan_tx_tag_get(__skb)		((__skb)->vlan_tci)
+
+#if 1 /* V54_BSP */
+int has_vlan_device(struct sk_buff *skb, struct net_device *dev);
+#endif
 
 #if defined(CONFIG_VLAN_8021Q) || defined(CONFIG_VLAN_8021Q_MODULE)
 extern struct net_device *vlan_dev_real_dev(const struct net_device *dev);
@@ -325,7 +332,10 @@ enum vlan_ioctl_cmds {
 	SET_VLAN_NAME_TYPE_CMD,
 	SET_VLAN_FLAG_CMD,
 	GET_VLAN_REALDEV_NAME_CMD, /* If this works, you know it's a VLAN device, btw */
-	GET_VLAN_VID_CMD /* Get the VID of this VLAN (specified by name) */
+	GET_VLAN_VID_CMD, /* Get the VID of this VLAN (specified by name) */
+#if 1 /* V54_BSP */
+        SET_VLAN_MGMT_PRIORITY_CMD /* Set the priority of outbound traffic from a VLAN device */
+#endif
 };
 
 enum vlan_flags {
@@ -355,6 +365,9 @@ struct vlan_ioctl_args {
         } u;
 
 	short vlan_qos;   
+#if 1 /* V54_BSP */
+        int prio;
+#endif
 };
 
 #endif /* !(_LINUX_IF_VLAN_H_) */

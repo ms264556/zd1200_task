@@ -9,8 +9,13 @@
 #include <linux/root_dev.h>
 
 void  change_floppy(char *fmt, ...);
+#ifdef NAR5520
+int  mount_block_root(char *name, int flags);
+int  mount_root(void);
+#else
 void  mount_block_root(char *name, int flags);
 void  mount_root(void);
+#endif
 extern int root_mountflags;
 
 static inline int create_dev(char *name, dev_t dev)

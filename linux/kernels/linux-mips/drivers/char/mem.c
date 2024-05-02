@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
  *
- *  Added devfs support. 
+ *  Added devfs support.
  *    Jan-11-1998, C. Scott Ananian <cananian@alumni.princeton.edu>
  *  Shared /dev/zero mmaping support, Feb 2000, Kanoj Sarcar <kanoj@sgi.com>
  */
@@ -124,8 +124,8 @@ void __attribute__((weak)) unxlate_dev_mem_ptr(unsigned long phys, void *addr)
 }
 
 /*
- * This funcion reads the *physical* memory. The f_pos points directly to the 
- * memory location. 
+ * This funcion reads the *physical* memory. The f_pos points directly to the
+ * memory location.
  */
 static ssize_t read_mem(struct file * file, char __user * buf,
 			size_t count, loff_t *ppos)
@@ -141,15 +141,15 @@ static ssize_t read_mem(struct file * file, char __user * buf,
 	/* we don't have page 0 mapped on sparc and m68k.. */
 	if (p < PAGE_SIZE) {
 		sz = PAGE_SIZE - p;
-		if (sz > count) 
-			sz = count; 
+		if (sz > count)
+			sz = count;
 		if (sz > 0) {
 			if (clear_user(buf, sz))
 				return -EFAULT;
-			buf += sz; 
-			p += sz; 
-			count -= sz; 
-			read += sz; 
+			buf += sz;
+			p += sz;
+			count -= sz;
+			read += sz;
 		}
 	}
 #endif
@@ -194,7 +194,7 @@ static ssize_t read_mem(struct file * file, char __user * buf,
 	return read;
 }
 
-static ssize_t write_mem(struct file * file, const char __user * buf, 
+static ssize_t write_mem(struct file * file, const char __user * buf,
 			 size_t count, loff_t *ppos)
 {
 	unsigned long p = *ppos;
@@ -415,7 +415,7 @@ static ssize_t read_oldmem(struct file *file, char __user *buf,
 /*
  * This function reads the *virtual* memory as seen by the kernel.
  */
-static ssize_t read_kmem(struct file *file, char __user *buf, 
+static ssize_t read_kmem(struct file *file, char __user *buf,
 			 size_t count, loff_t *ppos)
 {
 	unsigned long p = *ppos;
@@ -550,7 +550,7 @@ do_write_kmem(void *p, unsigned long realp, const char __user * buf,
 /*
  * This function writes to the *virtual* memory as seen by the kernel.
  */
-static ssize_t write_kmem(struct file * file, const char __user * buf, 
+static ssize_t write_kmem(struct file * file, const char __user * buf,
 			  size_t count, loff_t *ppos)
 {
 	unsigned long p = *ppos;
@@ -615,10 +615,10 @@ static ssize_t read_port(struct file * file, char __user * buf,
 	char __user *tmp = buf;
 
 	if (!access_ok(VERIFY_WRITE, buf, count))
-		return -EFAULT; 
+		return -EFAULT;
 	while (count-- > 0 && i < 65536) {
-		if (__put_user(inb(i),tmp) < 0) 
-			return -EFAULT;  
+		if (__put_user(inb(i),tmp) < 0)
+			return -EFAULT;
 		i++;
 		tmp++;
 	}
@@ -639,7 +639,7 @@ static ssize_t write_port(struct file * file, const char __user * buf,
 		if (__get_user(c, tmp)) {
 			if (tmp > buf)
 				break;
-			return -EFAULT; 
+			return -EFAULT;
 		}
 		outb(c,i);
 		i++;
@@ -674,7 +674,7 @@ static ssize_t splice_write_null(struct pipe_inode_info *pipe,struct file *out,
 	return splice_from_pipe(pipe, out, ppos, len, flags, pipe_to_null);
 }
 
-static ssize_t read_zero(struct file * file, char __user * buf, 
+static ssize_t read_zero(struct file * file, char __user * buf,
 			 size_t count, loff_t *ppos)
 {
 	size_t written;
@@ -842,6 +842,59 @@ static const struct file_operations oldmem_fops = {
 };
 #endif
 
+#ifdef V54_BSP
+static loff_t memory_arlseek(struct file * file, loff_t offset, int orig)
+{
+        loff_t ret;
+
+        mutex_lock(&file->f_path.dentry->d_inode->i_mutex);
+        switch (orig) {
+                case 0:
+                        file->f_pos = offset & 0xffffffff;
+                        ret = file->f_pos;
+                        force_successful_syscall_return();
+                        break;
+                case 1:
+                        file->f_pos += offset;
+                        file->f_pos &= 0xffffffff;
+                        ret = file->f_pos;
+                        force_successful_syscall_return();
+                        break;
+                default:
+                        ret = -EINVAL;
+        }
+        mutex_unlock(&file->f_path.dentry->d_inode->i_mutex);
+        return ret;
+}
+
+static ssize_t read_armem(struct file *file, char __user *buf,
+			 size_t count, loff_t *ppos)
+{
+	unsigned int	pos = (unsigned int)*ppos;
+	if (copy_to_user(buf, (void *)pos, count))
+		return -EFAULT;
+	*ppos += count;
+	return count;
+}
+
+static ssize_t write_armem(struct file * file, const char __user * buf,
+			  size_t count, loff_t *ppos)
+{
+	unsigned int	pos = (unsigned int)*ppos;
+	if(copy_from_user((void *)pos, buf, count)) {
+		return -EFAULT;
+	}
+	*ppos += count;
+	return count;
+}
+
+static struct file_operations armem_fops = {
+	.llseek		= memory_arlseek,
+	.read		= read_armem,
+	.write		= write_armem,
+};
+#endif
+
 static ssize_t kmsg_write(struct file * file, const char __user * buf,
 			  size_t count, loff_t *ppos)
 {
@@ -888,6 +941,9 @@ static const struct memdev {
 	[11] = { "kmsg", 0, &kmsg_fops, NULL },
 #ifdef CONFIG_CRASH_DUMP
 	[12] = { "oldmem", 0, &oldmem_fops, NULL },
+#endif
+#ifdef V54_BSP
+    [13] = { "armem",  S_IRUSR | S_IWUSR | S_IRGRP, &armem_fops},
 #endif
 };
 

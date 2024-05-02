@@ -163,6 +163,10 @@ config NET_SB1000
 
 	  If you don't have this card, of course say N.
 
+if MPC85xx
+	source "drivers/net/fsl_pci_veth/Kconfig"
+endif
+
 source "drivers/net/arcnet/Kconfig"
 
 source "drivers/net/phy/Kconfig"
@@ -1329,6 +1333,13 @@ config PCNET32
 	  To compile this driver as a module, choose M here. The module
 	  will be called pcnet32.
 
+config PCNET32_SIM_AP_SUPPORT
+	bool "pcnet32 driver for sim-ap support"
+	default n
+	depends on PCNET32
+	---help---
+	  Say Y here if you want to support sim-ap in the driver.
+
 config AMD8111_ETH
 	tristate "AMD 8111 (new PCI lance) support"
 	depends on NET_PCI && PCI
@@ -1953,6 +1964,7 @@ config BCM63XX_ENET
 
 source "drivers/net/fs_enet/Kconfig"
 
+
 endif # NET_ETHERNET
 
 #
@@ -2038,6 +2050,13 @@ config E1000
 	  To compile this driver as a module, choose M here. The module
 	  will be called e1000.
 
+config E1000_SIM_AP_SUPPORT
+	bool "e1000 driver for sim-ap support"
+	default n
+	depends on E1000
+	---help---
+	  Say Y here if you want to support sim-ap in the driver.
+
 config E1000E
 	tristate "Intel(R) PRO/1000 PCI-Express Gigabit Ethernet support"
 	depends on PCI && (!SPARC32 || BROKEN)
@@ -2056,6 +2075,13 @@ config E1000E
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called e1000e.
+
+config E1000E_ROOMIER_RX_BUFFERS
+	bool "Roomier Rx Buffers Support"
+	default y
+	depends on E1000E
+	---help---
+	  Say Y here if you want to reserve LWAPP tunnel header room for Rx buffers in the driver.
 
 config IP1000
 	tristate "IP1000 Gigabit Ethernet support"
@@ -2383,6 +2409,70 @@ config GIANFAR
 	  This driver supports the Gigabit TSEC on the MPC83xx, MPC85xx,
 	  and MPC86xx family of chips, and the FEC on the 8540.
 
+config GFAR_TX_NONAPI
+	default n
+	bool "TX non-NAPI mode"
+	depends on GIANFAR && EXPERIMENTAL && !GIANFAR_TXNAPI
+	help
+	  TX non-NAPI mode for Ethernet load balance on multi-core.
+
+config GFAR_SKBUFF_RECYCLING
+	default y
+	bool "Socket Buffer Recycling Support (v1.1.5) (EXPERIMENTAL)"
+	depends on GIANFAR && EXPERIMENTAL
+	help
+	 This implements a new private socket data buffer recycling algorithm
+	 used for fast IPv4 packet forwarding and TCP transmission. Select this
+	 if you would like to improve your latency and throughput performance.
+
+config GIANFAR_TXNAPI
+	default n
+	bool "Introduce seperate tx_napi for cleaning the tx ring(V 0.0.1) (EXPERIMENTAL)"
+	depends on GIANFAR && EXPERIMENTAL
+	help
+	  Selecting this option introduces a seperate TX NAPI for cleaning the
+	  tx ring(s).
+
+config 1588_MUX_eTSEC1
+	bool "Selecting 1588 signals over eTSEC1 signals"
+	depends on GIANFAR
+	default n
+	help
+	  This option switches ON 1588 signals over eth1.
+	  Eth1 will not work if this is selected.
+	  This is needed when user want to use external clock, PPn signals etc
+
+config 1588_MUX_eTSEC2
+	bool "Selecting 1588 signals over eTSEC2 signals"
+	depends on GIANFAR
+	default n
+	help
+	  This option switches ON 1588 signals over eth1.
+	  Eth2 will not work if this is selected.
+	  This is needed when user want to use external clock, PPn signals etc
+
+config GIANFAR_L2SRAM
+	bool "Selecting L2sram bd allocation"
+	depends on (GIANFAR && MPC85xx)
+	select FSL_85XX_CACHE_SRAM if MPC85xx
+	help
+	  This option supports BD alloc in L2SRAM.
+
+config NET_GIANFAR_FP
+	default y
+	bool "Fast Path routing"
+	depends on GIANFAR && EXPERIMENTAL
+	help
+	  Fast path routing. To enable,
+	  $ echo 1 > /proc/sys/net/core/netdev_fastroute
+
+config GFAR_SW_PKT_STEERING
+        default n
+        bool "Enables packet steering between cpus (EXPERIMENTAL)"
+        depends on GIANFAR_TXNAPI && FSL_MPIC_MSG_INTS
+        help
+          Selecting this option enables packet steering between cpus
+
 config UCC_GETH
 	tristate "Freescale QE Gigabit Ethernet"
 	depends on QUICC_ENGINE
@@ -2408,6 +2498,13 @@ config MV643XX_ETH
 
 	  Some boards that use the Discovery chipset are the Momenco
 	  Ocelot C and Jaguar ATX and Pegasos II.
+
+config TITAN_GE
+	bool "PMC-Sierra TITAN Gigabit Ethernet Support"
+	depends on PMC_YOSEMITE
+	help
+	  This enables support for the the integrated ethernet of
+	  PMC-Sierra's Titan SoC.
 
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
@@ -2484,6 +2581,13 @@ config S6GMAC
 	  will be called s6gmac.
 
 source "drivers/net/stmmac/Kconfig"
+
+# V54_BSP
+source "drivers/net/ag7100/Kconfig"
+source "drivers/net/atheros/Kconfig"
+source "drivers/net/qca955x/Kconfig"
+source "drivers/net/qca955x_s17/Kconfig"
+# end V54_BSP
 
 endif # NETDEV_1000
 

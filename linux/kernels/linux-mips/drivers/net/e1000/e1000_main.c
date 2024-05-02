@@ -29,11 +29,30 @@
 #include "e1000.h"
 #include <net/ip6_checksum.h>
 
+#if defined(CONFIG_E1000_SIM_AP_SUPPORT)
+#include <linux/proc_fs.h>
+#endif
+
 char e1000_driver_name[] = "e1000";
 static char e1000_driver_string[] = "Intel(R) PRO/1000 Network Driver";
 #define DRV_VERSION "7.3.21-k5-NAPI"
 const char e1000_driver_version[] = DRV_VERSION;
 static const char e1000_copyright[] = "Copyright (c) 1999-2006 Intel Corporation.";
+
+#if defined(CONFIG_E1000_SIM_AP_SUPPORT)
+#define MAX_UNITS 8
+static struct net_device *devp[MAX_UNITS];
+#endif
+
+#if defined(V54_BSP)
+#ifdef RKS_SYSTEM_HOOKS
+#define skb_rx netif_rx
+#else
+#define skb_rx netif_receive_skb
+#endif
+#endif
+
+static int cards_found = 0;
 
 /* e1000_pci_tbl - PCI Device ID Table
  *
@@ -213,6 +232,76 @@ static int debug = NETIF_MSG_DRV | NETIF_MSG_PROBE;
 module_param(debug, int, 0);
 MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
 
+#if defined(CONFIG_E1000_SIM_AP_SUPPORT)
+
+#define PROC_NET_ETH   "eth"
+#define DEVICES_FILE   "devices"
+#define PORTS_FILE     "ports"
+
+static struct proc_dir_entry *proc_enet = NULL;
+static struct proc_dir_entry *devices_file = NULL;
+static struct proc_dir_entry *ports_file = NULL;
+
+static int proc_read_devices(char* page, char ** start,
+           off_t off, int count, int *eof, void *data)
+{
+    int len, i;
+    char *bp = page;
+    for(i = 0, len = 0; i < cards_found; i++) {
+        len += sprintf(bp + len, "%d eth%d %d\n", i, i, netif_carrier_ok(devp[i]));
+    }
+    return len;
+}
+
+static int proc_read_ports(char* page, char ** start,
+           off_t off, int count, int *eof, void *data)
+{
+    int len, i;
+    char *bp = page;
+    for(i = 0, len = 0; i < cards_found; i++) {
+        len += sprintf(bp + len, "%d %d\n", i, netif_carrier_ok(devp[i]));
+    }
+    return len;
+}
+
+static void e1000_remove_proc_entries(void)
+{
+    if ( proc_enet == NULL ) return;
+    remove_proc_entry(DEVICES_FILE, proc_enet);
+    remove_proc_entry(PORTS_FILE, proc_enet);
+    remove_proc_entry(PROC_NET_ETH, NULL);
+    return;
+}
+
+static void e1000_create_proc_entries(void)
+{
+    if ((proc_enet = proc_mkdir(PROC_NET_ETH, init_net.proc_net)) == NULL ){
+        printk("%s: proc_mkdir(%s,0)\n failed\n", __FUNCTION__, PROC_NET_ETH);
+        return;
+    }
+
+    if (!(devices_file = create_proc_entry(DEVICES_FILE, 0644, proc_enet))) {
+        printk("%s: create_proc_entry(%s/%s) failed\n", __FUNCTION__,
+               PROC_NET_ETH, DEVICES_FILE);
+        return e1000_remove_proc_entries();
+    }
+
+    devices_file->read_proc = proc_read_devices;
+    devices_file->data = NULL;
+
+    if (!(ports_file = create_proc_entry(PORTS_FILE, 0644, proc_enet))) {
+        printk("%s: create_proc_entry(%s/%s) failed\n", __FUNCTION__,
+               PROC_NET_ETH, DEVICES_FILE);
+        return e1000_remove_proc_entries();
+    }
+
+    ports_file->read_proc = proc_read_ports;
+    ports_file->data = NULL;
+    return;
+}
+
+#endif
+
 /**
  * e1000_init_module - Driver Registration Routine
  *
@@ -229,6 +318,11 @@ static int __init e1000_init_module(void)
 	printk(KERN_INFO "%s\n", e1000_copyright);
 
 	ret = pci_register_driver(&e1000_driver);
+
+#if defined(CONFIG_E1000_SIM_AP_SUPPORT)
+	e1000_create_proc_entries();
+#endif
+
 	if (copybreak != COPYBREAK_DEFAULT) {
 		if (copybreak == 0)
 			printk(KERN_INFO "e1000: copybreak disabled\n");
@@ -251,6 +345,9 @@ module_init(e1000_init_module);
 static void __exit e1000_exit_module(void)
 {
 	pci_unregister_driver(&e1000_driver);
+#if defined(CONFIG_E1000_SIM_AP_SUPPORT)
+	e1000_remove_proc_entries();
+#endif
 }
 
 module_exit(e1000_exit_module);
@@ -807,7 +904,6 @@ static int __devinit e1000_probe(struct pci_dev *pdev,
 	struct e1000_adapter *adapter;
 	struct e1000_hw *hw;
 
-	static int cards_found = 0;
 	static int global_quad_port_a = 0; /* global ksp3 port a indication */
 	int i, err, pci_using_dac;
 	u16 eeprom_data = 0;
@@ -883,6 +979,9 @@ static int __devinit e1000_probe(struct pci_dev *pdev,
 	}
 
 	netdev->netdev_ops = &e1000_netdev_ops;
+#if defined(V54_BSP) && defined (RKS_SYSTEM_HOOKS)
+	netdev->priv_flags |= IFF_ETHER_DEVICE;
+#endif
 	e1000_set_ethtool_ops(netdev);
 	netdev->watchdog_timeo = 5 * HZ;
 	netif_napi_add(netdev, &adapter->napi, e1000_clean, 64);
@@ -1058,7 +1157,9 @@ static int __devinit e1000_probe(struct pci_dev *pdev,
 	netif_carrier_off(netdev);
 
 	DPRINTK(PROBE, INFO, "Intel(R) PRO/1000 Network Connection\n");
-
+#if defined(CONFIG_E1000_SIM_AP_SUPPORT)
+	devp[cards_found] = netdev;
+#endif
 	cards_found++;
 	return 0;
 
@@ -3566,7 +3667,12 @@ static void e1000_receive_skb(struct e1000_adapter *adapter, u8 status,
 		                         le16_to_cpu(vlan) &
 		                         E1000_RXD_SPC_VLAN_MASK);
 	} else {
+
+#if defined(V54_BSP)
+		skb_rx(skb);
+#else
 		netif_receive_skb(skb);
+#endif
 	}
 }
 

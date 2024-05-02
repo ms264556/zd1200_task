@@ -415,6 +415,9 @@ and is between 256 and 4096 characters. It is defined in the file
 
 	c101=		[NET] Moxa C101 synchronous serial card
 
+	cache-sram-size=	[PPC] Size of Freescale's QorIQ Cache SRAM
+			See Documentation/powerpc/fsl_85xx_cache_sram.txt.
+
 	cachesize=	[BUGS=X86-32] Override level 2 CPU cache size detection.
 			Sometimes CPU hardware bugs make them report the cache
 			size incorrectly. The kernel will attempt work arounds

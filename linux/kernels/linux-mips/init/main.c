@@ -886,6 +886,10 @@ static int __init kernel_init(void * unused)
 		prepare_namespace();
 	}
 
+#if defined(NAR5520)
+    extern void nar5520_load_himem_init(void);
+	nar5520_load_himem_init();
+#endif
 	/*
 	 * Ok, we have completed the initial bootup, and
 	 * we're essentially up and running. Get rid of the

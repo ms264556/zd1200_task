@@ -22,12 +22,26 @@
 
 #include "do_mounts.h"
 
+#if 1
+// V54
+#define _TRACK()	printk("--> %s:%d\n", __FUNCTION__, __LINE__);
+#define dPrintf2	printk
+#define dPrintf3(...)
+#else
+#define _TRACK(...)
+#define dPrintf2(...)
+#define dPrintf3(...)
+#endif
 int __initdata rd_doload;	/* 1 = load RAM disk, 0 = don't load */
 
 int root_mountflags = MS_RDONLY | MS_SILENT;
 static char * __initdata root_device_name;
 static char __initdata saved_root_name[64];
 static int __initdata root_wait;
+#ifdef V54_FLASH_ROOTFS
+static char flash_rootfs_buf[64];
+char *flash_rootfs_name;
+#endif
 
 dev_t ROOT_DEV;
 
@@ -229,7 +243,12 @@ static int __init do_mount_root(char *name, char *fs, int flags, void *data)
 	return 0;
 }
 
+#ifdef NAR5520
+static int mount_retry = 0;
+int __init mount_block_root(char *name, int flags)
+#else
 void __init mount_block_root(char *name, int flags)
+#endif
 {
 	char *fs_names = __getname_gfp(GFP_KERNEL
 		| __GFP_NOTRACK_FALSE_POSITIVE);
@@ -239,6 +258,9 @@ void __init mount_block_root(char *name, int flags)
 #else
 	const char *b = name;
 #endif
+#ifdef NAR5520
+	int success;
+#endif
 
 	get_fs_names(fs_names);
 retry:
@@ -246,6 +268,9 @@ retry:
 		int err = do_mount_root(name, p, flags, root_mount_data);
 		switch (err) {
 			case 0:
+#ifdef NAR5520
+				success = 1;
+#endif
 				goto out;
 			case -EACCES:
 				flags |= MS_RDONLY;
@@ -253,6 +278,10 @@ retry:
 			case -EINVAL:
 				continue;
 		}
+#ifdef NAR5520
+		if (++mount_retry == 1) {
+		} else if (8 == mount_retry) {
+#endif
 	        /*
 		 * Allow the user to distinguish between failed sys_open
 		 * and bad superblock on root device.
@@ -271,6 +300,11 @@ retry:
 		       "explicit textual name for \"root=\" boot option.\n");
 #endif
 		panic("VFS: Unable to mount root fs on %s", b);
+#ifdef NAR5520
+		}
+		success = 0;
+		goto out;
+#endif
 	}
 
 	printk("List of all partitions:\n");
@@ -285,6 +319,9 @@ retry:
 	panic("VFS: Unable to mount root fs on %s", b);
 out:
 	putname(fs_names);
+#ifdef NAR5520
+	return success;
+#endif
 }
  
 #ifdef CONFIG_ROOT_NFS
@@ -330,14 +367,21 @@ void __init change_floppy(char *fmt, ...)
 }
 #endif
 
+#ifdef NAR5520
+int __init mount_root(void)
+#else
 void __init mount_root(void)
+#endif
 {
 #ifdef CONFIG_ROOT_NFS
 	if (MAJOR(ROOT_DEV) == UNNAMED_MAJOR) {
 		if (mount_nfs_root())
-			return;
-
+			return 0;
+#ifdef NAR5520
+		printk(KERN_NOTICE "VFS: Unable to mount root fs via NFS, trying floppy.\n");
+#else
 		printk(KERN_ERR "VFS: Unable to mount root fs via NFS, trying floppy.\n");
+#endif
 		ROOT_DEV = Root_FD0;
 	}
 #endif
@@ -355,8 +399,13 @@ void __init mount_root(void)
 #endif
 #ifdef CONFIG_BLOCK
 	create_dev("/dev/root", ROOT_DEV);
+#ifdef NAR5520
+	return mount_block_root("/dev/root", root_mountflags);
+#else
 	mount_block_root("/dev/root", root_mountflags);
 #endif
+#endif
+	return 0;
 }
 
 /*
@@ -364,7 +413,19 @@ void __init mount_root(void)
  */
 void __init prepare_namespace(void)
 {
+#ifdef V54_FLASH_ROOTFS
+#define HAVE_EMBEDDED_ROOTFS() ((unsigned long)&__rd_start != (unsigned long)&__rd_end )
+    extern void * __rd_start, *__rd_end;
+    extern int v54_rootfs_block;
+    extern int v54_create_ramdisk;
+	int ret;
+#else
 	int is_floppy;
+#endif
+
+#ifdef CONFIG_V54_AUSSIE_BSP
+        root_delay = 10;
+#endif
 
 	if (root_delay) {
 		printk(KERN_INFO "Waiting %dsec before mounting root device...\n",
@@ -383,6 +444,9 @@ void __init prepare_namespace(void)
 
 	md_run_setup();
 
+#ifdef NAR5520
+	do {
+#endif
 	if (saved_root_name[0]) {
 		root_device_name = saved_root_name;
 		if (!strncmp(root_device_name, "mtd", 3) ||
@@ -395,6 +459,63 @@ void __init prepare_namespace(void)
 			root_device_name += 5;
 	}
 
+#ifdef V54_FLASH_ROOTFS
+    // mount the rootfs from initrd
+	create_dev("/dev/ram", Root_RAM0);
+
+    if (HAVE_EMBEDDED_ROOTFS()) {
+        ret = rd_load_image("/initrd.image");
+        sys_unlink("/initrd.image");
+        if ( ret > 0 ) {
+            dPrintf2("%s: mount from initrd\n", __FUNCTION__);
+		ROOT_DEV = Root_RAM0;
+		mount_root();
+		goto out;
+        }
+    }
+
+    if (!v54_rootfs_block) {
+        dPrintf2("%s: failed to find the rootfs block\n", __FUNCTION__);
+		goto out;
+    }
+
+#ifdef V54_MOUNT_FLASH_ROOTFS
+    if (v54_create_ramdisk)
+#endif
+    {   // create a ramdisk for rootfs
+        sprintf(flash_rootfs_buf, "/dev/mtdblock%d", v54_rootfs_block);
+	    dPrintf3("%s: root_dev_name=%s\n", __FUNCTION__, flash_rootfs_buf);
+
+        flash_rootfs_name = flash_rootfs_buf;
+		ROOT_DEV = name_to_dev_t(flash_rootfs_name);
+		if (strncmp(flash_rootfs_name, "/dev/", 5) == 0)
+			flash_rootfs_name += 5;
+        create_dev("/dev/flash_rootfs", ROOT_DEV);
+
+        // mount the rootfs from ramdisk
+        if (rd_load_image("/dev/flash_rootfs")) {
+            dPrintf2("%s: mount from ramdisk\n", __FUNCTION__);
+		ROOT_DEV = Root_RAM0;
+		mount_root();
+        } else {
+            dPrintf2("%s: load ramdisk failed\n", __FUNCTION__);
+        }
+	    goto out;
+    }
+
+#ifdef V54_MOUNT_FLASH_ROOTFS
+    // mount the rootfs directly from flash
+    sprintf(saved_root_name, "/dev/mtdblock%d", v54_rootfs_block);
+	dPrintf3("%s: root_dev_name=%s\n", __FUNCTION__, saved_root_name);
+
+    root_device_name = saved_root_name;
+    ROOT_DEV = name_to_dev_t(root_device_name);
+    if (strncmp(root_device_name, "/dev/", 5) == 0)
+        root_device_name += 5;
+    dPrintf2("%s: mount from flash\n", __FUNCTION__);
+    mount_root();
+# endif
+#else
 	if (initrd_load())
 		goto out;
 
@@ -412,8 +533,16 @@ void __init prepare_namespace(void)
 
 	if (is_floppy && rd_doload && rd_load_disk(0))
 		ROOT_DEV = Root_RAM0;
-
+#ifdef NAR5520
+	if(mount_root())
+		break;
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(2*HZ);
+	} while(1);
+#else
 	mount_root();
+#endif
+#endif
 out:
 	devtmpfs_mount("dev");
 	sys_mount(".", "/", NULL, MS_MOVE, NULL);

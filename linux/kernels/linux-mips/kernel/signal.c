@@ -67,6 +67,10 @@ static int sig_task_ignored(struct task_struct *t, int sig,
 	return sig_handler_ignored(handler, sig);
 }
 
+#if 1 /* V54_BSP */
+extern int core_uses_pid;
+#endif
+
 static int sig_ignored(struct task_struct *t, int sig, int from_ancestor_ns)
 {
 	/*
@@ -1850,6 +1854,20 @@ relock:
 
 			if (ka->sa.sa_flags & SA_ONESHOT)
 				ka->sa.sa_handler = SIG_DFL;
+
+#if 1 /* V54_BSP */
+			/* Hack by Tony for HCS case */
+			if (sig_kernel_crashdump(signr)) {
+				int old_tgid = current->tgid;
+				if(!core_uses_pid){
+					current->tgid = 0;
+				}
+				spin_unlock_irq(&current->sighand->siglock);
+				do_coredump((long)signr, signr, regs);
+				spin_lock_irq(&current->sighand->siglock);
+				current->tgid = old_tgid;
+			}
+#endif
 
 			break; /* will return non-zero "signr" value */
 		}

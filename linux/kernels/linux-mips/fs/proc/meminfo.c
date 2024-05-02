@@ -158,9 +158,42 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	arch_report_meminfo(m);
 
 	return 0;
-#undef K
+#if 0 //V54_BSP
+ #undef K
+#endif
 }
 
+#if 1 //V54_BSP
+void
+v54_show_mem_stat(void)
+{
+    struct sysinfo i;
+    long cached;
+    unsigned long pages[NR_LRU_LISTS];
+    int lru;
+
+	for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)
+		pages[lru] = global_page_state(NR_LRU_BASE + lru);
+
+    si_meminfo(&i);
+    si_swapinfo(&i);
+
+    cached = global_page_state(NR_FILE_PAGES) - total_swapcache_pages - i.bufferram;
+    if (cached < 0)
+            cached = 0;
+
+    printk(" mem(kB) %8lu %8lu %8lu %8lu %8lu %8lu\n",
+            K(i.totalram),
+            K(i.freeram),
+            K(i.bufferram),
+            K(cached),
+            K(pages[LRU_ACTIVE_ANON]   + pages[LRU_ACTIVE_FILE]),
+            K(pages[LRU_INACTIVE_ANON] + pages[LRU_INACTIVE_FILE])
+            );
+    return;
+}
+#undef K
+#endif
 static int meminfo_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, meminfo_proc_show, NULL);

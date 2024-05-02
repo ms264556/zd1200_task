@@ -501,6 +501,7 @@ config SIBYTE_SWARM
 	bool "Sibyte BCM91250A-SWARM"
 	select BOOT_ELF32
 	select DMA_COHERENT
+	select HAVE_PATA_PLATFORM
 	select NR_CPUS_DEFAULT_2
 	select SIBYTE_SB1250
 	select SWAP_IO_SPACE
@@ -515,6 +516,7 @@ config SIBYTE_LITTLESUR
 	depends on EXPERIMENTAL
 	select BOOT_ELF32
 	select DMA_COHERENT
+	select HAVE_PATA_PLATFORM
 	select NR_CPUS_DEFAULT_2
 	select SIBYTE_SB1250
 	select SWAP_IO_SPACE
@@ -672,6 +674,43 @@ config CAVIUM_OCTEON_REFERENCE_BOARD
 	  Say Y here for most Octeon reference boards.
 
 endchoice
+
+# V54_BSP
+config AR7100
+	bool "Atheros ar7100 based boards (alias for MAC_AR7100)"
+	depends on MACH_AR7100
+
+config  AR9100
+	bool "Support for Atheros ar9100 extenstions to ar7100"
+	depends on MACH_AR7100
+
+config  AR7240
+	bool "Support for Atheros ar7240 extenstions to ar7100"
+	depends on MACH_AR7100
+
+config  AR934x
+	bool "Support for Atheros ar934x extenstions to ar7100 and ar7240"
+	depends on MACH_AR7100
+
+config  QCA955x
+	bool "Support for QCA 955x extenstions to ar7100, ar7240 and ar934x"
+	depends on MACH_AR7100
+
+config AR7100_EMULATION
+	bool "build system for AR7100 emulation board?"
+	depends on MACH_AR7100
+
+comment "use new load address of 0x80080000, need new bootrom if cannot fix load address in redboot"
+	depends on MACH_AR7100
+
+config AR7100_LOAD_ADDRESS
+	string "Specify load address for AR7100 boards"
+    depends on MACH_AR7100
+	help
+	    Specify load address for linux image for AR7100 boards.
+	    Use for new bootrom supports specifying load address in image header.
+	    Default load address is 0xffff80060000
+# end V54_BSP
 
 source "arch/mips/alchemy/Kconfig"
 source "arch/mips/basler/excite/Kconfig"
@@ -867,6 +906,20 @@ config GENERIC_ISA_DMA_SUPPORT_BROKEN
 
 config GENERIC_GPIO
 	bool
+
+# V54_BSP
+# Atheros specific
+config AR5312
+	bool
+
+config AP51
+	bool
+
+config AR5315
+	bool
+	depends on AP51
+	default y
+# end V54_BSP
 
 #
 # Endianess selection.  Sufficiently obscure so many users don't know what to
@@ -1554,8 +1607,16 @@ config MIPS_MT_SMP
 	select SYS_SUPPORTS_SMP
 	select SMP_UP
 	help
-	  This is a kernel model which is also known a VSMP or lately
-	  has been marketesed into SMVP.
+	  This is a kernel model which is known a VSMP but lately has been
+	  marketesed into SMVP.
+	  Virtual SMP uses the processor's VPEs  to implement virtual
+	  processors. In currently available configuration of the 34K processor
+	  this allows for a dual processor. Both processors will share the same
+	  primary caches; each will obtain the half of the TLB for it's own
+	  exclusive use. For a layman this model can be described as similar to
+	  what Intel calls Hyperthreading.
+
+	  For further information see http://www.linux-mips.org/wiki/34K#VSMP
 
 config MIPS_MT_SMTC
 	bool "SMTC: Use all TCs on all VPEs for SMP"
@@ -1572,6 +1633,14 @@ config MIPS_MT_SMTC
 	help
 	  This is a kernel model which is known a SMTC or lately has been
 	  marketesed into SMVP.
+	  is presenting the available TC's of the core as processors to Linux.
+	  On currently available 34K processors this means a Linux system will
+	  see up to 5 processors. The implementation of the SMTC kernel differs
+	  significantly from VSMP and cannot efficiently coexist in the same
+	  kernel binary so the choice between VSMP and SMTC is a compile time
+	  decision.
+
+	  For further information see http://www.linux-mips.org/wiki/34K#SMTC
 
 endchoice
 
@@ -2165,6 +2234,37 @@ config BINFMT_ELF32
 	default y if MIPS32_O32 || MIPS32_N32
 
 endmenu
+
+# V54_BSP
+menu "MIPS initrd options"
+	depends on BLK_DEV_INITRD
+
+config EMBEDDED_RAMDISK
+	bool "Embed root filesystem ramdisk into the kernel"
+
+config EMBEDDED_RAMDISK_IMAGE
+	string "Filename of gziped ramdisk image"
+	depends on EMBEDDED_RAMDISK
+	default "ramdisk.img"
+	help
+	  This is the filename of the ramdisk image to be built into the
+	  kernel.  Relative pathnames are relative to arch/mips/ramdisk/.
+	  The ramdisk image is not part of the kernel distribution; you must
+	  provide one yourself.
+
+endmenu
+
+menu "Kernel Reset/Halt/Poweroff"
+
+config SYS_HALT
+	bool "Support Halt and Poweroff"
+	default n
+	help
+	    Allow system to halt.
+	    If not set, halt and poweroff is mapped to reboot.
+
+endmenu
+# end V54_BSP
 
 menu "Power management options"
 

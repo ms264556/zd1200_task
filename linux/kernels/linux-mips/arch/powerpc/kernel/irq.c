@@ -53,6 +53,7 @@
 #include <linux/bootmem.h>
 #include <linux/pci.h>
 #include <linux/debugfs.h>
+#include <linux/perf_event.h>
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -136,6 +137,10 @@ notrace void raw_local_irq_restore(unsigned long en)
 			iseries_handle_interrupts();
 	}
 #endif /* CONFIG_PPC_STD_MMU_64 */
+	if (test_perf_event_pending()) {
+		clear_perf_event_pending();
+		perf_event_do_pending();
+	}
 
 	/*
 	 * if (get_paca()->hard_enabled) return;
@@ -306,7 +311,7 @@ static inline void check_stack_overflow(void)
 	sp = __get_SP() & (THREAD_SIZE-1);
 
 	/* check for stack overflow: is there less than 2KB free? */
-	if (unlikely(sp < (sizeof(struct thread_info) + 2048))) {
+	if (unlikely(sp < (sizeof(struct thread_info) + 1024))) {
 		printk("do_IRQ: stack overflow: %ld\n",
 			sp - sizeof(struct thread_info));
 		dump_stack();

@@ -2267,8 +2267,13 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i, int *len)
 		timer_expires = jiffies;
 	}
 
+#if 1 /* V54_BSP */
+	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %08X:%08X %02X:%08lX "
+			"%08X %5d %8d %lu %d %p %lu %lu %u %u %d\t%d:%d%n",
+#else
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %08X:%08X %02X:%08lX "
 			"%08X %5d %8d %lu %d %p %lu %lu %u %u %d%n",
+#endif
 		i, src, srcp, dest, destp, sk->sk_state,
 		tp->write_seq - tp->snd_una,
 		sk->sk_state == TCP_LISTEN ? sk->sk_ack_backlog :
@@ -2285,6 +2290,10 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i, int *len)
 		(icsk->icsk_ack.quick << 1) | icsk->icsk_ack.pingpong,
 		tp->snd_cwnd,
 		tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh,
+#if 1 /* V54_BSP */
+		atomic_read(&sk->sk_wmem_alloc),
+		atomic_read(&sk->sk_rmem_alloc),
+#endif
 		len);
 }
 
@@ -2310,7 +2319,11 @@ static void get_timewait4_sock(struct inet_timewait_sock *tw,
 		atomic_read(&tw->tw_refcnt), tw, len);
 }
 
+#if 1 /* V54_BSP */
+#define TMPSZ 160
+#else
 #define TMPSZ 150
+#endif
 
 static int tcp4_seq_show(struct seq_file *seq, void *v)
 {

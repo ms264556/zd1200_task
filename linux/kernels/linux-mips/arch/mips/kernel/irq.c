@@ -73,10 +73,19 @@ void free_irqno(unsigned int irq)
  * 'what should we do if we get a hw irq event on an illegal vector'.
  * each architecture has to answer this themselves.
  */
+#if defined(V54_BSP)
+atomic_t irq_zero_count;
+#endif
 void ack_bad_irq(unsigned int irq)
 {
 	smtc_im_ack_irq(irq);
+#if defined(V54_BSP)
+	if( irq == 0) {
+		atomic_inc(&irq_zero_count);
+	}
+#else
 	printk("unexpected IRQ # %d\n", irq);
+#endif
 }
 
 atomic_t irq_err_count;
@@ -122,6 +131,9 @@ skip:
 	} else if (i == NR_IRQS) {
 		seq_putc(p, '\n');
 		seq_printf(p, "ERR: %10u\n", atomic_read(&irq_err_count));
+#if defined(V54_BSP)
+		seq_printf(p, "ERR: %10u (IRQ 0)\n", atomic_read(&irq_zero_count));
+#endif
 	}
 	return 0;
 }

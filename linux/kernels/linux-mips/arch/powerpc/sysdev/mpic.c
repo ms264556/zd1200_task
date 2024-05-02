@@ -1,11 +1,12 @@
 /*
- *  arch/powerpc/kernel/mpic.c
+ *  arch/powerpc/sysdev/mpic.c
  *
  *  Driver for interrupt controllers following the OpenPIC standard, the
- *  common implementation beeing IBM's MPIC. This driver also can deal
+ *  common implementation being IBM's MPIC. This driver also can deal
  *  with various broken implementations of this HW.
  *
  *  Copyright (C) 2004 Benjamin Herrenschmidt, IBM Corp.
+ *  Copyright 2006, 2008-2010 Freescale Semiconductor, Inc.
  *
  *  This file is subject to the terms and conditions of the GNU General Public
  *  License.  See the file COPYING in the main directory of this archive
@@ -207,6 +208,21 @@ static inline void _mpic_ipi_write(struct mpic *mpic, unsigned int ipi, u32 valu
 	_mpic_write(mpic->reg_type, &mpic->gregs, offset, value);
 }
 
+static inline u32 _mpic_tm_read(struct mpic *mpic, unsigned int tm)
+{
+	unsigned int offset = MPIC_INFO(TIMER_VECTOR_PRI) +
+			      (tm * MPIC_INFO(TIMER_STRIDE));
+
+	return _mpic_read(mpic->reg_type, &mpic->tmregs, offset);
+}
+
+static inline void _mpic_tm_write(struct mpic *mpic, unsigned int tm, u32 value)
+{
+	unsigned int offset = MPIC_INFO(TIMER_VECTOR_PRI) +
+			      (tm * MPIC_INFO(TIMER_STRIDE));
+
+	_mpic_write(mpic->reg_type, &mpic->tmregs, offset, value);
+}
 static inline u32 _mpic_cpu_read(struct mpic *mpic, unsigned int reg)
 {
 	unsigned int cpu = 0;
@@ -262,6 +278,8 @@ static inline void _mpic_irq_write(struct mpic *mpic, unsigned int src_no,
 #define mpic_write(b,r,v)	_mpic_write(mpic->reg_type,&(b),(r),(v))
 #define mpic_ipi_read(i)	_mpic_ipi_read(mpic,(i))
 #define mpic_ipi_write(i,v)	_mpic_ipi_write(mpic,(i),(v))
+#define mpic_tm_read(i)		_mpic_tm_read(mpic,(i))
+#define mpic_tm_write(i,v)	_mpic_tm_write(mpic,(i),(v))
 #define mpic_cpu_read(i)	_mpic_cpu_read(mpic,(i))
 #define mpic_cpu_write(i,v)	_mpic_cpu_write(mpic,(i),(v))
 #define mpic_irq_read(s,r)	_mpic_irq_read(mpic,(s),(r))
@@ -567,13 +585,11 @@ static void __init mpic_scan_ht_pics(struct mpic *mpic)
 #endif /* CONFIG_MPIC_U3_HT_IRQS */
 
 #ifdef CONFIG_SMP
-static int irq_choose_cpu(unsigned int virt_irq)
+static int irq_choose_cpu(const cpumask_t *mask)
 {
-	cpumask_t mask;
 	int cpuid;
 
-	cpumask_copy(&mask, irq_desc[virt_irq].affinity);
-	if (cpus_equal(mask, CPU_MASK_ALL)) {
+	if (cpumask_equal(mask, cpu_all_mask)) {
 		static int irq_rover;
 		static DEFINE_SPINLOCK(irq_rover_lock);
 		unsigned long flags;
@@ -594,20 +610,15 @@ static int irq_choose_cpu(unsigned int virt_irq)
 
 		spin_unlock_irqrestore(&irq_rover_lock, flags);
 	} else {
-		cpumask_t tmp;
-
-		cpus_and(tmp, cpu_online_map, mask);
-
-		if (cpus_empty(tmp))
+		cpuid = cpumask_first_and(mask, cpu_online_mask);
+		if (cpuid >= nr_cpu_ids)
 			goto do_round_robin;
-
-		cpuid = first_cpu(tmp);
 	}
 
 	return get_hard_smp_processor_id(cpuid);
 }
 #else
-static int irq_choose_cpu(unsigned int virt_irq)
+static int irq_choose_cpu(const cpumask_t *mask)
 {
 	return hard_smp_processor_id();
 }
@@ -632,6 +643,13 @@ static unsigned int mpic_is_ipi(struct mpic *mpic, unsigned int irq)
 	return (src >= mpic->ipi_vecs[0] && src <= mpic->ipi_vecs[3]);
 }
 
+/* Determine if the linux irq is an timer IPI */
+static unsigned int mpic_is_tm(struct mpic *mpic, unsigned int irq)
+{
+	unsigned int src = mpic_irq_to_hw(irq);
+
+	return (src >= mpic->timer_vecs[0] && src <= mpic->timer_vecs[3]);
+}
 
 /* Convert a cpu mask from logical to physical cpu numbers. */
 static inline u32 mpic_physmask(u32 cpumask)
@@ -651,6 +669,11 @@ static inline struct mpic * mpic_from_ipi(unsigned int ipi)
 	return irq_desc[ipi].chip_data;
 }
 #endif
+/* Get the mpic structure from the tm number */
+static inline struct mpic * mpic_from_tm(unsigned int tm)
+{
+	return irq_desc[tm].chip_data;
+}
 
 /* Get the mpic structure from the irq number */
 static inline struct mpic * mpic_from_irq(unsigned int irq)
@@ -810,13 +833,38 @@ static void mpic_end_ipi(unsigned int irq)
 
 #endif /* CONFIG_SMP */
 
+static void mpic_unmask_tm(unsigned int irq)
+{
+	struct mpic *mpic = mpic_from_tm(irq);
+	unsigned int src = mpic_irq_to_hw(irq) - mpic->timer_vecs[0];
+
+	DBG("%s: enable_tm: %d (tm %d)\n", mpic->name, irq, src);
+	mpic_tm_write(src, mpic_tm_read(src) & ~MPIC_VECPRI_MASK);
+	mpic_tm_read(src);
+}
+
+static void mpic_mask_tm(unsigned int irq)
+{
+	struct mpic *mpic = mpic_from_tm(irq);
+	unsigned int src = mpic_irq_to_hw(irq) - mpic->timer_vecs[0];
+
+	mpic_tm_write(src, mpic_tm_read(src) | MPIC_VECPRI_MASK);
+	mpic_tm_read(src);
+}
+
+static void mpic_end_tm(unsigned int irq)
+{
+	struct mpic *mpic = mpic_from_tm(irq);
+
+	mpic_eoi(mpic);
+}
 int mpic_set_affinity(unsigned int irq, const struct cpumask *cpumask)
 {
 	struct mpic *mpic = mpic_from_irq(irq);
 	unsigned int src = mpic_irq_to_hw(irq);
 
 	if (mpic->flags & MPIC_SINGLE_DEST_CPU) {
-		int cpuid = irq_choose_cpu(irq);
+		int cpuid = irq_choose_cpu(cpumask);
 
 		mpic_irq_write(src, MPIC_INFO(IRQ_DESTINATION), 1 << cpuid);
 	} else {
@@ -925,6 +973,11 @@ static struct irq_chip mpic_ipi_chip = {
 };
 #endif /* CONFIG_SMP */
 
+static struct irq_chip mpic_tm_chip = {
+	.mask		= mpic_mask_tm,
+	.unmask		= mpic_unmask_tm,
+	.eoi		= mpic_end_tm,
+};
 #ifdef CONFIG_MPIC_U3_HT_IRQS
 static struct irq_chip mpic_irq_ht_chip = {
 	.startup	= mpic_startup_ht_irq,
@@ -956,6 +1009,15 @@ static int mpic_host_map(struct irq_host *h, unsigned int virq,
 	if (mpic->protected && test_bit(hw, mpic->protected))
 		return -EINVAL;
 
+	else if (hw >= mpic->timer_vecs[0] && hw <= mpic->timer_vecs[3]) {
+		WARN_ON(!(mpic->flags & MPIC_PRIMARY));
+
+		DBG("mpic: mapping as timer\n");
+		set_irq_chip_data(virq, mpic);
+		set_irq_chip_and_handler(virq, &mpic->hc_tm,
+					 handle_fasteoi_irq);
+		return 0;
+	}
 #ifdef CONFIG_SMP
 	else if (hw >= mpic->ipi_vecs[0]) {
 		WARN_ON(!(mpic->flags & MPIC_PRIMARY));
@@ -1076,6 +1138,8 @@ struct mpic * __init mpic_alloc(struct device_node *node,
 	mpic->hc_ipi = mpic_ipi_chip;
 	mpic->hc_ipi.typename = name;
 #endif /* CONFIG_SMP */
+	mpic->hc_tm = mpic_tm_chip;
+	mpic->hc_tm.typename = name;
 
 	mpic->flags = flags;
 	mpic->isu_size = isu_size;
@@ -1283,15 +1347,17 @@ void __init mpic_init(struct mpic *mpic)
 	/* Set current processor priority to max */
 	mpic_cpu_write(MPIC_INFO(CPU_CURRENT_TASK_PRI), 0xf);
 
-	/* Initialize timers: just disable them all */
+	/* Initialize timers to our reserved vectors and mask them for now */
 	for (i = 0; i < 4; i++) {
 		mpic_write(mpic->tmregs,
 			   i * MPIC_INFO(TIMER_STRIDE) +
-			   MPIC_INFO(TIMER_DESTINATION), 0);
+			   MPIC_INFO(TIMER_DESTINATION),
+			   1 << hard_smp_processor_id());
 		mpic_write(mpic->tmregs,
 			   i * MPIC_INFO(TIMER_STRIDE) +
 			   MPIC_INFO(TIMER_VECTOR_PRI),
 			   MPIC_VECPRI_MASK |
+			   (9 << MPIC_VECPRI_PRIORITY_SHIFT) |
 			   (mpic->timer_vecs[0] + i));
 	}
 
@@ -1401,12 +1467,46 @@ void mpic_irq_set_priority(unsigned int irq, unsigned int pri)
 			~MPIC_VECPRI_PRIORITY_MASK;
 		mpic_ipi_write(src - mpic->ipi_vecs[0],
 			       reg | (pri << MPIC_VECPRI_PRIORITY_SHIFT));
+	} else if (mpic_is_tm(mpic, irq)) {
+		reg = mpic_tm_read(src - mpic->timer_vecs[0]) &
+			~MPIC_VECPRI_PRIORITY_MASK;
+		mpic_tm_write(src - mpic->timer_vecs[0],
+			      reg | (pri << MPIC_VECPRI_PRIORITY_SHIFT));
 	} else {
 		reg = mpic_irq_read(src, MPIC_INFO(IRQ_VECTOR_PRI))
 			& ~MPIC_VECPRI_PRIORITY_MASK;
 		mpic_irq_write(src, MPIC_INFO(IRQ_VECTOR_PRI),
 			       reg | (pri << MPIC_VECPRI_PRIORITY_SHIFT));
 	}
+	spin_unlock_irqrestore(&mpic_lock, flags);
+}
+
+/*
+ * Sets the External Interrrupt Destination Register when the device
+ * is configured as an EP and is used to interrupt the host.
+ *
+ * EIDRx[EP] = 1 => Irq is not routed to IRQ_OUT
+ * EIDRx[EP] = 0 => Irq is routed to IRQ_OUT for external service
+ *
+ * IRQ_OUT is always level low sensitive.
+ */
+void mpic_irq_set_ep(unsigned int irq, unsigned int ep)
+{
+	struct mpic *mpic = mpic_find(irq);
+	unsigned int src = mpic_irq_to_hw(irq);
+	unsigned long flags;
+	u32 reg;
+
+	BUG_ON(!mpic);
+
+	spin_lock_irqsave(&mpic_lock, flags);
+	reg = mpic_irq_read(src, MPIC_INFO(IRQ_DESTINATION));
+
+	mpic_irq_write(src, MPIC_INFO(IRQ_DESTINATION),
+	       (reg & ~(1 << 31)) | (ep << 31));
+
+	if (ep)
+		mpic_set_irq_type(irq, IRQ_TYPE_LEVEL_LOW);
 	spin_unlock_irqrestore(&mpic_lock, flags);
 }
 

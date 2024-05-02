@@ -3,6 +3,7 @@
  *
  * Begun April 1, 1996, Mike Shaver.
  * Added /proc/sys/net/core directory entry (empty =) ). [MS]
+ * Copyright 2009-2010 Freescale Semiconductor, Inc.
  */
 
 #include <linux/mm.h>
@@ -13,6 +14,13 @@
 #include <linux/init.h>
 #include <net/ip.h>
 #include <net/sock.h>
+#ifdef CONFIG_NET_GIANFAR_FP
+extern int netdev_fastroute;
+#endif
+
+#ifdef CONFIG_GFAR_SW_PKT_STEERING
+extern int rcv_pkt_steering;
+#endif
 
 static struct ctl_table net_core_table[] = {
 #ifdef CONFIG_NET
@@ -32,6 +40,26 @@ static struct ctl_table net_core_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
 	},
+#ifdef CONFIG_NET_GIANFAR_FP
+	{
+		.ctl_name	= NET_CORE_FASTROUTE,
+		.procname	= "netdev_fastroute",
+		.data		= &netdev_fastroute,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= &proc_dointvec
+	},
+#endif
+#ifdef CONFIG_GFAR_SW_PKT_STEERING
+	{
+		.ctl_name	= RCV_PKT_STEERING,
+		.procname	= "rcv_pkt_steering",
+		.data		= &rcv_pkt_steering,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= &proc_dointvec
+	},
+#endif
 	{
 		.ctl_name	= NET_CORE_WMEM_DEFAULT,
 		.procname	= "wmem_default",
@@ -106,6 +134,16 @@ static struct ctl_table net_core_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
 	},
+#if defined(CONFIG_RFLOW) || defined(CONFIG_RFLOW_MODULE)
+	{
+		.ctl_name	= NET_CORE_RFLOW,
+		.procname	= "rflow",
+		.data		= &net_rflow,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec
+	},
+#endif
 	{ .ctl_name = 0 }
 };
 

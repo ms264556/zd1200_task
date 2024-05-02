@@ -88,6 +88,7 @@
 #include <linux/etherdevice.h>
 #include <linux/fddidevice.h>
 #include <linux/if_arp.h>
+#include <linux/if_vlan.h>
 #include <linux/trdevice.h>
 #include <linux/skbuff.h>
 #include <linux/proc_fs.h>
@@ -548,32 +549,43 @@ static inline int arp_fwd_proxy(struct in_device *in_dev, struct rtable *rt)
 }
 
 /*
- *	Interface to link layer: send routine and receive handler.
+ *	Interface to link layer: send routine and receive handler with vlan.
  */
 
 /*
- *	Create an arp packet. If (dest_hw == NULL), we create a broadcast
+ *	Create an arp packet with vlan header. If (dest_hw == NULL), we create a broadcast
  *	message.
  */
-struct sk_buff *arp_create(int type, int ptype, __be32 dest_ip,
+static struct sk_buff *__arp_create(int type, int ptype, __be32 dest_ip,
 			   struct net_device *dev, __be32 src_ip,
 			   const unsigned char *dest_hw,
 			   const unsigned char *src_hw,
-			   const unsigned char *target_hw)
+			   const unsigned char *target_hw,
+			   const unsigned char vlan_aware,
+			   const unsigned short tag_priority,
+			   const unsigned short tag_vid)
 {
 	struct sk_buff *skb;
 	struct arphdr *arp;
 	unsigned char *arp_ptr;
+	struct vlan_ethhdr *vhdr;
+
 
 	/*
 	 *	Allocate a buffer
 	 */
 
-	skb = alloc_skb(arp_hdr_len(dev) + LL_ALLOCATED_SPACE(dev), GFP_ATOMIC);
+       if (vlan_aware)
+		skb = alloc_skb(arp_hdr_len(dev) + LL_ALLOCATED_SPACE(dev) + VLAN_HLEN, GFP_ATOMIC);
+      else
+		skb = alloc_skb(arp_hdr_len(dev) + LL_ALLOCATED_SPACE(dev), GFP_ATOMIC);
 	if (skb == NULL)
 		return NULL;
 
-	skb_reserve(skb, LL_RESERVED_SPACE(dev));
+	if(vlan_aware)
+		skb_reserve(skb, LL_RESERVED_SPACE(dev) + VLAN_HLEN);
+	else
+		skb_reserve(skb, LL_RESERVED_SPACE(dev));
 	skb_reset_network_header(skb);
 	arp = (struct arphdr *) skb_put(skb, arp_hdr_len(dev));
 	skb->dev = dev;
@@ -588,6 +600,16 @@ struct sk_buff *arp_create(int type, int ptype, __be32 dest_ip,
 	 */
 	if (dev_hard_header(skb, dev, ptype, dest_hw, src_hw, skb->len) < 0)
 		goto out;
+
+	if (vlan_aware) {
+		skb_push(skb, VLAN_HLEN);
+		skb->mac_header -= VLAN_HLEN;
+		memmove(skb_mac_header(skb), skb_mac_header(skb) + VLAN_HLEN, ETH_ALEN * 2);
+		vhdr = (struct vlan_ethhdr *)skb_mac_header(skb);
+		vhdr->h_vlan_proto = __constant_htons(ETH_P_8021Q);
+		vhdr->h_vlan_TCI = htons(tag_priority << 13 | tag_vid);
+	}
+
 
 	/*
 	 * Fill out the arp protocol part.
@@ -658,6 +680,24 @@ out:
 }
 
 /*
+ *	Interface to link layer: send routine and receive handler.
+ */
+
+/*
+ *	Create an arp packet. If (dest_hw == NULL), we create a broadcast
+ *	message.
+ */
+struct sk_buff *arp_create(int type, int ptype, __be32 dest_ip,
+			   struct net_device *dev, __be32 src_ip,
+			   const unsigned char *dest_hw,
+			   const unsigned char *src_hw,
+			   const unsigned char *target_hw)
+{
+	return __arp_create(type,ptype, dest_ip, dev, src_ip, dest_hw, src_hw,
+		target_hw, 0, 0 ,0);
+}
+
+/*
  *	Send an arp packet.
  */
 void arp_xmit(struct sk_buff *skb)
@@ -693,8 +733,48 @@ void arp_send(int type, int ptype, __be32 dest_ip,
 }
 
 /*
+ *	Create and send an arp packet with vlan header.
+ */
+void rks_arp_send(int type, int ptype, __be32 dest_ip,
+	      struct net_device *dev, __be32 src_ip,
+	      const unsigned char *dest_hw, const unsigned char *src_hw,
+	      const unsigned char *target_hw,
+	      const unsigned char vlan_aware,
+	      const unsigned short tag_priority,
+	      const unsigned short tag_vid)
+{
+	struct sk_buff *skb;
+
+	/*
+	 *	No arp on this interface.
+	 */
+
+	if (dev->flags&IFF_NOARP)
+		return;
+
+	skb = __arp_create(type, ptype, dest_ip, dev, src_ip,
+			 dest_hw, src_hw, target_hw,vlan_aware,tag_priority,tag_vid);
+	if (skb == NULL) {
+		return;
+	}
+
+	arp_xmit(skb);
+}
+
+/*
  *	Process an arp request.
  */
+#ifdef CONFIG_ARP_EXTRAS
+#define _USE_MY_ARP 1
+#define CONFIG_INVARP 1
+#else
+#undef _USE_MY_ARP
+#undef CONFIG_INVARP
+#endif
+
+#ifdef _USE_MY_ARP
+static int _use_arp_reply_only = 1;
+#endif
 
 static int arp_process(struct sk_buff *skb)
 {
@@ -709,6 +789,12 @@ static int arp_process(struct sk_buff *skb)
 	int addr_type;
 	struct neighbour *n;
 	struct net *net = dev_net(dev);
+#ifdef _USE_MY_ARP
+	int _arp_reply_sent = 0;
+#define _SET_ARP_REPLY_SENT()	{_arp_reply_sent = 1;}
+#else
+#define _SET_ARP_REPLY_SENT()	{}
+#endif
 
 	/* arp_rcv below verifies the ARP header and verifies the device
 	 * is ARP'able.
@@ -758,6 +844,9 @@ static int arp_process(struct sk_buff *skb)
 	/* Understand only these message types */
 
 	if (arp->ar_op != htons(ARPOP_REPLY) &&
+#ifdef CONFIG_INVARP
+	    arp->ar_op != htons(ARPOP_InREQUEST) &&
+#endif
 	    arp->ar_op != htons(ARPOP_REQUEST))
 		goto out;
 
@@ -801,6 +890,22 @@ static int arp_process(struct sk_buff *skb)
  *  cache.
  */
 
+#ifdef CONFIG_INVARP
+	if (arp->ar_op == htons(ARPOP_InREQUEST)) {
+		// Inverse ARP
+		if (inet_addr_type(net, tip) == RTN_BROADCAST
+			 && (!arp_ignore(in_dev, sip, tip))
+			) {
+			u32 addr = inet_select_addr(dev, sip, RT_SCOPE_UNIVERSE);
+			if ( addr != 0 ) {
+				//printk("+ %s: %u.%u.%u.%u\n", __FUNCTION__, NIPQUAD(*(u32*)&addr));
+				arp_send(ARPOP_InREPLY, ETH_P_ARP, sip, dev, addr, sha, dev->dev_addr, sha);
+			}
+		}
+		goto out;
+	}
+#endif
+
 	/* Special case: IPv4 duplicate address detection packet (RFC2131) */
 	if (sip == 0) {
 		if (arp->ar_op == htons(ARPOP_REQUEST) &&
@@ -810,6 +915,21 @@ static int arp_process(struct sk_buff *skb)
 				 dev->dev_addr, sha);
 		goto out;
 	}
+
+#if 0 && defined(_USE_MY_ARP)
+	if (_use_arp_reply_only) {
+		if (inet_addr_type(net, tip) != RTN_LOCAL) {
+			// Don't upate cache if ! not for us
+			// avoid situation when router is arping for others.
+			// Want the dest to hear our arp
+			if (_use_arp_reply_only > 2 && net_ratelimit()) {
+				printk("+ ARP %hu %u.%u.%u.%u > %u.%u.%u.%u not ours!!!\n",
+					htons(arp->ar_op), NIPQUAD(*(u32*)&sip), NIPQUAD(*(u32*)&tip));
+			}
+			goto out;
+		}
+	}
+#endif
 
 	if (arp->ar_op == htons(ARPOP_REQUEST) &&
 	    ip_route_input(skb, tip, sip, 0, dev) == 0) {
@@ -828,6 +948,7 @@ static int arp_process(struct sk_buff *skb)
 				n = neigh_event_ns(&arp_tbl, sha, &sip, dev);
 				if (n) {
 					arp_send(ARPOP_REPLY,ETH_P_ARP,sip,dev,tip,sha,dev->dev_addr,sha);
+					_SET_ARP_REPLY_SENT();
 					neigh_release(n);
 				}
 			}
@@ -843,6 +964,7 @@ static int arp_process(struct sk_buff *skb)
 				    skb->pkt_type == PACKET_HOST ||
 				    in_dev->arp_parms->proxy_delay == 0) {
 					arp_send(ARPOP_REPLY,ETH_P_ARP,sip,dev,tip,sha,dev->dev_addr,sha);
+					_SET_ARP_REPLY_SENT();
 				} else {
 					pneigh_enqueue(&arp_tbl, in_dev->arp_parms, skb);
 					in_dev_put(in_dev);
@@ -852,6 +974,30 @@ static int arp_process(struct sk_buff *skb)
 			}
 		}
 	}
+
+#ifdef _USE_MY_ARP
+	if (_use_arp_reply_only) {
+		if ((arp->ar_op != htons(ARPOP_REPLY) &&
+				_arp_reply_sent == 0)
+			|| (arp->ar_op == htons(ARPOP_REPLY) &&
+				inet_addr_type(net, tip) != RTN_LOCAL)
+			) {
+			if (_use_arp_reply_only > 1 && net_ratelimit()) {
+				printk("+ ARP %hu %u.%u.%u.%u > %u.%u.%u.%u req not ours!!!\n",
+					htons(arp->ar_op), NIPQUAD(*(u32*)&sip), NIPQUAD(*(u32*)&tip));
+			}
+			// Don't upate cache if ! arp_reply
+			// avoid situation when router is arping for others.
+			goto out;
+		}
+	}
+#if 0
+	if (_use_arp_reply_only > 1 && net_ratelimit()) {
+		printk("+ ARP %hu %u.%u.%u.%u > %u.%u.%u.%u\n",
+			htons(arp->ar_op), NIPQUAD(*(u32*)&sip), NIPQUAD(*(u32*)&tip));
+	}
+#endif
+#endif
 
 	/* Update our ARP tables */
 
@@ -1377,16 +1523,53 @@ static const struct file_operations arp_seq_fops = {
 	.release	= seq_release_net,
 };
 
+#ifdef _USE_MY_ARP
+#define ARP_REPLY_FILE	"arp_reply_only"
+static struct proc_dir_entry *arp_reply_file ;
+static int proc_read_arp_reply_only(char* page, char ** start,
+			off_t off, int count, int *eof, void *data)
+{
+	int len = 0;
+	len = sprintf(page, "%d\n", _use_arp_reply_only);
+	return len;
+}
+
+static int proc_write_arp_reply_only(struct file *file, const char *buffer,
+			unsigned long count, void*data)
+{
+	char ch = buffer[0];
+	if (count == 0) {
+		return 0;
+	}
+	if (ch >= '0' && ch <= '9') {
+		_use_arp_reply_only = ch - '0';
+	}
+	return count;
+}
+#endif
 
 static int __net_init arp_net_init(struct net *net)
 {
 	if (!proc_net_fops_create(net, "arp", S_IRUGO, &arp_seq_fops))
 		return -ENOMEM;
+
+#ifdef _USE_MY_ARP
+	if ((arp_reply_file = create_proc_entry(ARP_REPLY_FILE, (S_IRUGO | S_IWUSR), init_net.proc_net)) == NULL) {
+		return -ENOMEM;
+	}
+    arp_reply_file->read_proc =  proc_read_arp_reply_only;
+    arp_reply_file->write_proc =  proc_write_arp_reply_only;
+    arp_reply_file->data = NULL;
+#endif
+
 	return 0;
 }
 
 static void __net_exit arp_net_exit(struct net *net)
 {
+#ifdef _USE_MY_ARP
+	remove_proc_entry(ARP_REPLY_FILE, init_net.proc_net);
+#endif
 	proc_net_remove(net, "arp");
 }
 
@@ -1414,6 +1597,7 @@ EXPORT_SYMBOL(arp_find);
 EXPORT_SYMBOL(arp_create);
 EXPORT_SYMBOL(arp_xmit);
 EXPORT_SYMBOL(arp_send);
+EXPORT_SYMBOL(rks_arp_send);
 EXPORT_SYMBOL(arp_tbl);
 
 #if defined(CONFIG_ATM_CLIP) || defined(CONFIG_ATM_CLIP_MODULE)

@@ -1,7 +1,7 @@
 /*
  * Freescale MPC85xx, MPC83xx DMA Engine support
  *
- * Copyright (C) 2007 Freescale Semiconductor, Inc. All rights reserved.
+ * Copyright (C) 2007-2009 Freescale Semiconductor, Inc. All rights reserved.
  *
  * Author:
  *   Zhang Wei <wei.zhang@freescale.com>, Jul 2007
@@ -1200,7 +1200,13 @@ static int __devinit of_fsl_dma_probe(struct of_device *dev,
 						- fdev->reg.start + 1);
 
 	dma_cap_set(DMA_MEMCPY, fdev->common.cap_mask);
+#ifndef CONFIG_ASYNC_CORE
+	/*
+	 * The DMA_INTERRUPT async_tx is a NULL transfer, which will
+	 * triger a PE interrupt.
+	 */
 	dma_cap_set(DMA_INTERRUPT, fdev->common.cap_mask);
+#endif
 	dma_cap_set(DMA_SLAVE, fdev->common.cap_mask);
 	fdev->common.device_alloc_chan_resources = fsl_dma_alloc_chan_resources;
 	fdev->common.device_free_chan_resources = fsl_dma_free_chan_resources;
@@ -1222,6 +1228,8 @@ static int __devinit of_fsl_dma_probe(struct of_device *dev,
 			goto err;
 		}
 	}
+
+	dma_set_mask(&(dev->dev), DMA_BIT_MASK(36));
 
 	dev_set_drvdata(&(dev->dev), fdev);
 

@@ -38,6 +38,9 @@ static void br_send_bpdu(struct net_bridge_port *p,
 		return;
 
 	skb->dev = p->dev;
+#if 1 /* defined(V54_BSP) */
+	skb->input_dev = NULL;
+#endif
 	skb->protocol = htons(ETH_P_802_2);
 
 	skb_reserve(skb, LLC_RESERVE);

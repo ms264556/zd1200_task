@@ -114,6 +114,18 @@ SECTIONS
 
 	BSS_SECTION(0, 0, 0)
 
+  .data1 : {			/* Data1 */
+
+#if 1	/* V54 */
+   /* Align the initial ramdisk image (INITRD) on page boundaries. */
+   . = ALIGN(PAGE_SIZE);
+   __rd_start = .;
+   *(.initrd)
+   . = ALIGN(PAGE_SIZE);
+   __rd_end = .;
+#endif
+
+  }
 	_end = . ;
 
 	/* These mark the ABI of the kernel for debuggers.  */

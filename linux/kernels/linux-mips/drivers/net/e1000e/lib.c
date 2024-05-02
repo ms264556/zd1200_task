@@ -2044,6 +2044,10 @@ s32 e1000e_write_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words, u16 *data)
 	return 0;
 }
 
+#ifdef V54_BSP
+extern int bd_get_lan_macaddr(int lanid, unsigned char *macaddr);
+#endif
+
 /**
  *  e1000e_read_mac_addr - Read device MAC address
  *  @hw: pointer to the HW structure
@@ -2058,6 +2062,19 @@ s32 e1000e_read_mac_addr(struct e1000_hw *hw)
 	u16 offset, nvm_data, i;
 	u16 mac_addr_offset = 0;
 
+#ifdef V54_BSP
+	u8 alt_mac_addr[ETH_ALEN];
+
+	if (bd_get_lan_macaddr(hw->port_index, (unsigned char*)alt_mac_addr)) {
+		printk("Using Ruckus MAC:[%02x:%02x:%02x:%02x:%02x:%02x] for NIC:[%d]\n"
+			, alt_mac_addr[0], alt_mac_addr[1], alt_mac_addr[2]
+			, alt_mac_addr[3], alt_mac_addr[4], alt_mac_addr[5]
+			, hw->port_index);
+
+		if (hw->mac.type == e1000_82571)
+			hw->dev_spec.e82571.alt_mac_addr_is_present = 1;
+	} else {
+#endif
 	if (hw->mac.type == e1000_82571) {
 		/* Check for an alternate MAC address.  An alternate MAC
 		 * address can be setup by pre-boot software and must be
@@ -2106,6 +2123,14 @@ s32 e1000e_read_mac_addr(struct e1000_hw *hw)
 	/* Flip last bit of mac address if we're on second port */
 	if (!mac_addr_offset && hw->bus.func == E1000_FUNC_1)
 		hw->mac.perm_addr[5] ^= 1;
+
+#ifdef V54_BSP
+	}
+
+	for (i = 0; i < ETH_ALEN; i++)
+		hw->mac.addr[i] = hw->mac.perm_addr[i] = alt_mac_addr[i];
+
+#endif
 
 	for (i = 0; i < ETH_ALEN; i++)
 		hw->mac.addr[i] = hw->mac.perm_addr[i];

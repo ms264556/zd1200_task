@@ -2029,6 +2029,12 @@ static int elf_core_dump(long signr, struct pt_regs *regs, struct file *file, un
 #ifdef ELF_CORE_WRITE_EXTRA_DATA
 	ELF_CORE_WRITE_EXTRA_DATA;
 #endif
+#if 1 /* V54_BSP */
+	#define RUCKUS_CODUMP_MARK "~~ End of Ruckus CoDump ~~"
+	char khdr[] = RUCKUS_CODUMP_MARK;
+	offset += sizeof(khdr) - 1;
+        DUMP_WRITE(khdr, sizeof(khdr) - 1);
+#endif
 
 end_coredump:
 	set_fs(fs);

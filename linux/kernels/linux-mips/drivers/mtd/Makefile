@@ -2,6 +2,13 @@
 # Makefile for the memory technology device drivers.
 #
 
+# V54_BSP
+ifdef CONFIG_AR531X
+AR531XPATH = $(TOPDIR)/arch/mips/ar531x
+CPPFLAGS        += -I$(AR531XPATH)
+endif
+# end V54_BSP
+
 # Core functionality.
 obj-$(CONFIG_MTD)		+= mtd.o
 mtd-y				:= mtdcore.o mtdsuper.o mtdbdi.o

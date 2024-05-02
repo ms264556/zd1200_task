@@ -116,6 +116,31 @@ struct nf_conn {
 	u_int32_t secmark;
 #endif
 
+#if defined(CONFIG_NETFILTER_XT_MATCH_LAYER7) || \
+    defined(CONFIG_NETFILTER_XT_MATCH_LAYER7_MODULE)
+	struct {
+		/*
+		 * e.g. "http". NULL before decision. "unknown" after decision
+		 * if no match.
+		 */
+		char *app_proto;
+		/*
+		 * application layer data so far. NULL after match decision.
+		 */
+		char *app_data;
+		unsigned int app_data_len;
+		/*
+		* for l7pm
+		*
+		* matched tag from pme.  -1 before decision, 0 for unknown, tag
+		* for matched protocol */
+		unsigned int tag;
+		/* user ctx pointer */
+		void *userctx;
+		/* num of skbs sent to pm (++ when sent, -- when cb called)*/
+		unsigned int num_skb;
+	} layer7;
+#endif
 	/* Storage reserved for other modules: */
 	union nf_conntrack_proto proto;
 
@@ -291,6 +316,9 @@ static inline int nf_ct_is_untracked(const struct sk_buff *skb)
 extern int nf_conntrack_set_hashsize(const char *val, struct kernel_param *kp);
 extern unsigned int nf_conntrack_htable_size;
 extern unsigned int nf_conntrack_max;
+#if 1 /* V54_BSP */
+extern unsigned long ip_conntrack_multicast;
+#endif
 
 #define NF_CT_STAT_INC(net, count)	\
 	(per_cpu_ptr((net)->ct.stat, raw_smp_processor_id())->count++)

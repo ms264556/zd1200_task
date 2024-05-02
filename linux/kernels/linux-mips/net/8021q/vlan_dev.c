@@ -31,6 +31,9 @@
 #include "vlanproc.h"
 #include <linux/if_vlan.h>
 
+#if defined(CONFIG_BRIDGE_VLAN)
+#include <linux/if_bridge.h> /* is_bridge_device() */
+#endif
 /*
  *	Rebuild the Ethernet MAC header. This is called after an ARP
  *	(or in future other address resolution) has completed on this
@@ -80,7 +83,40 @@ static inline struct sk_buff *vlan_check_reorder_header(struct sk_buff *skb)
 	return skb;
 }
 
+#if 0 && defined(CONFIG_BRIDGE_VLAN)
+#define _BR_VLAN_DEBUG
+#define dPrintf(args...)    printk(##args)
+#else
+#undef _BR_VLAN_DEBUG
+#define dPrintf(...)
+#endif
+
+
+#ifdef CONFIG_BRIDGE_VLAN
+// check to see if there is a vlan device configured
+int
+has_vlan_device(struct sk_buff *skb, struct net_device *dev)
+{
+	unsigned short vlan_TCI;
+	unsigned short vid;
+	struct net_device *vlan_dev;
+	struct vlan_hdr *vhdr = (struct vlan_hdr *)(skb->data);
+
+	vlan_TCI = ntohs(vhdr->h_vlan_TCI);
+
+	vid = (vlan_TCI & VLAN_VID_MASK);
+
+	rcu_read_lock();
+	vlan_dev = __find_vlan_dev(dev, vid);
+	rcu_read_unlock();
+	return (vlan_dev? 1 : 0);
+}
+#endif
+
 static inline void vlan_set_encap_proto(struct sk_buff *skb,
+#ifdef CONFIG_BRIDGE_VLAN
+        int no_vhdr,
+#endif
 		struct vlan_hdr *vhdr)
 {
 	__be16 proto;
@@ -90,8 +126,14 @@ static inline void vlan_set_encap_proto(struct sk_buff *skb,
 	 * Was a VLAN packet, grab the encapsulated protocol, which the layer
 	 * three protocols care about.
 	 */
-
-	proto = vhdr->h_vlan_encapsulated_proto;
+#ifdef CONFIG_BRIDGE_VLAN
+    if ( no_vhdr ) {
+        proto = eth_hdr(skb)->h_proto;
+    } else
+#endif
+    {
+	    proto = vhdr->h_vlan_encapsulated_proto;
+    }
 	if (ntohs(proto) >= 1536) {
 		skb->protocol = proto;
 		return;
@@ -143,6 +185,9 @@ int vlan_skb_recv(struct sk_buff *skb, struct net_device *dev,
 	struct net_device_stats *stats;
 	u16 vlan_id;
 	u16 vlan_tci;
+#ifdef CONFIG_BRIDGE_VLAN
+    int no_vhdr = 0;
+#endif
 
 	skb = skb_share_check(skb, GFP_ATOMIC);
 	if (skb == NULL)
@@ -152,8 +197,32 @@ int vlan_skb_recv(struct sk_buff *skb, struct net_device *dev,
 		goto err_free;
 
 	vhdr = (struct vlan_hdr *)skb->data;
+
+#ifdef CONFIG_BRIDGE_VLAN
+	if ( eth_hdr(skb)->h_proto != htons(ETH_P_8021Q) ) {
+		// untagged frames
+		if ( skb->protocol != htons(ETH_P_8021Q) ) {
+#ifdef _BR_VLAN_DEBUG
+			printk(KERN_ERR "%s: eth_type=%04x vid=%d : no vhdr\n", __FUNCTION__,
+					eth_hdr(skb)->h_proto, skb->tag_vid);
+#endif
+			kfree_skb(skb);
+			return -1;
+		}
+		// packet for tagged VLAN from an untagged port
+		no_vhdr++;
+		vlan_id = skb->tag_vid;
+		vlan_tci = (skb->tag_priority << 13 | skb->tag_vid);
+	} else {
+		/* vlan_TCI = ntohs(get_unaligned(&vhdr->h_vlan_TCI)); */
+		vlan_tci = ntohs(vhdr->h_vlan_TCI);
+		vlan_id = (vlan_tci & VLAN_VID_MASK);
+		skb->tag_vid = vlan_id;
+	}
+#else
 	vlan_tci = ntohs(vhdr->h_vlan_TCI);
 	vlan_id = vlan_tci & VLAN_VID_MASK;
+#endif
 
 	rcu_read_lock();
 	skb->dev = __find_vlan_dev(dev, vlan_id);
@@ -166,10 +235,27 @@ int vlan_skb_recv(struct sk_buff *skb, struct net_device *dev,
 	stats = &skb->dev->stats;
 	stats->rx_packets++;
 	stats->rx_bytes += skb->len;
+#if 1 /* V54_BSP */
+	RX_BROADCAST_STATS(stats, skb);
+#endif
 
-	skb_pull_rcsum(skb, VLAN_HLEN);
-
+#ifdef CONFIG_BRIDGE_VLAN
+    if ( ! no_vhdr )
+#endif
+	{
+	    skb_pull_rcsum(skb, VLAN_HLEN);
+	}
+#if 1 /* V54_BSP */
+    {
+		unsigned int prio = vlan_get_ingress_priority(skb->dev, vlan_tci);
+		if( prio ) {
+		    skb->priority &= ~0xf;			/* clear previous priority value */
+		    skb->priority |= prio & 0xf;	/* set new priority value		 */
+		}
+	}
+#else
 	skb->priority = vlan_get_ingress_priority(skb->dev, vlan_tci);
+#endif
 
 	pr_debug("%s: priority: %u for TCI: %hu\n",
 		 __func__, skb->priority, vlan_tci);
@@ -196,9 +282,17 @@ int vlan_skb_recv(struct sk_buff *skb, struct net_device *dev,
 		break;
 	}
 
-	vlan_set_encap_proto(skb, vhdr);
+#ifdef CONFIG_BRIDGE_VLAN
+    vlan_set_encap_proto(skb, no_vhdr, vhdr);
+#else
+    vlan_set_encap_proto(skb, vhdr);
+#endif
 
-	skb = vlan_check_reorder_header(skb);
+#ifdef CONFIG_BRIDGE_VLAN
+        /* for the case: bridge port's untagged vlan id == mgmt vlan id */
+    if (!no_vhdr)
+#endif
+	    skb = vlan_check_reorder_header(skb);
 	if (!skb) {
 		stats->rx_errors++;
 		goto err_unlock;
@@ -297,7 +391,29 @@ static netdev_tx_t vlan_dev_hard_start_xmit(struct sk_buff *skb,
 	unsigned int len;
 	int ret;
 
-	/* Handle non-VLAN frames if they are sent to us, for example by DHCP.
+#ifdef CONFIG_BRIDGE_VLAN
+	/*
+	 * If the virtual device (e.g. br0.10) is set as management interface,
+	 * then prioritize its outbound traffic as indicated in member mgmt_priority.
+	 */
+	if( vlan_dev_info(dev)->mgmt_priority != MGMT_NULL_PRI ) {
+		skb->priority &= ~0xf;  /* lower 4 bits reserved for traffic class */
+		skb->priority |= vlan_dev_info(dev)->mgmt_priority & 0xf;
+	}
+
+	/* Ruckus: Make skb agree with VLAN header. */
+	skb->tag_priority = 0;
+	skb->tag_vid = vlan_dev_info(dev)->vlan_id;
+#endif /* CONFIG_BRIDGE_VLAN */
+
+#if 1 /* CONFIG_BRIDGE_SET_MAC */
+	// this is needed to support using eth0.100 as a separte interface
+	// and may be attaching that to a different bridge.
+	// only set VLAN header if real_dev is not a bridge
+	// If real_dev is a bridge, then packet is going up the stack
+	if (!is_bridge_device(vlan_dev_info(dev)->real_dev)) {
+#endif
+    /* Handle non-VLAN frames if they are sent to us, for example by DHCP.
 	 *
 	 * NOTE: THIS ASSUMES DIX ETHERNET, SPECIFICALLY NOT SUPPORTING
 	 * OTHER THINGS LIKE FDDI/TokenRing/802.3 SNAPs...
@@ -320,6 +436,9 @@ static netdev_tx_t vlan_dev_hard_start_xmit(struct sk_buff *skb,
 		if (orig_headroom < VLAN_HLEN)
 			vlan_dev_info(dev)->cnt_inc_headroom_on_tx++;
 	}
+#if 1 /* CONFIG_BRIDGE_SET_MAC */
+	}
+#endif
 
 
 	skb->dev = vlan_dev_info(dev)->real_dev;
@@ -329,6 +448,9 @@ static netdev_tx_t vlan_dev_hard_start_xmit(struct sk_buff *skb,
 	if (likely(ret == NET_XMIT_SUCCESS)) {
 		txq->tx_packets++;
 		txq->tx_bytes += len;
+#if 1 /* V54_BSP */
+		TX_BROADCAST_STATS(&dev->stats, skb, 1);
+#endif
 	} else
 		txq->tx_dropped++;
 
@@ -355,6 +477,9 @@ static netdev_tx_t vlan_dev_hwaccel_hard_start_xmit(struct sk_buff *skb,
 	if (likely(ret == NET_XMIT_SUCCESS)) {
 		txq->tx_packets++;
 		txq->tx_bytes += len;
+#if 1 /* V54_BSP */
+		TX_BROADCAST_STATS(&dev->stats, skb, 1);
+#endif
 	} else
 		txq->tx_dropped++;
 
@@ -493,6 +618,26 @@ out:
 	netif_carrier_off(dev);
 	return err;
 }
+
+#if 1 /* V54_BSP */
+int vlan_dev_set_mgmt_priority(char* dev_name, int prio)
+{
+	struct net_device *dev = dev_get_by_name(&init_net, dev_name);
+	int rv = 0;
+	if (dev) {
+		if (dev->priv_flags & IFF_802_1Q_VLAN) {
+			vlan_dev_info(dev)->mgmt_priority = prio;
+			rv = 0;
+		} else {
+			rv = -EINVAL;
+		}
+		dev_put(dev);
+	} else {
+		rv = -ENODEV;
+	}
+	return rv;
+}
+#endif
 
 static int vlan_dev_stop(struct net_device *dev)
 {
@@ -692,6 +837,7 @@ static int vlan_dev_init(struct net_device *dev)
 		      (1<<__LINK_STATE_PRESENT);
 
 	dev->features |= real_dev->features & real_dev->vlan_features;
+	dev->features |= NETIF_F_LLTX;
 	dev->gso_max_size = real_dev->gso_max_size;
 
 	/* ipv6 shared card related stuff */

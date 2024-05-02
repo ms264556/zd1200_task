@@ -116,6 +116,11 @@ KBUILD_CFLAGS += $(call cc-option,-funit-at-a-time)
 # often slow when they are implemented at all
 KBUILD_CFLAGS		+= -mno-string
 
+ifeq ($(CONFIG_DEBUG_CW),y)
+CFLAGS += -g2 -gdwarf-2
+AFLAGS_KERNEL += -Wa,-gdwarf2
+endif
+
 ifeq ($(CONFIG_6xx),y)
 KBUILD_CFLAGS		+= -mcpu=powerpc
 endif
@@ -152,6 +157,16 @@ core-y				+= arch/powerpc/kernel/ \
 				   arch/powerpc/math-emu/
 core-$(CONFIG_XMON)		+= arch/powerpc/xmon/
 core-$(CONFIG_KVM) 		+= arch/powerpc/kvm/
+
+# V54_BSP
+ifneq ($(strip $(CONFIG_FLASH_ROOTFS)),y)
+core-$(CONFIG_EMBEDDED_RAMDISK)			+= arch/powerpc/ramdisk/
+ramdisk_obj					=
+else
+ramdisk_obj					= arch/powerpc/ramdisk/
+endif
+core-y			+= arch/powerpc/ramdisk/rd_size.o
+# end V54_BSP
 
 drivers-$(CONFIG_OPROFILE)	+= arch/powerpc/oprofile/
 

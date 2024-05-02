@@ -48,6 +48,10 @@
 #include <asm/types.h>
 #include <asm/stacktrace.h>
 #include <asm/irq.h>
+#if defined(V54_BSP)
+#include <asm/time.h>
+#endif
+#include <asm/uasm.h>
 
 extern void check_wait(void);
 extern asmlinkage void r4k_wait(void);
@@ -353,9 +357,24 @@ void show_registers(const struct pt_regs *regs)
 
 static DEFINE_SPINLOCK(die_lock);
 
-void __noreturn die(const char * str, const struct pt_regs * regs)
+#if V54_BSP
+#ifdef RKS_SYSTEM_TRACE
+rks_show_trace_func_t *show_system_trace = NULL;
+EXPORT_SYMBOL(show_system_trace);
+
+void
+rks_register_system_trace(rks_show_trace_func_t *show_system_trace_fn)
+{
+    show_system_trace = show_system_trace_fn;
+}
+#endif /* RKS_SYSTEM_TRACE */
+
+#endif
+
+void __noreturn die(const char * str, struct pt_regs * regs)
 {
 	static int die_counter;
+	int sig = SIGSEGV;
 #ifdef CONFIG_MIPS_MT_SMTC
 	unsigned long dvpret = dvpe();
 #endif /* CONFIG_MIPS_MT_SMTC */
@@ -366,6 +385,13 @@ void __noreturn die(const char * str, const struct pt_regs * regs)
 #ifdef CONFIG_MIPS_MT_SMTC
 	mips_mt_regdump(dvpret);
 #endif /* CONFIG_MIPS_MT_SMTC */
+
+	if (notify_die(DIE_OOPS, str, regs, 0, current->thread.trap_no, SIGSEGV) == NOTIFY_STOP)
+		sig = 0;
+
+#ifdef V54_PROD_BUILD
+	printk("---> SW Version: %s <---\n", V54_PROD_BUILD);
+#endif
 	printk("%s[#%d]:\n", str, ++die_counter);
 	show_registers(regs);
 	add_taint(TAINT_DIE);
@@ -380,7 +406,7 @@ void __noreturn die(const char * str, const struct pt_regs * regs)
 		panic("Fatal exception");
 	}
 
-	do_exit(SIGSEGV);
+	do_exit(sig);
 }
 
 extern struct exception_table_entry __start___dbe_table[];
@@ -1243,21 +1269,25 @@ unsigned long ebase;
 unsigned long exception_handlers[32];
 unsigned long vi_handlers[64];
 
-/*
- * As a side effect of the way this is implemented we're limited
- * to interrupt handlers in the address range from
- * KSEG0 <= x < KSEG0 + 256mb on the Nevada.  Oh well ...
- */
-void *set_except_vector(int n, void *addr)
+void __init *set_except_vector(int n, void *addr)
 {
 	unsigned long handler = (unsigned long) addr;
 	unsigned long old_handler = exception_handlers[n];
 
 	exception_handlers[n] = handler;
 	if (n == 0 && cpu_has_divec) {
-		*(u32 *)(ebase + 0x200) = 0x08000000 |
-					  (0x03ffffff & (handler >> 2));
-		local_flush_icache_range(ebase + 0x200, ebase + 0x204);
+		unsigned long jump_mask = ~((1 << 28) - 1);
+		u32 *buf = (u32 *)(ebase + 0x200);
+		unsigned int k0 = 26;
+		if ((handler & jump_mask) == ((ebase + 0x200) & jump_mask)) {
+			uasm_i_j(&buf, handler & ~jump_mask);
+			uasm_i_nop(&buf);
+		} else {
+			UASM_i_LA(&buf, k0, handler);
+			uasm_i_jr(&buf, k0);
+			uasm_i_nop(&buf);
+		}
+		local_flush_icache_range(ebase + 0x200, (unsigned long)buf);
 	}
 	return (void *)old_handler;
 }
@@ -1537,6 +1567,10 @@ void __cpuinit per_cpu_trap_init(void)
 	 */
 	if (cpu_has_mips_r2) {
 		cp0_compare_irq = (read_c0_intctl() >> 29) & 7;
+#if defined(V54_BSP)
+		if (get_c0_compare_irq)
+			cp0_compare_irq = get_c0_compare_irq();
+#endif
 		cp0_perfcount_irq = (read_c0_intctl() >> 26) & 7;
 		if (cp0_perfcount_irq == cp0_compare_irq)
 			cp0_perfcount_irq = -1;
@@ -1592,12 +1626,7 @@ static char panic_null_cerr[] __cpuinitdata =
 void __cpuinit set_uncached_handler(unsigned long offset, void *addr,
 	unsigned long size)
 {
-#ifdef CONFIG_32BIT
-	unsigned long uncached_ebase = KSEG1ADDR(ebase);
-#endif
-#ifdef CONFIG_64BIT
-	unsigned long uncached_ebase = TO_UNCAC(ebase);
-#endif
+	unsigned long uncached_ebase = CKSEG1ADDR(ebase);
 
 	if (!addr)
 		panic(panic_null_cerr);
@@ -1634,7 +1663,7 @@ void __init trap_init(void)
 		ebase = (unsigned long)
 			__alloc_bootmem(size, 1 << fls(size), 0);
 	} else {
-		ebase = CAC_BASE;
+		ebase = CKSEG0;
 		if (cpu_has_mips_r2)
 			ebase += (read_c0_ebase() & 0x3ffff000);
 	}

@@ -86,6 +86,15 @@ static int ip6_output_finish(struct sk_buff *skb)
 {
 	struct dst_entry *dst = skb_dst(skb);
 
+#if 1 /* defined(V54_BSP) */
+	// initialize skb->input_dev
+	skb->input_dev = NULL;
+#endif
+#ifdef CONFIG_BRIDGE_VLAN
+	// initialize tag_vid, in case it came up to IP stack previously
+	skb->tag_vid = 0;
+#endif
+
 	if (dst->hh)
 		return neigh_hh_output(dst->hh, skb);
 	else if (dst->neighbour)

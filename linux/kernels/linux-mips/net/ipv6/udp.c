@@ -350,14 +350,13 @@ static __inline__ void udpv6_err(struct sk_buff *skb,
 	__udp6_lib_err(skb, opt, type, code, offset, info, &udp_table);
 }
 
-int udpv6_queue_rcv_skb(struct sock * sk, struct sk_buff *skb)
+static int udpv6_queue_rcv_skb_check(struct sock * sk, struct sk_buff *skb)
 {
 	struct udp_sock *up = udp_sk(sk);
-	int rc;
 	int is_udplite = IS_UDPLITE(sk);
 
 	if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
-		goto drop;
+		goto err;
 
 	/*
 	 * UDP-Lite specific tests, ignored on UDP sockets (see net/ipv4/udp.c).
@@ -368,20 +367,33 @@ int udpv6_queue_rcv_skb(struct sock * sk, struct sk_buff *skb)
 			LIMIT_NETDEBUG(KERN_WARNING "UDPLITE6: partial coverage"
 				" %d while full coverage %d requested\n",
 				UDP_SKB_CB(skb)->cscov, skb->len);
-			goto drop;
+			goto err;
 		}
 		if (UDP_SKB_CB(skb)->cscov  <  up->pcrlen) {
 			LIMIT_NETDEBUG(KERN_WARNING "UDPLITE6: coverage %d "
 						    "too small, need min %d\n",
 				       UDP_SKB_CB(skb)->cscov, up->pcrlen);
-			goto drop;
+			goto err;
 		}
 	}
 
 	if (sk->sk_filter) {
 		if (udp_lib_checksum_complete(skb))
-			goto drop;
+			goto err;
 	}
+
+    return 0;
+err:
+	return -1;
+}
+
+int udpv6_queue_rcv_skb(struct sock * sk, struct sk_buff *skb)
+{
+	int rc;
+	int is_udplite = IS_UDPLITE(sk);
+
+    if ((rc = udpv6_queue_rcv_skb_check(sk, skb)) < 0)
+        goto drop;
 
 	if ((rc = sock_queue_rcv_skb(sk,skb)) < 0) {
 		/* Note that an ENOMEM error is charged twice */
@@ -394,6 +406,59 @@ int udpv6_queue_rcv_skb(struct sock * sk, struct sk_buff *skb)
 	}
 
 	return 0;
+drop:
+	UDP6_INC_STATS_BH(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
+	kfree_skb(skb);
+	return -1;
+}
+
+static int udpv6_queue_rcv_skb_lock(struct sock * sk, struct sk_buff *skb)
+{
+	struct udp_sock *up = udp_sk(sk);
+	int rc, is_udplite = IS_UDPLITE(sk);
+
+	if (up->encap_type) {
+        if ((rc = udpv6_queue_rcv_skb_check(sk, skb)) < 0)
+            goto drop;
+
+        int (*encap_rcv)(struct sock *sk, struct sk_buff *skb);
+		/*
+		 * This is an encapsulation socket so pass the skb to
+		 * the socket's udp_encap_rcv() hook. Otherwise, just
+		 * fall through and pass this up the UDP socket.
+		 * up->encap_rcv() returns the following value:
+		 * =0 if skb was successfully passed to the encap
+		 *    handler or was discarded by it.
+		 * >0 if skb should be passed on to UDP.
+		 * <0 if skb should be resubmitted as proto -N
+		 */
+
+		/* if we're overly short, let UDP handle it */
+        encap_rcv = ACCESS_ONCE(up->encap_rcv);
+		if (skb->len > sizeof(struct udphdr) &&
+		    encap_rcv != NULL) {
+			int ret;
+
+			ret = encap_rcv(sk, skb);
+			if (ret <= 0) {
+				UDP_INC_STATS_BH(sock_net(sk),
+						 UDP_MIB_INDATAGRAMS,
+						 is_udplite);
+				return -ret;
+			}
+		}
+
+		/* FALLTHROUGH -- it's a UDP Packet */
+	}
+
+	bh_lock_sock(sk);
+	if (!sock_owned_by_user(sk))
+		udpv6_queue_rcv_skb(sk, skb);
+	else
+		sk_add_backlog(sk, skb);
+	bh_unlock_sock(sk);
+
+    return 0;
 drop:
 	UDP6_INC_STATS_BH(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
 	kfree_skb(skb);
@@ -466,21 +531,10 @@ static int __udp6_lib_mcast_deliver(struct net *net, struct sk_buff *skb,
 	while ((sk2 = udp_v6_mcast_next(net, sk_nulls_next(sk2), uh->dest, daddr,
 					uh->source, saddr, dif))) {
 		struct sk_buff *buff = skb_clone(skb, GFP_ATOMIC);
-		if (buff) {
-			bh_lock_sock(sk2);
-			if (!sock_owned_by_user(sk2))
-				udpv6_queue_rcv_skb(sk2, buff);
-			else
-				sk_add_backlog(sk2, buff);
-			bh_unlock_sock(sk2);
-		}
+		if (buff)
+			udpv6_queue_rcv_skb_lock(sk2, buff);
 	}
-	bh_lock_sock(sk);
-	if (!sock_owned_by_user(sk))
-		udpv6_queue_rcv_skb(sk, skb);
-	else
-		sk_add_backlog(sk, skb);
-	bh_unlock_sock(sk);
+	udpv6_queue_rcv_skb_lock(sk, skb);
 out:
 	spin_unlock(&hslot->lock);
 	return 0;
@@ -595,12 +649,7 @@ int __udp6_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 
 	/* deliver */
 
-	bh_lock_sock(sk);
-	if (!sock_owned_by_user(sk))
-		udpv6_queue_rcv_skb(sk, skb);
-	else
-		sk_add_backlog(sk, skb);
-	bh_unlock_sock(sk);
+	udpv6_queue_rcv_skb_lock(sk, skb);
 	sock_put(sk);
 	return 0;
 

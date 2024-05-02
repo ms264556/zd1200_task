@@ -2437,7 +2437,11 @@ static int ip6_route_dev_notify(struct notifier_block *this,
 
 #ifdef CONFIG_PROC_FS
 
+#if 1 /* V54_BSP */
+#define RT6_INFO_LEN (32 + 4 + 32 + 4 + 32 + 40 + 7 + 1)
+#else
 #define RT6_INFO_LEN (32 + 4 + 32 + 4 + 32 + 40 + 5 + 1)
+#endif
 
 struct rt6_proc_arg
 {
@@ -2465,7 +2469,11 @@ static int rt6_info_route(struct rt6_info *rt, void *p_arg)
 	} else {
 		seq_puts(m, "00000000000000000000000000000000");
 	}
+#if 1 /* V54_BSP */
+	seq_printf(m, " %08x %08x %08x %08x %10s\n",
+#else
 	seq_printf(m, " %08x %08x %08x %08x %8s\n",
+#endif
 		   rt->rt6i_metric, atomic_read(&rt->u.dst.__refcnt),
 		   rt->u.dst.__use, rt->rt6i_flags,
 		   rt->rt6i_dev ? rt->rt6i_dev->name : "");

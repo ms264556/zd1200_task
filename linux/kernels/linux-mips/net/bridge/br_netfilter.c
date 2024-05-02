@@ -197,8 +197,11 @@ static inline void nf_bridge_pull_encap_header_rcsum(struct sk_buff *skb)
 
 static inline void nf_bridge_save_header(struct sk_buff *skb)
 {
+#ifndef CONFIG_BRIDGE_VLAN
 	int header_size = ETH_HLEN + nf_bridge_encap_header_len(skb);
-
+#else
+	int header_size = skb->mac_len + nf_bridge_encap_header_len(skb);
+#endif
 	skb_copy_from_linear_data_offset(skb, -header_size,
 					 skb->nf_bridge->data, header_size);
 }
@@ -210,8 +213,11 @@ static inline void nf_bridge_save_header(struct sk_buff *skb)
 int nf_bridge_copy_header(struct sk_buff *skb)
 {
 	int err;
+#ifndef CONFIG_BRIDGE_VLAN
 	int header_size = ETH_HLEN + nf_bridge_encap_header_len(skb);
-
+#else
+	int header_size = skb->mac_len + nf_bridge_encap_header_len(skb);
+#endif
 	err = skb_cow_head(skb, header_size);
 	if (err)
 		return err;

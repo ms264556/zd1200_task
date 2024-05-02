@@ -54,6 +54,9 @@
 #define SIOCGIFENCAP	0x8925		/* get/set encapsulations       */
 #define SIOCSIFENCAP	0x8926		
 #define SIOCGIFHWADDR	0x8927		/* Get hardware address		*/
+#if 1 /* V54_BSP */
+#define SIOCGIFLIST	0x8928		/* get interface list		*/
+#endif
 #define SIOCGIFSLAVE	0x8929		/* Driver slaving support	*/
 #define SIOCSIFSLAVE	0x8930
 #define SIOCADDMULTI	0x8931		/* Multicast address lists	*/
@@ -106,6 +109,21 @@
 
 #define SIOCGIFVLAN	0x8982		/* 802.1Q VLAN support		*/
 #define SIOCSIFVLAN	0x8983		/* Set 802.1Q VLAN options 	*/
+
+#if 1 /* V54_BSP */
+/* Etype device */
+#define SIOCGETYPEDEV	0x8984		/* Etherytpe device support */
+#define SIOCSETYPEDEV	0x8985		/* Set Ethertype device options	*/
+
+#define SIOCGDOT1X	0x8986		/* 802.1X PORT support		*/
+#define SIOCSDOT1X	0x8987		/* Set 802.1X PORT options 	*/
+
+/* set policy */
+#define SIOCGPOLICY	0x8988		/* get policy for device */
+#define SIOCSPOLICY 0x8989		/* set policy for device */
+
+#define SIOCRKS 	0x898f		/* Ruckus Generic IOCTL		*/
+#endif
 
 /* bonding calls */
 

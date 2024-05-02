@@ -31,3 +31,88 @@ config BRIDGE
 	  will be called bridge.
 
 	  If unsure, say N.
+
+if BRIDGE
+
+config BRIDGE_PORT_MODE
+	bool "Set mode on individual bridge port"
+	default n
+	---help---
+	  Support setting an individual bridge port to default, UNI and hostonly mode.
+	  Default and UNI port are combinedly used to support port isolation.
+	  Hostonly port is used to disable forwarding traffic from that port to other port.
+	  However, traffic from that port destined to local host (including broadcast,
+	  multicast and unicast) is not affected.
+
+config BRIDGE_BR_MODE
+	bool "Set mode on the whole bridge"
+	default n
+	---help---
+	  Support setting bridge to default or hostonly mode.
+	  When a bridge is set to hostonly mode, traffic forwarding between different ports
+	  is disabled. However, traffic destined to local host (including broadcast,
+	  multicast and unicast) is not affected.
+
+config BRIDGE_LOOP_GUARD
+	bool "Turn on port flap detect feature"
+	default n
+	---help---
+	  Turns on check rapid mac address flapping between multiple bridge ports.
+
+# V54_BSP
+config BRIDGE_PACKET_INSPECTION_FILTER
+	tristate "Turn on bridge packet inspection/filtering"
+	default n
+	---help---
+	  bridge packet inspection is a light-weight packet filter, it can peek packets
+	  over bridge, then serve each packet to particulr actions. ex. proxy ARP, directed ARP.
+
+config BRIDGE_MESH_PKT_FORWARDING_FILTER
+	bool "Turn on Mesh Packet Forwarding Filter"
+	default n
+	---help---
+	  Mesh Packet Forwarding Filter allows packets with specific MAC addresses
+	  to flow only in one direction. Once a MAC (or multiple MACs) are configured,
+	  the port will only allow traffic with that SRC MAC to ingress from that port
+	  and only packets with that DST MAC to egress from to that port. This helps
+	  prevent packet loops as well as provides some security against ARP spoofing
+	  of configured MAC addresses.
+# end V54_BSP
+
+config BRIDGE_VLAN
+	bool "802.1Q bridge support"
+	---help---
+	  If you say Y here, then your bridge will be able to filter and
+	  forward packets according to their IEEE 802.1Q headers.
+
+	  If unsure, say N.
+
+# V54_BSP
+config BRIDGE_DHCP_HOOK
+	tristate "DHCP hook support"
+	default n
+	---help---
+	  Bridge hook for dhcp packet.
+
+config BRIDGE_DNAT_HOOK
+	tristate "DNAT hook support"
+	default n
+	---help---
+	  Bridge hook for dnat module.
+config CI_WHITELIST
+        tristate "Client isolation whitelist support"
+        default n
+        ---help---
+          Whitelist infrastructure support for AP.
+config SOURCE_MAC_GUARD
+        tristate "Source MAC address protection (obsoletes MPFF)"
+        default n
+        ---help---
+          Source MAC address check for ARP packets.
+config ANTI_SPOOF
+        tristate "Anti-spoof filter checks for AP"
+        default n
+        ---help---
+          DHCP & DHCP responses are filtered when received on wlanX.
+# end V54_BSP
+endif # BRIDGE

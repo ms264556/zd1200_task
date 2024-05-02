@@ -45,6 +45,15 @@ struct vlan_dev_info {
 	struct proc_dir_entry			*dent;
 	unsigned long				cnt_inc_headroom_on_tx;
 	unsigned long				cnt_encap_on_xmit;
+#if 1 /* V54_BSP */
+#define MGMT_PRI_VOICE   3
+#define MGMT_NULL_PRI   -1 /* -1 means no priority would be applied on management traffic */
+
+        int mgmt_priority; /* The priority of egress traffic from the vlan device.
+                            * This is used to prioritize the management traffic. MGMT_NULL_PRI
+                            * means there is no prioritized mechanism on management traffic.
+                            */
+#endif
 };
 
 static inline struct vlan_dev_info *vlan_dev_info(const struct net_device *dev)
@@ -83,6 +92,9 @@ int vlan_check_real_dev(struct net_device *real_dev, u16 vlan_id);
 void vlan_setup(struct net_device *dev);
 int register_vlan_dev(struct net_device *dev);
 void unregister_vlan_dev(struct net_device *dev);
+#if 1 /* V54_BSP */
+int vlan_dev_set_mgmt_priority(char* dev_name, int prio);
+#endif
 
 static inline u32 vlan_get_ingress_priority(struct net_device *dev,
 					    u16 vlan_tci)

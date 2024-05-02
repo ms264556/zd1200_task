@@ -2160,7 +2160,6 @@ static void unix_seq_stop(struct seq_file *seq, void *v)
 
 static int unix_seq_show(struct seq_file *seq, void *v)
 {
-
 	if (v == SEQ_START_TOKEN)
 		seq_puts(seq, "Num       RefCount Protocol Flags    Type St "
 			 "Inode Path\n");
@@ -2202,6 +2201,53 @@ static int unix_seq_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
+static int unix_rks_seq_show(struct seq_file *seq, void *v)
+{
+	if (v == SEQ_START_TOKEN)
+		seq_puts(seq, "Num       RefCount Protocol     wmem   sndbuf  RcvQ bklog Flags    Type St "
+			 "Inode Path\n");
+	else {
+		struct sock *s = v;
+		struct unix_sock *u = unix_sk(s);
+		unix_state_lock(s);
+
+		seq_printf(seq, "%p: %08X %08X %08X %08X %5u %5u %08X %04X %02X %5lu",
+			s,
+			atomic_read(&s->sk_refcnt),
+			0,
+			atomic_read(&s->sk_wmem_alloc),
+			s->sk_sndbuf,
+			skb_queue_len(&s->sk_receive_queue),
+            s->sk_max_ack_backlog,
+			s->sk_state == TCP_LISTEN ? __SO_ACCEPTCON : 0,
+			s->sk_type,
+			s->sk_socket ?
+			(s->sk_state == TCP_ESTABLISHED ? SS_CONNECTED : SS_UNCONNECTED) :
+			(s->sk_state == TCP_ESTABLISHED ? SS_CONNECTING : SS_DISCONNECTING),
+			sock_i_ino(s));
+
+		if (u->addr) {
+			int i, len;
+			seq_putc(seq, ' ');
+
+			i = 0;
+			len = u->addr->len - sizeof(short);
+			if (!UNIX_ABSTRACT(s))
+				len--;
+			else {
+				seq_putc(seq, '@');
+				i++;
+			}
+			for ( ; i < len; i++)
+				seq_putc(seq, u->addr->name->sun_path[i]);
+		}
+		unix_state_unlock(s);
+		seq_putc(seq, '\n');
+	}
+
+	return 0;
+}
+
 static const struct seq_operations unix_seq_ops = {
 	.start  = unix_seq_start,
 	.next   = unix_seq_next,
@@ -2209,9 +2255,22 @@ static const struct seq_operations unix_seq_ops = {
 	.show   = unix_seq_show,
 };
 
+static const struct seq_operations unix_rks_seq_ops = {
+	.start  = unix_seq_start,
+	.next   = unix_seq_next,
+	.stop   = unix_seq_stop,
+	.show   = unix_rks_seq_show,
+};
+
 static int unix_seq_open(struct inode *inode, struct file *file)
 {
 	return seq_open_net(inode, file, &unix_seq_ops,
+			    sizeof(struct unix_iter_state));
+}
+
+static int unix_rks_seq_open(struct inode *inode, struct file *file)
+{
+	return seq_open_net(inode, file, &unix_rks_seq_ops,
 			    sizeof(struct unix_iter_state));
 }
 
@@ -2223,6 +2282,13 @@ static const struct file_operations unix_seq_fops = {
 	.release	= seq_release_net,
 };
 
+static const struct file_operations unix_rks_seq_fops = {
+	.owner		= THIS_MODULE,
+	.open		= unix_rks_seq_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release_net,
+};
 #endif
 
 static struct net_proto_family unix_family_ops = {
@@ -2245,6 +2311,10 @@ static int unix_net_init(struct net *net)
 		unix_sysctl_unregister(net);
 		goto out;
 	}
+	if (!proc_net_fops_create(net, "unix_rks", 0, &unix_rks_seq_fops)) {
+		unix_sysctl_unregister(net);
+		goto out;
+	}
 #endif
 	error = 0;
 out:
@@ -2254,6 +2324,7 @@ out:
 static void unix_net_exit(struct net *net)
 {
 	unix_sysctl_unregister(net);
+	proc_net_remove(net, "unix_rks");
 	proc_net_remove(net, "unix");
 }
 

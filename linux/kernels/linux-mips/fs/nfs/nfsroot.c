@@ -329,7 +329,11 @@ static int __init root_nfs_name(char *name)
 static int __init root_nfs_addr(void)
 {
 	if ((servaddr = root_server_addr) == htonl(INADDR_NONE)) {
+#ifdef NAR5520
+		printk(KERN_NOTICE "Root-NFS: No NFS server available, giving up.\n");
+#else
 		printk(KERN_ERR "Root-NFS: No NFS server available, giving up.\n");
+#endif
 		return -1;
 	}
 

@@ -157,6 +157,8 @@ static void e1000_rx_checksum(struct e1000_adapter *adapter, u32 status_err,
  * e1000_alloc_rx_buffers - Replace used receive buffers; legacy & extended
  * @adapter: address of board private structure
  **/
+/* reserve header room for LWAPP tunne header */
+#define E1000_RX_RESERVE    ((LWAPP_TUNNEL_HEADER_ROOM) - (NET_SKB_PAD))
 static void e1000_alloc_rx_buffers(struct e1000_adapter *adapter,
 				   int cleaned_count)
 {
@@ -168,6 +170,9 @@ static void e1000_alloc_rx_buffers(struct e1000_adapter *adapter,
 	struct sk_buff *skb;
 	unsigned int i;
 	unsigned int bufsz = adapter->rx_buffer_len + NET_IP_ALIGN;
+#ifdef CONFIG_E1000E_ROOMIER_RX_BUFFERS
+	bufsz += E1000_RX_RESERVE + LWAPP_TUNNEL_TAIL_ROOM;
+#endif
 
 	i = rx_ring->next_to_use;
 	buffer_info = &rx_ring->buffer_info[i];
@@ -191,7 +196,11 @@ static void e1000_alloc_rx_buffers(struct e1000_adapter *adapter,
 		 * this will result in a 16 byte aligned IP header after
 		 * the 14 byte MAC header is removed
 		 */
+#ifdef CONFIG_E1000E_ROOMIER_RX_BUFFERS
+		skb_reserve(skb, E1000_RX_RESERVE + NET_IP_ALIGN);
+#else
 		skb_reserve(skb, NET_IP_ALIGN);
+#endif
 
 		buffer_info->skb = skb;
 map_skb:
@@ -523,9 +532,17 @@ static bool e1000_clean_rx_irq(struct e1000_adapter *adapter,
 		 */
 		if (length < copybreak) {
 			struct sk_buff *new_skb =
-			    netdev_alloc_skb(netdev, length + NET_IP_ALIGN);
+#ifdef CONFIG_E1000E_ROOMIER_RX_BUFFERS
+			    netdev_alloc_skb(netdev, length + NET_IP_ALIGN + E1000_RX_RESERVE + LWAPP_TUNNEL_TAIL_ROOM);
+#else
+				netdev_alloc_skb(netdev, length + NET_IP_ALIGN);
+#endif
 			if (new_skb) {
+#ifdef CONFIG_E1000E_ROOMIER_RX_BUFFERS
+				skb_reserve(new_skb, E1000_RX_RESERVE + NET_IP_ALIGN);
+#else
 				skb_reserve(new_skb, NET_IP_ALIGN);
+#endif
 				skb_copy_to_linear_data_offset(new_skb,
 							       -NET_IP_ALIGN,
 							       (skb->data -
@@ -5060,6 +5077,9 @@ static int __devinit e1000_probe(struct pci_dev *pdev,
 	netdev->mem_start = mmio_start;
 	netdev->mem_end = mmio_start + mmio_len;
 
+#ifdef V54_BSP
+	hw->port_index = cards_found;
+#endif
 	adapter->bd_number = cards_found++;
 
 	e1000e_check_options(adapter);

@@ -61,6 +61,10 @@ EXPORT_SYMBOL_GPL(nf_conntrack_htable_size);
 unsigned int nf_conntrack_max __read_mostly;
 EXPORT_SYMBOL_GPL(nf_conntrack_max);
 
+#if 1 /* V54_BSP */
+unsigned long ip_conntrack_multicast __read_mostly = 0; // enable connection trackking for multicast packets
+#endif
+
 struct nf_conn nf_conntrack_untracked __read_mostly;
 EXPORT_SYMBOL_GPL(nf_conntrack_untracked);
 
@@ -200,6 +204,13 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	 * before connection is in the list, so we need to clean here,
 	 * too. */
 	nf_ct_remove_expectations(ct);
+
+#if defined(CONFIG_NETFILTER_XT_MATCH_LAYER7) || defined(CONFIG_NETFILTER_XT_MATCH_LAYER7_MODULE)
+	if(ct->layer7.app_proto)
+		kfree(ct->layer7.app_proto);
+	if(ct->layer7.app_data)
+	kfree(ct->layer7.app_data);
+#endif
 
 	/* We overload first tuple to link into unconfirmed list. */
 	if (!nf_ct_is_confirmed(ct)) {
@@ -765,6 +776,14 @@ nf_conntrack_in(struct net *net, u_int8_t pf, unsigned int hooknum,
 		NF_CT_STAT_INC_ATOMIC(net, ignore);
 		return NF_ACCEPT;
 	}
+
+#if 1 /* V54_BSP */
+	/* Ignore multicast packets */
+	if ((skb->pkt_type == PACKET_MULTICAST) && !ip_conntrack_multicast) {
+		NF_CT_STAT_INC_ATOMIC(net, ignore);
+		return NF_ACCEPT;
+	}
+#endif
 
 	/* rcu_read_lock()ed by nf_hook_slow */
 	l3proto = __nf_ct_l3proto_find(pf);

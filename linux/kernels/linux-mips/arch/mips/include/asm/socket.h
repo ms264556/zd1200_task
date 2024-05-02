@@ -80,6 +80,11 @@ To add: #define SO_REUSEPORT 0x0200	/* Allow local address and port reuse.  */
 #define SO_TIMESTAMPING		37
 #define SCM_TIMESTAMPING	SO_TIMESTAMPING
 
+#if 1 /* V54_BSP */
+#define SO_INIFINDEX	38
+#define SO_OUTIFINDEX	39
+#endif
+
 #ifdef __KERNEL__
 
 /** sock_type - Socket types

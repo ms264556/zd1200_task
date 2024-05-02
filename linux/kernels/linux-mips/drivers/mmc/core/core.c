@@ -1067,12 +1067,13 @@ void mmc_rescan(struct work_struct *work)
 	 */
 	mmc_bus_put(host);
 
+	mmc_power_up(host);
+
 	if (host->ops->get_cd && host->ops->get_cd(host) == 0)
 		goto out;
 
 	mmc_claim_host(host);
 
-	mmc_power_up(host);
 	mmc_go_idle(host);
 
 	mmc_send_if_cond(host, host->ocr_avail);

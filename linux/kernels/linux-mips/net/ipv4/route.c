@@ -56,11 +56,16 @@
  * 	Ilia Sotnikov		:	Ignore TOS on PMTUD and Redirect
  * 	Ilia Sotnikov		:	Removed TOS from hash calculations
  *
+ * 		Copyright 2009 Freescale Semiconductor, Inc.
+ *
  *		This program is free software; you can redistribute it and/or
  *		modify it under the terms of the GNU General Public License
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
+ /* Copyright statement for the ROUTE_HOOK sections:
+  * Copyright (C) 2007-2009 Freescale Semiconductor, Inc. All rights reserved.
+  */
 
 #include <linux/module.h>
 #include <asm/uaccess.h>
@@ -106,6 +111,48 @@
 #include <net/rtnetlink.h>
 #ifdef CONFIG_SYSCTL
 #include <linux/sysctl.h>
+#endif
+
+#ifdef ROUTE_HOOK
+static void *route_hook_lookup_dummy(short iif, short oif, uint32_t daddr,
+	uint32_t saddr, int tos)
+{
+	return NULL;
+}
+
+static route_hook_add_fn *route_hook_add = NULL;
+static route_hook_del_fn *route_hook_del = NULL;
+static route_hook_lookup_fn *route_hook_lookup = route_hook_lookup_dummy;
+
+void _route_hook_add(struct rtable *rt)
+{
+	if (route_hook_add &&
+			route_hook_add(rt->fl.iif, rt->fl.oif, rt->fl.fl4_dst,
+			rt->fl.fl4_src, rt->fl.fl4_tos, rt) < 0){
+		printk(KERN_DEBUG "%s: add fail: %d %d %u %u %u\n",
+			__func__, rt->fl.iif, rt->fl.oif, rt->fl.fl4_dst,
+			rt->fl.fl4_src, rt->fl.fl4_tos);
+	}
+}
+
+void route_hook_register(route_hook_add_fn *add,
+		route_hook_del_fn *del,
+		route_hook_lookup_fn *lookup)
+{
+	route_hook_add = add;
+	route_hook_del = del;
+	route_hook_lookup = lookup;
+}
+
+void route_hook_unregister(void)
+{
+	route_hook_add = NULL;
+	route_hook_del = NULL;
+	route_hook_lookup = route_hook_lookup_dummy;
+}
+
+EXPORT_SYMBOL(route_hook_register);
+EXPORT_SYMBOL(route_hook_unregister);
 #endif
 
 #define RT_FL_TOS(oldflp) \
@@ -610,6 +657,12 @@ static inline int ip_rt_proc_init(void)
 
 static inline void rt_free(struct rtable *rt)
 {
+#ifdef ROUTE_HOOK
+	if (route_hook_del
+		&& route_hook_del(rt->fl.iif, rt->fl.oif, rt->fl.fl4_dst,
+		rt->fl.fl4_src, rt->fl.fl4_tos) < 0){
+	}
+#endif
 	call_rcu_bh(&rt->u.dst.rcu_head, dst_rcu_free);
 }
 
@@ -1247,9 +1300,12 @@ restart:
 	spin_unlock_bh(rt_hash_lock_addr(hash));
 
 skip_hashing:
-	if (rp)
+	if (rp) {
 		*rp = rt;
-	else
+#ifdef ROUTE_HOOK
+	_route_hook_add(rt);
+#endif
+	} else
 		skb_dst_set(skb, &rt->u.dst);
 	return 0;
 }
@@ -1306,9 +1362,12 @@ void __ip_select_ident(struct iphdr *iph, struct dst_entry *dst, int more)
 			iph->id = htons(inet_getid(rt->peer, more));
 			return;
 		}
-	} else
+	}
+    /*
+    else
 		printk(KERN_DEBUG "rt_bind_peer(0) @%p\n",
-		       __builtin_return_address(0));
+        __builtin_return_address(0));
+    */
 
 	ip_select_fb_ident(iph);
 }
@@ -1942,6 +2001,10 @@ static void ip_handle_martian_source(struct net_device *dev,
 #endif
 }
 
+#ifdef CONFIG_NET_GIANFAR_FP
+extern int netdev_fastroute;
+extern int netdev_fastroute_obstacles;
+#endif
 static int __mkroute_input(struct sk_buff *skb,
 			   struct fib_result *res,
 			   struct in_device *in_dev,
@@ -2030,6 +2093,27 @@ static int __mkroute_input(struct sk_buff *skb,
 
 	rth->rt_flags = flags;
 
+#ifdef CONFIG_NET_GIANFAR_FP
+#ifdef FASTPATH_DEBUG
+	printk(KERN_INFO" %s: netdev_fastroute = %x, flags = %x, rth = %p",
+	       __func__, netdev_fastroute, flags, rth);
+#endif
+	if (netdev_fastroute && !(flags&(RTCF_NAT|RTCF_MASQ|RTCF_DOREDIRECT))) {
+		struct net_device *odev = rth->u.dst.dev;
+		struct net_device *dev = in_dev->dev;
+
+		if (odev != dev &&
+		    dev->netdev_ops->ndo_accept_fastpath &&
+		    odev->mtu >= dev->mtu &&
+		    dev->netdev_ops->ndo_accept_fastpath(dev, &rth->u.dst)
+		    == 0) {
+			rth->rt_flags |= RTCF_FAST;
+#ifdef FASTPATH_DEBUG
+			printk(KERN_INFO "fastroute(%s) accept\n", __func__);
+#endif
+		}
+	}
+#endif
 	*result = rth;
 	err = 0;
  cleanup:
@@ -2270,6 +2354,19 @@ int ip_route_input(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 		goto skip_cache;
 
 	tos &= IPTOS_RT_MASK;
+#ifdef ROUTE_HOOK
+	if ((rth = (struct rtable *)route_hook_lookup(
+			iif, 0, daddr, saddr, tos))) {
+		rcu_read_lock();
+		rth->u.dst.lastuse = jiffies;
+		dst_hold(&rth->u.dst);
+		rth->u.dst.__use++;
+		RT_CACHE_STAT_INC(in_hit);
+		rcu_read_unlock();
+		skb->_skb_dst = (unsigned long) rth;
+		return 0;
+	} else {
+#endif
 	hash = rt_hash(daddr, saddr, iif, rt_genid(net));
 
 	rcu_read_lock();
@@ -2290,8 +2387,15 @@ int ip_route_input(struct sk_buff *skb, __be32 daddr, __be32 saddr,
 			return 0;
 		}
 		RT_CACHE_STAT_INC(in_hlist_search);
+#ifdef ROUTE_HOOK
+			/* Catch up entries already in the local cache */
+			_route_hook_add(rth);
+#endif
 	}
 	rcu_read_unlock();
+#ifdef ROUTE_HOOK
+	}
+#endif
 
 skip_cache:
 	/* Multicast recognition logic is moved from route cache to here.

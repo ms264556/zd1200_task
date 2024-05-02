@@ -416,13 +416,21 @@ static struct Qdisc noqueue_qdisc = {
 
 
 static const u8 prio2band[TC_PRIO_MAX+1] =
+#if 1 /* V54_BSP */
+	{ 3, 2, 1, 0, 1, 2, 0, 0 , 1, 1, 1, 1, 1, 1, 1, 1 };
+#else
 	{ 1, 2, 2, 2, 1, 2, 0, 0 , 1, 1, 1, 1, 1, 1, 1, 1 };
+#endif
 
 /* 3-band FIFO queue: old style, but should be a bit faster than
    generic prio+fifo combination.
  */
 
+#if 1 /* V54_BSP */
+#define PFIFO_FAST_BANDS 4
+#else
 #define PFIFO_FAST_BANDS 3
+#endif
 
 /*
  * Private data for a pfifo_fast scheduler containing:
@@ -440,7 +448,11 @@ struct pfifo_fast_priv {
  * 	bitmap=1 means there is an skb on band 0.
  *	bitmap=7 means there are skbs on all 3 bands, etc.
  */
+#if 1 /* V54_BSP */
+static const int bitmap2band[] = {-1, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0};
+#else
 static const int bitmap2band[] = {-1, 0, 1, 0, 2, 0, 1, 0};
+#endif
 
 static inline struct sk_buff_head *band2list(struct pfifo_fast_priv *priv,
 					     int band)

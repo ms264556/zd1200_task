@@ -50,6 +50,10 @@ static const char *const version =
 #include <linux/moduleparam.h>
 #include <linux/bitops.h>
 
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+#include <linux/proc_fs.h>
+#endif
+
 #include <asm/dma.h>
 #include <asm/io.h>
 #include <asm/uaccess.h>
@@ -74,7 +78,7 @@ static struct pci_device_id pcnet32_pci_tbl[] = {
 
 MODULE_DEVICE_TABLE(pci, pcnet32_pci_tbl);
 
-static int cards_found;
+static int cards_found = 0;
 
 /*
  * VLB I/O addresses
@@ -143,6 +147,10 @@ static int options[MAX_UNITS];
 static int full_duplex[MAX_UNITS];
 static int homepna[MAX_UNITS];
 
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+static struct net_device *devp[MAX_UNITS];
+#endif
+
 /*
  *				Theory of Operation
  *
@@ -189,6 +197,18 @@ static int homepna[MAX_UNITS];
 #define PCNET32_DWIO_BDP	0x1C
 
 #define PCNET32_TOTAL_SIZE	0x20
+
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+#include "ar531x_bsp.h"
+
+#define GET_BASEMAC(rbd) ((char *)rbd->MACbase)
+#define GET_WLAN0(bd)    ((char *)bd->wlan0Mac)
+#define GET_WLAN1(bd)    ((char *)bd->wlan1Mac)
+#define GET_ENET0(bd)    ((char *)bd->enet0Mac)
+#define GET_ENET1(bd)    ((char *)bd->enet1Mac)
+#define GET_ENETX(i,rbd) ((char *)&(rbd->enetxMac[i][0]))
+#define V54_MACLEN       (6)
+#endif
 
 #define CSR0		0
 #define CSR0_INIT	0x1
@@ -1562,6 +1582,57 @@ pcnet32_probe_pci(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return -EBUSY;
 	}
 
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+/*
+	void assign_mac_addr(
+         unsigned char *dest, int seqno, unsigned char *src)
+	{
+		dest[5] = seqno & 0xff;
+		seqno >>= 8;
+		dest[4] = seqno & 0xff;
+		seqno >>= 8;
+		dest[3] = seqno & 0xff;
+		dest[2] = src[2];
+		dest[1] = src[1];
+		dest[0] = src[0];
+		return;
+	}
+
+	struct rks_boarddata *rbd = rks_boardData;
+	struct ar531x_boarddata *bd = ar531x_boardConfig;
+	//memcpy(rbd->MACbase, dev->dev_addr, V54_MACLEN);
+	int i;
+	for (i = 0; i < V54_MACLEN; i++)
+		rbd->MACbase[i] = inb(ioaddr + i);
+	printk(KERN_INFO "--->Update Board Data MACbase=%02x:%02x:%02x:%02x:%02x:%02x\n",
+		rbd->MACbase[0], rbd->MACbase[1], rbd->MACbase[2],
+		rbd->MACbase[3], rbd->MACbase[4], rbd->MACbase[5]);
+
+	// Auto-assign
+	i = 0;
+	unsigned char allocMac[V54_MACLEN];
+
+	memcpy(allocMac, GET_BASEMAC(rbd), V54_MACLEN);
+
+	i = (allocMac[V54_MACLEN-3]<<16) |
+		(allocMac[V54_MACLEN-2]<<8)  |
+		(allocMac[V54_MACLEN-1]);
+
+	if (rbd->MACcnt == 8 ) {
+		assign_mac_addr( GET_WLAN0(bd), i + 1, allocMac);
+		assign_mac_addr( GET_WLAN1(bd), i + 2, allocMac);
+	} else {
+		assign_mac_addr( GET_WLAN0(bd), i + 8,  allocMac);
+		assign_mac_addr( GET_WLAN1(bd), i + 12, allocMac);
+	}
+	assign_mac_addr( GET_ENET0(bd),     i + 3, allocMac);
+	assign_mac_addr( GET_ENET1(bd),     i + 4, allocMac);
+	assign_mac_addr( GET_ENETX(0,rbd),  i + 5, allocMac);
+	assign_mac_addr( GET_ENETX(1,rbd),  i + 6, allocMac);
+	assign_mac_addr( GET_ENETX(2,rbd),  i + 7, allocMac);
+*/
+#endif
+
 	err = pcnet32_probe1(ioaddr, 1, pdev);
 	if (err < 0) {
 		pci_disable_device(pdev);
@@ -1746,9 +1817,25 @@ pcnet32_probe1(unsigned long ioaddr, int shared, struct pci_dev *pdev)
 		dev->dev_addr[2 * i + 1] = (val >> 8) & 0x0ff;
 	}
 
+//#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+/*
+	switch(cards_found) {
+		case 0:
+			memcpy(promaddr, GET_ENET0(ar531x_boardConfig), V54_MACLEN);
+			break;
+		case 1:
+			memcpy(promaddr, GET_ENET1(ar531x_boardConfig), V54_MACLEN);
+			break;
+		default:
+			memcpy(promaddr, GET_ENETX(cards_found-2,rks_boardData), V54_MACLEN);
+			break;
+	}
+*/
+//#else
 	/* read PROM address and compare with CSR address */
 	for (i = 0; i < 6; i++)
 		promaddr[i] = inb(ioaddr + i);
+//#endif
 
 	if (memcmp(promaddr, dev->dev_addr, 6)
 	    || !is_valid_ether_addr(dev->dev_addr)) {
@@ -1963,7 +2050,9 @@ pcnet32_probe1(unsigned long ioaddr, int shared, struct pci_dev *pdev)
 		lp->next = pcnet32_dev;
 		pcnet32_dev = dev;
 	}
-
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+	devp[cards_found] = dev;
+#endif
 	if (pcnet32_debug & NETIF_MSG_PROBE)
 		printk(KERN_INFO "%s: registered as %s\n", dev->name, lp->name);
 	cards_found++;
@@ -3001,6 +3090,84 @@ MODULE_PARM_DESC(homepna,
 		 DRV_NAME
 		 " mode for 79C978 cards (1 for HomePNA, 0 for Ethernet, default Ethernet");
 
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+char *ethnames = NULL;
+module_param(ethnames, charp, 0);
+MODULE_PARM_DESC(ethnames, "Name list for Eth devices");
+
+#define PROC_NET_ETH   "eth"
+#define DEVICES_FILE   "devices"
+#define PORTS_FILE     "ports"
+
+static struct proc_dir_entry *proc_enet = NULL;
+static struct proc_dir_entry *devices_file = NULL;
+static struct proc_dir_entry *ports_file = NULL;
+
+static int proc_read_devices(char* page, char ** start,
+           off_t off, int count, int *eof, void *data)
+{
+    int len, i;
+    char *bp = page;
+    for(i=0, len=0;i<cards_found;i++) {
+        len += sprintf(bp+len, "%d eth%d %d\n", i, i, netif_carrier_ok(devp[i]));
+    }
+    return len;
+}
+
+static int proc_read_ports(char* page, char ** start,
+           off_t off, int count, int *eof, void *data)
+{
+    int len, i;
+    char *bp = page;
+    for(i=0, len=0;i<cards_found;i++) {
+        len += sprintf(bp+len, "%d %d\n", i, netif_carrier_ok(devp[i]));
+    }
+    return len;
+}
+
+static void pcnet32_remove_proc_entries(void)
+{
+    if ( proc_enet == NULL ) return;
+    remove_proc_entry(DEVICES_FILE, proc_enet);
+    remove_proc_entry(PORTS_FILE, proc_enet);
+    remove_proc_entry(PROC_NET_ETH, NULL);
+    return;
+}
+
+static void pcnet32_create_proc_entries(void)
+{
+    if ((proc_enet = proc_mkdir(PROC_NET_ETH, init_net.proc_net)) == NULL ){
+        printk("%s: proc_mkdir(%s,0)\n failed\n", __FUNCTION__, PROC_NET_ETH);
+        return;
+    }
+
+    if (!(devices_file = create_proc_entry(DEVICES_FILE, 0644, proc_enet))) {
+        printk("%s: create_proc_entry(%s/%s) failed\n", __FUNCTION__,
+               PROC_NET_ETH, DEVICES_FILE);
+        return pcnet32_remove_proc_entries();
+    }
+
+    devices_file->read_proc = proc_read_devices;
+    devices_file->data = NULL;
+
+    if (!(ports_file = create_proc_entry(PORTS_FILE, 0644, proc_enet))) {
+        printk("%s: create_proc_entry(%s/%s) failed\n", __FUNCTION__,
+               PROC_NET_ETH, DEVICES_FILE);
+        return pcnet32_remove_proc_entries();
+    }
+
+    ports_file->read_proc = proc_read_ports;
+    ports_file->data = NULL;
+    return;
+}
+
+#else
+
+#define pcnet32_create_proc_entries() //nothing
+#define pcnet32_remove_proc_entries() //nothing
+
+#endif
+
 MODULE_AUTHOR("Thomas Bogendoerfer");
 MODULE_DESCRIPTION("Driver for PCnet32 and PCnetPCI based ethercards");
 MODULE_LICENSE("GPL");
@@ -3024,8 +3191,12 @@ static int __init pcnet32_init_module(void)
 	if (pcnet32vlb)
 		pcnet32_probe_vlbus(pcnet32_portlist);
 
-	if (cards_found && (pcnet32_debug & NETIF_MSG_PROBE))
+	if (cards_found && (pcnet32_debug & NETIF_MSG_PROBE)) {
 		printk(KERN_INFO PFX "%d cards_found.\n", cards_found);
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+		pcnet32_create_proc_entries();
+#endif
+	}
 
 	return (pcnet32_have_pci + cards_found) ? 0 : -ENODEV;
 }
@@ -3046,8 +3217,12 @@ static void __exit pcnet32_cleanup_module(void)
 		pcnet32_dev = next_dev;
 	}
 
-	if (pcnet32_have_pci)
+	if (pcnet32_have_pci) {
 		pci_unregister_driver(&pcnet32_driver);
+#if defined(CONFIG_PCNET32_SIM_AP_SUPPORT)
+		pcnet32_remove_proc_entries();
+#endif
+	}
 }
 
 module_init(pcnet32_init_module);

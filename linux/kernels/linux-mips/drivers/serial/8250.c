@@ -47,6 +47,10 @@
 #ifdef CONFIG_SPARC
 #include "suncore.h"
 #endif
+#if defined(CONFIG_AR7100)
+extern int ar7240_cpu(void);
+#include "ar7100.h"
+#endif
 
 /*
  * Configuration:
@@ -1221,6 +1225,11 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 	/* if access method is AU, it is a 16550 with a quirk */
 	if (up->port.type == PORT_16550A && up->port.iotype == UPIO_AU)
 		up->bugs |= UART_BUG_NOMSR;
+#endif
+
+#if defined(CONFIG_AR7100)
+    if (ar7240_cpu() || is_ar934x())
+        up->bugs |= UART_BUG_NOMSR;
 #endif
 
 	serial_outp(up, UART_LCR, save_lcr);

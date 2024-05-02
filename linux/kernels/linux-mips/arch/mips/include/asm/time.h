@@ -52,6 +52,9 @@ extern int (*perf_irq)(void);
  */
 #ifdef CONFIG_CEVT_R4K_LIB
 extern unsigned int __weak get_c0_compare_int(void);
+#if defined(V54_BSP)
+extern unsigned int __weak get_c0_compare_irq(void);
+#endif
 extern int r4k_clockevent_init(void);
 #endif
 
@@ -87,5 +90,28 @@ static inline int init_mips_clocksource(void)
 extern void clocksource_set_clock(struct clocksource *cs, unsigned int clock);
 extern void clockevent_set_clock(struct clock_event_device *cd,
 		unsigned int clock);
+
+#if defined(V54_BSP)
+extern unsigned int mips_hpt_read(void);
+#define _HPT_TICKS_PER_USEC  ( mips_hpt_frequency / 1000000 )
+static inline unsigned int
+_HPT_DIFF(unsigned int b, unsigned int a)
+{
+	unsigned int d;
+
+#if ( _MIPS_SZINT == 64 )
+#define V54_MAX_UINT 0xFFFFFFFFFFFFFFFF
+#else
+// 32-bit int
+#define V54_MAX_UINT 0xFFFFFFFF
+#endif
+
+	d = ((b >= a) ? (b - a) : (b + (V54_MAX_UINT - a) + 1));
+
+	return d;
+}
+#define _HPT_READ    read_c0_count
+#endif
+
 
 #endif /* _ASM_TIME_H */

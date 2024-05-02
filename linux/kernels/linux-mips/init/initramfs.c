@@ -575,6 +575,11 @@ static int __init populate_rootfs(void)
 	if (initrd_start) {
 #ifdef CONFIG_BLK_DEV_RAM
 		int fd;
+#ifdef V54_BSP
+		// save rootfs size to adjust max ramdisk size in drivers/block/rd.c
+		extern int __rd_bytes;
+		__rd_bytes = (initrd_end - initrd_start);
+#endif
 		printk(KERN_INFO "Trying to unpack rootfs image as initramfs...\n");
 		err = unpack_to_rootfs((char *)initrd_start,
 			initrd_end - initrd_start);

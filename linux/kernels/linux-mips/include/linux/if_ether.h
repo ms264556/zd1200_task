@@ -75,13 +75,19 @@
 #define ETH_P_ATMFATE	0x8884		/* Frame-based ATM Transport
 					 * over Ethernet
 					 */
+#define ETH_P_EAPOL	0x888E          /* EAP over LAN			*/
 #define ETH_P_PAE	0x888E		/* Port Access Entity (IEEE 802.1X) */
 #define ETH_P_AOE	0x88A2		/* ATA over Ethernet		*/
+#define ETH_P_LWAPP	0x88BB		/* LWAPP used by Ruckus apmgr	*/
 #define ETH_P_TIPC	0x88CA		/* TIPC 			*/
 #define ETH_P_1588	0x88F7		/* IEEE 1588 Timesync */
 #define ETH_P_FCOE	0x8906		/* Fibre Channel over Ethernet  */
 #define ETH_P_FIP	0x8914		/* FCoE Initialization Protocol */
 #define ETH_P_EDSA	0xDADA		/* Ethertype DSA [ NOT AN OFFICIALLY REGISTERED ID ] */
+#if 1 // V54_BSP
+#define ETH_P_ETH_MGMT  0x88BC          /* internal use ethernet management */
+#define ETH_P_ETH_TUN   0x88BD          /* internal use ethernet tunnel */
+#endif
 
 /*
  *	Non DIX types. Won't clash for 1500 types.
@@ -120,7 +126,17 @@ struct ethhdr {
 	__be16		h_proto;		/* packet type ID field	*/
 } __attribute__((packed));
 
+#define FMT_MAC         "%02x:%02x:%02x:%02x:%02x:%02x"
+#define FMT_MAC_U       "%02X:%02X:%02X:%02X:%02X:%02X"
+#define ARG_MAC(addr)   ((unsigned char *)(addr))[0], \
+                        ((unsigned char *)(addr))[1], \
+                        ((unsigned char *)(addr))[2], \
+                        ((unsigned char *)(addr))[3], \
+                        ((unsigned char *)(addr))[4], \
+                        ((unsigned char *)(addr))[5]
+
 #ifdef __KERNEL__
+
 #include <linux/skbuff.h>
 
 static inline struct ethhdr *eth_hdr(const struct sk_buff *skb)

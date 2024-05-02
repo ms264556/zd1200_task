@@ -85,7 +85,6 @@ endif
 # The O= assignment takes precedence over the KBUILD_OUTPUT environment
 # variable.
 
-
 # KBUILD_SRC is set on invocation of make in OBJ directory
 # KBUILD_SRC is not intended to be used by the regular user (for now)
 ifeq ($(KBUILD_SRC),)
@@ -154,13 +153,15 @@ export srctree objtree VPATH
 # line overrides the setting of ARCH below.  If a native build is happening,
 # then ARCH is assigned, getting whatever value it gets normally, and 
 # SUBARCH is subsequently ignored.
-
+ifeq ($(BR2_ARCH),)
 SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ \
 				  -e s/arm.*/arm/ -e s/sa110/arm/ \
 				  -e s/s390x/s390/ -e s/parisc64/parisc/ \
 				  -e s/ppc.*/powerpc/ -e s/mips.*/mips/ \
 				  -e s/sh[234].*/sh/ )
-
+else
+SUBARCH := $(BR2_ARCH)
+endif
 # Cross compiling and selecting different set of gcc/bin-utils
 # ---------------------------------------------------------------------------
 #
@@ -330,6 +331,11 @@ LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
 CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
+# handle V54 defs
+ifdef EXTRA_DEFS
+CFLAGS_KERNEL += $(EXTRA_DEFS)
+CFLAGS_MODULE += $(EXTRA_DEFS)
+endif
 
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
@@ -388,6 +394,12 @@ PHONY += outputmakefile
 # separate output directory. This allows convenient use of make in the
 # output directory.
 outputmakefile:
+	@echo "obj           = $(obj)"
+	@echo "CURDIR        = $(CURDIR)"
+	@echo "KERNELPATH    = $(KERNELPATH)"
+	@echo "KERNELRELEASE = $(KERNELRELEASE)"
+	@echo "EXTRAVERSION  = $(EXTRAVERSION)"
+	@echo "LOCALVERSION  = $(LOCALVERSION)"
 ifneq ($(KBUILD_SRC),)
 	$(Q)ln -fsn $(srctree) source
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/mkmakefile \
@@ -473,6 +485,7 @@ drivers-y	:= drivers/ sound/ firmware/
 net-y		:= net/
 libs-y		:= lib/
 core-y		:= usr/
+ramdisk_obj	:=
 endif # KBUILD_EXTMOD
 
 ifeq ($(dot-config),1)
@@ -562,7 +575,7 @@ NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
 CHECKFLAGS     += $(NOSTDINC_FLAGS)
 
 # warn about C99 declaration after statement
-KBUILD_CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
+#KBUILD_CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
 
 # disable pointer signed / unsigned warnings in gcc 4.0
 KBUILD_CFLAGS += $(call cc-option,-Wno-pointer-sign,)
@@ -575,6 +588,14 @@ KBUILD_CFLAGS	+= $(call cc-option,-fno-dwarf2-cfi-asm)
 
 # conserve stack if available
 KBUILD_CFLAGS   += $(call cc-option,-fconserve-stack)
+
+# Advanced mips 74kc optimization
+ifdef CONFIG_AR934x
+KBUILD_CFLAGS   += $(call cc-option,-funit-at-a-time)
+KBUILD_CFLAGS   += $(call cc-option,-pipe)
+KBUILD_CFLAGS   += $(call cc-option,-mtune=74kc)
+KBUILD_CFLAGS   += $(call cc-option,-Os)
+endif
 
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
 # But warn user when we do so
@@ -648,6 +669,7 @@ core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/
 
 vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
+		     $(ramdisk_obj) \
 		     $(net-y) $(net-m) $(libs-y) $(libs-m)))
 
 vmlinux-alldirs	:= $(sort $(vmlinux-dirs) $(patsubst %/,%,$(filter %/, \
@@ -657,6 +679,9 @@ vmlinux-alldirs	:= $(sort $(vmlinux-dirs) $(patsubst %/,%,$(filter %/, \
 
 init-y		:= $(patsubst %/, %/built-in.o, $(init-y))
 core-y		:= $(patsubst %/, %/built-in.o, $(core-y))
+ifneq ($(ramdisk_obj),)
+ramdisk_obj	:= $(patsubst %/, %/built-in.o, $(ramdisk_obj))
+endif
 drivers-y	:= $(patsubst %/, %/built-in.o, $(drivers-y))
 net-y		:= $(patsubst %/, %/built-in.o, $(net-y))
 libs-y1		:= $(patsubst %/, %/lib.a, $(libs-y))
@@ -703,6 +728,25 @@ quiet_cmd_vmlinux__ ?= LD      $@
       -T $(vmlinux-lds) $(vmlinux-init)                          \
       --start-group $(vmlinux-main) --end-group                  \
       $(filter-out $(vmlinux-lds) $(vmlinux-init) $(vmlinux-main) vmlinux.o FORCE ,$^)
+
+ifneq ($(ramdisk_obj),)
+      cmd_vmlinux__rd ?= $(LD) $(LDFLAGS) $(LDFLAGS_vmlinux) -o $@.root \
+      -T $(vmlinux-lds) $(vmlinux-init)                          \
+      --start-group $(vmlinux-main) $(ramdisk_obj) --end-group                  \
+      $(filter-out $(vmlinux-lds) $(vmlinux-init) $(vmlinux-main) FORCE ,$^) ;
+
+define link_vmlinux_ramdisk
+	$(call cmd,vmlinux__rd)
+	$(Q)echo 'cmd_$@.rd := $(cmd_vmlinux__rd)' > $(@D)/.$(@F).rd.cmd
+	$(Q)$(cmd_sysmap) $@.root System.map.root
+endef
+
+else
+
+define link_vmlinux_ramdisk
+endef
+
+endif
 
 # Generate new vmlinux version
 quiet_cmd_vmlinux_version = GEN     .version
@@ -853,6 +897,15 @@ endif
 	$(call vmlinux-modpost)
 	$(call if_changed_rule,vmlinux__)
 	$(Q)rm -f .old_version
+
+.PHONY: build_kernel1_obj
+build_kernel1_obj: $(vmlinux-init) $(vmlinux-main) $(kallsyms.o)
+	$(LD) $(LDFLAGS_ARCH) -r -o kernel1.o \
+		$(vmlinux-init) --start-group $(vmlinux-main) --end-group $(kallsyms.o)
+
+.PHONY: build_ldflags_vmlinux
+build_ldflags_vmlinux:
+	echo ' $(LDFLAGS) $(LDFLAGS_vmlinux)' > $(@D)/ldflags_vmlinux
 
 # build vmlinux.o first to catch section mismatch errors early
 ifdef CONFIG_KALLSYMS
@@ -1028,12 +1081,19 @@ include/asm: FORCE
 # needs to be updated, so this check is forced on all builds
 
 uts_len := 64
+
+V54_PROD_BUILD := $(shell cat version)
+
 define filechk_utsrelease.h
 	if [ `echo -n "$(KERNELRELEASE)" | wc -c ` -gt $(uts_len) ]; then \
-	  echo '"$(KERNELRELEASE)" exceeds $(uts_len) characters' >&2;    \
-	  exit 1;                                                         \
-	fi;                                                               \
-	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";)
+	  echo '"$(KERNELRELEASE)" exceeds $(uts_len) characters' >&2; \
+	  exit 1; \
+	fi; \
+	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\"; \
+	  echo \#define LINUX_VERSION_CODE `expr $(VERSION) \\* 65536 + $(PATCHLEVEL) \\* 256 + $(SUBLEVEL)`; \
+	 echo '#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))'; \
+	 [ -r version ] && echo \#define V54_PROD_BUILD \"$(V54_PROD_BUILD)\" >> .ver \
+	)
 endef
 
 define filechk_version.h

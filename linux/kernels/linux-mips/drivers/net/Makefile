@@ -27,6 +27,9 @@ obj-$(CONFIG_ATL1E) += atl1e/
 obj-$(CONFIG_ATL1C) += atl1c/
 obj-$(CONFIG_GIANFAR) += gianfar_driver.o
 obj-$(CONFIG_TEHUTI) += tehuti.o
+# V54_BSP
+obj-$(CONFIG_AG7100)	+=	ag7100/
+# end V54_BSP
 obj-$(CONFIG_ENIC) += enic/
 obj-$(CONFIG_JME) += jme.o
 obj-$(CONFIG_BE2NET) += benet/
@@ -34,12 +37,18 @@ obj-$(CONFIG_VMXNET3) += vmxnet3/
 
 gianfar_driver-objs := gianfar.o \
 		gianfar_ethtool.o \
-		gianfar_sysfs.o
+		gianfar_sysfs.o \
+		gianfar_1588.o
 
 obj-$(CONFIG_UCC_GETH) += ucc_geth_driver.o
 ucc_geth_driver-objs := ucc_geth.o ucc_geth_ethtool.o
 
 obj-$(CONFIG_FSL_PQ_MDIO) += fsl_pq_mdio.o
+
+ifeq ($(CONFIG_MPC85xx),y)
+  obj-$(CONFIG_BOARDNET) += fsl_pci_veth/
+  obj-$(CONFIG_CARDNET) += fsl_pci_veth/
+endif
 
 #
 # link order important here
@@ -150,7 +159,8 @@ obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite.o
 obj-$(CONFIG_QLA3XXX) += qla3xxx.o
 obj-$(CONFIG_QLGE) += qlge/
 
-obj-$(CONFIG_PPP) += ppp_generic.o
+obj-$(CONFIG_TITAN_GE) += titan_mdio.o titan_ge.o
+
 obj-$(CONFIG_PPP_ASYNC) += ppp_async.o
 obj-$(CONFIG_PPP_SYNC_TTY) += ppp_synctty.o
 obj-$(CONFIG_PPP_DEFLATE) += ppp_deflate.o

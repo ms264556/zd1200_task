@@ -53,6 +53,36 @@ config MTD_PARTITIONS
 	  devices. Partitioning on NFTL 'devices' is a different - that's the
 	  'normal' form of partitioning used on a block device.
 
+# V54_BSP
+config MTD_END_RESERVED_BLOCK
+	int "Numer of blocks of Reserved space at end of flash"
+	depends on MTD_PARTITIONS
+	default "2"
+	help
+		Specify size of reserved space in blocks (each of erasesize) (for board_data)
+		at end of flash.  This value ovverides that of MTD_END_RESERVED.
+		For the purpose of locating the FIS/Redboot directory,
+		effective flash size will be that of the real flash size minus
+		the reserved space size.
+
+config MTD_END_RESERVED
+	hex "Size of Reserved space at end of flash"
+	depends on MTD_PARTITIONS
+	default "0x20000"
+	help
+		Specify size of reserved space (for board_data) at end of flash.
+		For the purpose of locating the FIS/Redboot directory,
+		effective flash size will be that of the real flash size minus
+		the reserved space size.
+
+config MTD_2ND_FLASH_PARTS
+	int "Number of Partitions in 2nd flash(1, 2 or 4)"
+	depends on MTD_PARTITIONS
+	default "1"
+	help
+		Specify number of partitions in 2nd flash.
+# end V54_BSP
+
 config MTD_REDBOOT_PARTS
 	tristate "RedBoot partition table parsing"
 	depends on MTD_PARTITIONS

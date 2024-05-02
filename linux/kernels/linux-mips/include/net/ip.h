@@ -409,4 +409,11 @@ int ipv4_doint_and_flush_strategy(ctl_table *table,
 extern int ip_misc_proc_init(void);
 #endif
 
+#if 1 // V54_TUNNELMGR
+/*
+ * Ruckus stuff
+ */
+
+#define RKS_IP_GRE_HDR_LEN 58
+#endif // V54_TUNNELMGR
 #endif	/* _IP_H */

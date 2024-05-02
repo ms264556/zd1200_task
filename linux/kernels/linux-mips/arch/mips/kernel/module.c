@@ -43,6 +43,17 @@ static struct mips_hi16 *mips_hi16_list;
 static LIST_HEAD(dbe_list);
 static DEFINE_SPINLOCK(dbe_lock);
 
+/*
+ * Define NV54_KSEG_MODLOAD if you want to disable module loading
+ * into KSEG0.  Normally modules are loaded into KSEG2 via vmalloc().
+ * On MIPS, KSEG0 does not use page tables and the TLB.
+ * This move reduces TLB thrashing and if the TLB is thrashing, this
+ * will decrease the overhead and therefore make latency sensitive
+ * things like interrupt handling more consistent and lower latency.
+ * Again, defining this will DISABLE this capability and revert to
+ * the standard KSEG2 module loading.
+ * #define NV54_KSEG_MODLOAD 1
+ */
 void *module_alloc(unsigned long size)
 {
 #ifdef MODULE_START
@@ -58,16 +69,54 @@ void *module_alloc(unsigned long size)
 
 	return __vmalloc_area(area, GFP_KERNEL, PAGE_KERNEL);
 #else
+#if defined(NV54_KSEG_MODLOAD)
 	if (size == 0)
 		return NULL;
 	return vmalloc(size);
+#else /* defined(NV54_KSEG_MODLOAD) */
+        void *r;
+	if (size == 0) {
+	    r = NULL;
+	} else if ((size > ((1<<17) - 1024)) && (size < (1<<18)))  {
+	    r = (void *)__get_free_pages(GFP_KERNEL, 6);
+	} else if (size >= (1<<18)) {
+	    r = vmalloc(size);
+	} else {
+	    /* Load into KSEG0. */
+	    r = kmalloc(size, GFP_KERNEL);
+	}
+	return r;
+#endif /* defined(NV54_KSEG_MODLOAD) */
 #endif
 }
 
 /* Free memory returned from module_alloc */
 void module_free(struct module *mod, void *module_region)
 {
+#ifdef MODULE_START
 	vfree(module_region);
+#else
+#if defined(NV54_KSEG_MODLOAD)
+	vfree(module_region);
+	/* FIXME: If module_region == mod->init_region, trim exception
+           table entries. */
+#else /* defined(NV54_KSEG_MODLOAD) */
+        if (KSEGX(module_region)==KSEG2) {
+	    vfree(module_region);
+	} else if (((module_region == mod->module_core) &&
+		    (mod->core_size > ((1<<17) - 1024)) &&
+		    (mod->core_size < (1<<18))) ||
+		   ((module_region == mod->module_init) &&
+		    (mod->init_size > ((1<<17) - 1024)) &&
+		    (mod->init_size < (1<<18)))) {
+	    free_pages((unsigned long)module_region, 6);
+	} else {
+	    /* Free into KSEG0. */
+	    kfree(module_region);
+	}
+	return;
+#endif /* defined(NV54_KSEG_MODLOAD) */
+#endif
 }
 
 int module_frob_arch_sections(Elf_Ehdr *hdr, Elf_Shdr *sechdrs,

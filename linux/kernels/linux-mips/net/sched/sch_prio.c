@@ -35,6 +35,10 @@ prio_classify(struct sk_buff *skb, struct Qdisc *sch, int *qerr)
 {
 	struct prio_sched_data *q = qdisc_priv(sch);
 	u32 band = skb->priority;
+
+#if 1 /* V54_BSP */
+	return q->queues[q->prio2band[band&TC_PRIO_MAX]];
+#else
 	struct tcf_result res;
 	int err;
 
@@ -62,6 +66,7 @@ prio_classify(struct sk_buff *skb, struct Qdisc *sch, int *qerr)
 		return q->queues[q->prio2band[0]];
 
 	return q->queues[band];
+#endif
 }
 
 static int

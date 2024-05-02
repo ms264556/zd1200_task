@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Freescale Semiconductor, Inc. All rights reserved.
+ * Copyright (C) 2008-2009 Freescale Semiconductor, Inc. All rights reserved.
  *
  * Author: Yu Liu, <yu.liu@freescale.com>
  *
@@ -52,6 +52,7 @@ struct kvmppc_vcpu_e500 {
 	u32 mas5;
 	u32 mas6;
 	u32 mas7;
+	u32 l1csr0;
 	u32 l1csr1;
 	u32 hid0;
 	u32 hid1;

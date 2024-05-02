@@ -7033,17 +7033,35 @@ out_unlock:
 
 static const char stat_nam[] = TASK_STATE_TO_CHAR_STR;
 
+#if 1 // V54_BSP
+#ifdef CONFIG_KALLSYMS
+#include <linux/kallsyms.h>
+#endif
+extern void show_task_mem(struct mm_struct *mm, char *end_mark);
+extern void show_task_cpu(struct task_struct *task, char *end_mark);
+extern void v54_show_fds(struct task_struct *task, char *end_mark);
+extern void v54_show_cmdline(struct task_struct *task, char *end_mark);
+#endif
 void sched_show_task(struct task_struct *p)
 {
 	unsigned long free = 0;
 	unsigned state;
 
 	state = p->state ? __ffs(p->state) + 1 : 0;
+#if 1 // V54_BSP
+	printk(KERN_INFO "%-13.13s ", p->comm);
+	printk(KERN_CONT "%-3d/%4d ", p->prio, p->static_prio);
+	if (state < sizeof(stat_nam))
+		printk(KERN_CONT "%c:%02lx", stat_nam[state], p->state);
+	else
+		printk(KERN_CONT "?");
+#else
 	printk(KERN_INFO "%-13.13s %c", p->comm,
 		state < sizeof(stat_nam) - 1 ? stat_nam[state] : '?');
+#endif
 #if BITS_PER_LONG == 32
 	if (state == TASK_RUNNING)
-		printk(KERN_CONT " running  ");
+		printk(KERN_CONT " running(%08lx)  ", thread_saved_pc(p));
 	else
 		printk(KERN_CONT " %08lx ", thread_saved_pc(p));
 #else
@@ -7059,16 +7077,72 @@ void sched_show_task(struct task_struct *p)
 		task_pid_nr(p), task_pid_nr(p->real_parent),
 		(unsigned long)task_thread_info(p)->flags);
 
-	show_stack(p, NULL);
+#if 1 // V54_BSP
+        // print out cmdline parameters
+        v54_show_cmdline(p, "\n");
+#if 0 /* to do. by gun. 2.6.32 no sleep_avg */
+        printk("  %lu%%  ",
+                (p->sleep_avg/1024)*100/(1020000000/1024)
+                );
+#endif
+#ifdef CONFIG_KALLSYMS
+        {
+        char namebuf[KSYM_NAME_LEN+1];
+        extern int proc_pid_wchan(struct task_struct *task, char *buffer);
+        proc_pid_wchan(p, &namebuf[0]);
+        printk("%10s (%08lx) ", namebuf, get_wchan(p));
+        }
+#else
+        printk("%10lx ", get_wchan(p));
+#endif
+        if ( p->mm != NULL ) {
+            printk(" mem ");
+            show_task_mem(p->mm, " ");
+//            show_task_mem(p->active_mm, " ");
+        }
+        show_task_cpu(p, "   ");
+        v54_show_fds(p, "\n");
+#endif
+#if 0 // V54_BSP
+	if (state != TASK_RUNNING)
+		show_stack(p, NULL);
+#else
+        printk("\n");
+#endif
 }
 
+#ifdef CONFIG_DETECT_SOFTLOCKUP
+#include <linux/sched.h>
+#endif
 void show_state_filter(unsigned long state_filter)
 {
 	struct task_struct *g, *p;
 
+#if 1   // V54_BSP
+        int total_thread=0;
+    {
+        extern void v54_show_cpu_stat(void);
+        extern void v54_show_mem_stat(void);
+        struct task_struct * my_task = current;
+
+#ifdef CONFIG_MIPS
+        printk("\n @ jiffies=%lx, c0_count=%lx\n",
+                    (unsigned long)jiffies, (unsigned long)read_c0_count());
+#else
+        printk("\n @ jiffies=%lx\n", (unsigned long)jiffies);
+#endif
+        v54_show_cpu_stat();
+        v54_show_mem_stat();
+
+        if ( my_task )
+            printk("Current: pid=%d state=%02lx\n", my_task->pid, my_task->state);
+        else
+            printk("Current: NULL\n");
+    }
+#endif
 #if BITS_PER_LONG == 32
 	printk(KERN_INFO
-		"  task                PC stack   pid father\n");
+		"  task          prio         PC stack   pid father\n");
 #else
 	printk(KERN_INFO
 		"  task                        PC stack   pid father\n");
@@ -7080,10 +7154,14 @@ void show_state_filter(unsigned long state_filter)
 		 * console might take alot of time:
 		 */
 		touch_nmi_watchdog();
+#ifdef CONFIG_DETECT_SOFTLOCKUP
+		touch_softlockup_watchdog();
+#endif
 		if (!state_filter || (p->state & state_filter))
 			sched_show_task(p);
+		total_thread++;
 	} while_each_thread(g, p);
-
+	printk("\n Total tasks = %d\n", total_thread);
 	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SCHED_DEBUG
@@ -9766,8 +9844,8 @@ void __might_sleep(char *file, int line, int preempt_offset)
 		"BUG: sleeping function called from invalid context at %s:%d\n",
 			file, line);
 	printk(KERN_ERR
-		"in_atomic(): %d, irqs_disabled(): %d, pid: %d, name: %s\n",
-			in_atomic(), irqs_disabled(),
+		"in_atomic(): %d, irqs_disabled(): %d preempt_count():0x%08x, pid: %d, name: %s\n",
+			in_atomic(), irqs_disabled(), preempt_count(),
 			current->pid, current->comm);
 
 	debug_show_held_locks(current);

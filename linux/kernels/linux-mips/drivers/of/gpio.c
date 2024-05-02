@@ -186,7 +186,7 @@ int of_mm_gpiochip_add(struct device_node *np,
 	if (!mm_gc->regs)
 		goto err1;
 
-	gc->base = -1;
+//	gc->base = -1;
 
 	if (!of_gc->xlate)
 		of_gc->xlate = of_gpio_simple_xlate;

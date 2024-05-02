@@ -34,7 +34,12 @@ pdev_fixup_irq(struct pci_dev *dev,
 
 	pci_read_config_byte(dev, PCI_INTERRUPT_PIN, &pin);
 	/* Cope with illegal. */
+
+#ifdef CONFIG_MIPS /* RUCKUS: WALL-E and ST. BERNARD report pin 0 */
+	if (pin == 0 || pin > 4)
+#else
 	if (pin > 4)
+#endif
 		pin = 1;
 
 	if (pin != 0) {
@@ -45,6 +50,7 @@ pdev_fixup_irq(struct pci_dev *dev,
 		if (irq == -1)
 			irq = 0;
 	}
+
 	dev->irq = irq;
 
 	dev_dbg(&dev->dev, "fixup irq: got %d\n", dev->irq);

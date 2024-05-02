@@ -287,12 +287,20 @@ static inline void oprofile_end_trace(struct oprofile_cpu_buffer *cpu_buf)
 	cpu_buf->tracing = 0;
 }
 
+#ifdef OP_NICE_HACK
+void* op_custom;
+#endif
+
 static inline void
 __oprofile_add_ext_sample(unsigned long pc, struct pt_regs * const regs,
 			  unsigned long event, int is_kernel)
 {
 	struct oprofile_cpu_buffer *cpu_buf = &__get_cpu_var(cpu_buffer);
-	unsigned long backtrace = oprofile_backtrace_depth;
+	unsigned long backtrace = oprofile_backtrace_options.depth;
+
+#ifdef OP_NICE_HACK
+	op_custom = cpu_buf;
+#endif
 
 	/*
 	 * if log_sample() fail we can't backtrace since we lost the
@@ -305,9 +313,12 @@ __oprofile_add_ext_sample(unsigned long pc, struct pt_regs * const regs,
 	if (!backtrace)
 		return;
 
-	oprofile_begin_trace(cpu_buf);
-	oprofile_ops.backtrace(regs, backtrace);
-	oprofile_end_trace(cpu_buf);
+	if ((cpu_buf->last_is_kernel && oprofile_backtrace_options.trace_kernel)
+	    || (!cpu_buf->last_is_kernel && oprofile_backtrace_options.trace_user)) {
+	  oprofile_begin_trace(cpu_buf);
+	  oprofile_ops.backtrace(regs, backtrace);
+	  oprofile_end_trace(cpu_buf);
+	}
 }
 
 void oprofile_add_ext_sample(unsigned long pc, struct pt_regs * const regs,

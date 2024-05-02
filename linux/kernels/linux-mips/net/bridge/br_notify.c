@@ -43,12 +43,20 @@ static int br_device_event(struct notifier_block *unused, unsigned long event, v
 
 	switch (event) {
 	case NETDEV_CHANGEMTU:
+		/* not caring about message about a bridge */
+		if (dev->priv_flags & IFF_EBRIDGE)
+			break;
+
 		dev_set_mtu(br->dev, br_min_mtu(br));
 		break;
 
 	case NETDEV_CHANGEADDR:
 		spin_lock_bh(&br->lock);
+#ifdef BR_FDB_VLAN
+		br_fdb_changeaddr(p, BR_ALL_VLAN, dev->dev_addr);
+#else
 		br_fdb_changeaddr(p, dev->dev_addr);
+#endif
 		br_stp_recalculate_bridge_id(br);
 		spin_unlock_bh(&br->lock);
 		break;

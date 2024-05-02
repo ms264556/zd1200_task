@@ -419,7 +419,11 @@
 /* ----------------------- OTHER CONSTANTS ----------------------- */
 
 /* Maximum frequencies in the range struct */
+#if 1 /* V54_BSP */
+#define IW_MAX_FREQUENCIES	45
+#else
 #define IW_MAX_FREQUENCIES	32
+#endif
 /* Note : if you have something like 80 frequencies,
  * don't increase this constant and don't fill the frequency list.
  * The user will be able to set by channel anyway... */

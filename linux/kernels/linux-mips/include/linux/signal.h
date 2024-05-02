@@ -357,10 +357,19 @@ int unhandled_signal(struct task_struct *tsk, int sig);
         rt_sigmask(SIGCONT)   |  rt_sigmask(SIGCHLD)   | \
 	rt_sigmask(SIGWINCH)  |  rt_sigmask(SIGURG)    )
 
+#if 1 /* V54_BSP */
+#define SIG_KERNEL_CRASHDUMP_MASK (\
+	rt_sigmask(SIGFPE)    |  rt_sigmask(SIGSEGV)   |  rt_sigmask(SIGBUS)    |  rt_sigmask(SIGILL)   )
+#endif
+
 #define sig_kernel_only(sig) \
 	(((sig) < SIGRTMIN) && siginmask(sig, SIG_KERNEL_ONLY_MASK))
 #define sig_kernel_coredump(sig) \
 	(((sig) < SIGRTMIN) && siginmask(sig, SIG_KERNEL_COREDUMP_MASK))
+#if 1 /* V54_BSP */
+#define sig_kernel_crashdump(sig) \
+                (((sig) < SIGRTMIN)  && siginmask(sig, SIG_KERNEL_CRASHDUMP_MASK))
+#endif
 #define sig_kernel_ignore(sig) \
 	(((sig) < SIGRTMIN) && siginmask(sig, SIG_KERNEL_IGNORE_MASK))
 #define sig_kernel_stop(sig) \

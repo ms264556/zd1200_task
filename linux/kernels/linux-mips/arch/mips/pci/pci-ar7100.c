@@ -1,0 +1,299 @@
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/types.h>
+#include <linux/pci.h>
+#include <linux/cpumask.h>
+#include <linux/delay.h>
+#include <linux/irq.h>
+
+#include <asm/delay.h>
+
+#define ag7100_delay1s()    mdelay(1000);
+
+#include "ar7100.h"
+extern int ar7240_cpu(void);
+
+/*
+ * Support for Ar7100 pci interrupt and core pci initialization
+ */
+/*
+ * PCI interrupts.
+ * roughly the interrupts flow is:
+ *
+ * - save flags
+ * - CLI (disable all)
+ * - IC->ack (mask out the source)
+ * - EI (enable all, except the source that was masked of course)
+ * - action (ISR)
+ * - IC->enable (unmask the source)
+ *
+ * The reason we have a separate PCI IC is beacause of the following:
+ * If we dont, then Throughout the "action" of a PCI slot, the
+ * entire PCI "IP" on the cpu will remain disabled. Which means that we cant
+ * prioritize between PCI interrupts. Normally this should be ok, if all PCI
+ * interrupts are considered equal. However, creating a PCI IC gives
+ * the flexibility to prioritize.
+ */
+
+static void
+ar7100_pci_irq_enable(unsigned int irq)
+{
+    if (!ar7240_cpu() && !is_ar934x()) {
+        ar7100_reg_rmw_set(AR7100_PCI_INT_MASK,
+                           (1 << (irq - AR7100_PCI_IRQ_BASE)));
+    } else {
+	ar7240_reg_rmw_set(AR7240_PCI_INT_MASK, AR7240_PCI_INT_A_L);
+    }
+}
+
+static void
+ar7100_pci_irq_disable(unsigned int irq)
+{
+    if (!ar7240_cpu() && !is_ar934x()) {
+        ar7100_reg_rmw_clear(AR7100_PCI_INT_MASK,
+                           (1 << (irq - AR7100_PCI_IRQ_BASE)));
+    } else {
+	    ar7240_reg_rmw_clear(AR7240_PCI_INT_MASK, AR7240_PCI_INT_A_L);
+	    ar7240_reg_rmw_clear(AR7240_PCI_INT_STATUS, AR7240_PCI_INT_A_L);
+    }
+}
+
+static unsigned int
+ar7100_pci_irq_startup(unsigned int irq)
+{
+	ar7100_pci_irq_enable(irq);
+	return 0;
+}
+
+static void
+ar7100_pci_irq_shutdown(unsigned int irq)
+{
+	ar7100_pci_irq_disable(irq);
+}
+
+static void
+ar7100_pci_irq_ack(unsigned int irq)
+{
+	ar7100_pci_irq_disable(irq);
+}
+
+static void
+ar7100_pci_irq_end(unsigned int irq)
+{
+	if (!(irq_desc[irq].status & (IRQ_DISABLED | IRQ_INPROGRESS)))
+		ar7100_pci_irq_enable(irq);
+}
+
+static int ar7100_pci_irq_set_affinity(unsigned int irq, const struct cpumask *dest)
+{
+	/*
+     * Only 1 CPU; ignore affinity request
+     */
+	return 0;
+}
+
+struct irq_chip ar7100_pci_irq_chip = {
+	.name		= "AR7100 PCI",
+	.startup    = ar7100_pci_irq_startup,
+	.shutdown	= ar7100_pci_irq_shutdown,
+	.enable 	= ar7100_pci_irq_enable,
+	.disable	= ar7100_pci_irq_disable,
+	.ack		= ar7100_pci_irq_ack,
+	.end		= ar7100_pci_irq_end,
+	.eoi		= ar7100_pci_irq_end,
+	.set_affinity = ar7100_pci_irq_set_affinity,
+};
+
+
+
+void
+ar7100_pci_irq_init(int irq_base)
+{
+	int i;
+
+	for (i = irq_base;
+	     i < irq_base + AR7100_PCI_IRQ_COUNT; i++) {
+		irq_desc[i].status = IRQ_DISABLED;
+		irq_desc[i].action = NULL;
+		irq_desc[i].depth = 1;
+		set_irq_chip_and_handler(i, &ar7100_pci_irq_chip,
+					 handle_percpu_irq);
+	}
+}
+
+/*
+ * init the pci controller
+ */
+
+static struct resource ar7100_io_resource = {
+	.name  =        "PCI IO space",
+	.start =        0x0000,
+	.end   =        0,
+	.flags =        IORESOURCE_IO
+};
+
+static struct resource ar7100_mem_resource = {
+	.name  =	"PCI memory space",
+	.start =	AR7100_PCI_MEM_BASE,
+	.end   =	AR7100_PCI_MEM_BASE + AR7100_PCI_WINDOW - 1,
+	.flags =	IORESOURCE_MEM
+};
+
+extern struct pci_ops ar7100_pci_ops;
+
+static struct pci_controller ar7100_pci_controller = {
+	.pci_ops	    = &ar7100_pci_ops,
+	.mem_resource	= &ar7100_mem_resource,
+	.io_resource	= &ar7100_io_resource,
+};
+
+
+irqreturn_t
+ar7100_pci_core_intr(int cpl, void *dev_id, struct pt_regs *regs)
+{
+    printk("PCI error intr\n");
+
+    if (!ar7240_cpu() && !is_ar934x())
+        ar7100_check_error(1);
+
+    return IRQ_HANDLED;
+}
+
+
+/*
+ * for Virian based boards, the following will initialise the PCIe subsystem
+ */
+static void init_ar7240_pcie(void)
+{
+#define VIRIAN_BASE_ADDRESS 0xb80f0000
+#define MERLIN_PCI_COMMAND_REG_ADDRESS 0xb4000004
+
+    //unsigned short  pci_val;
+    unsigned int    *virian_addr;
+
+    /*
+     * enable DDR/DMA for PCI devices when attached to 7240 chipsets
+     */
+    virian_addr = (u32 *)(MERLIN_PCI_COMMAND_REG_ADDRESS);
+    writel(0x6, virian_addr);
+
+    /*
+     * bring PCI block out of reset
+     */
+    if (is_ar7242() ||  is_ar7241() || is_ar7240()) {
+        virian_addr = (u32 *)(VIRIAN_BASE_ADDRESS);
+    }else{
+        virian_addr = (u32 *)(AR7240_PCI_LCL_DEBUG); // ...?
+    }
+    writel(readl(virian_addr)&0xfffeffff, virian_addr);
+}
+
+/*
+ * We want a 1:1 mapping between PCI and DDR for inbound and outbound.
+ * The PCI<---AHB decoding works as follows:
+ *
+ * 8 registers in the DDR unit provide software configurable 32 bit offsets
+ * for each of the eight 16MB PCI windows in the 128MB. The offsets will be
+ * added to any address in the 16MB segment before being sent to the PCI unit.
+ *
+ * Essentially  for any AHB address generated by the CPU,
+ * 1. the MSB  four bits are stripped off, [31:28],
+ * 2. Bit 27 is used to decide between the lower 128Mb (PCI) or the rest of
+ *    the AHB space
+ * 3. Bits 26:24 are used to access one of the 8 window registers and are
+ *    masked off.
+ * 4. If it is a PCI address, then the WINDOW offset in the WINDOW register
+ *    corresponding to the next 3 bits (bit 26:24) is ADDED to the address,
+ *    to generate the address to PCI unit.
+ *
+ *     eg. CPU address = 0x100000ff
+ *         window 0 offset = 0x10000000
+ *         This points to lowermost 16MB window in PCI space.
+ *         So the resulting address would be 0x000000ff+0x10000000
+ *         = 0x100000ff
+ *
+ *         eg2. CPU address = 0x120000ff
+ *         WINDOW 2 offset = 0x12000000
+ *         resulting address would be 0x000000ff+0x12000000
+ *                         = 0x120000ff
+ *
+ * There is no translation for inbound access (PCI device as a master)
+ */
+static int __init ar7100_pcibios_init(void)
+{
+    uint32_t cmd;
+
+    if (!ar7240_cpu() && !is_ar934x()) {
+        ar7100_reg_rmw_set(AR7100_RESET,
+                          (AR7100_RESET_PCI_BUS|AR7100_RESET_PCI_CORE));
+        ag7100_delay1s();
+
+        ar7100_reg_rmw_clear(AR7100_RESET,
+                          (AR7100_RESET_PCI_BUS|AR7100_RESET_PCI_CORE));
+        ag7100_delay1s();
+
+        ar7100_write_pci_window(0);
+        ar7100_write_pci_window(1);
+        ar7100_write_pci_window(2);
+        ar7100_write_pci_window(3);
+        ar7100_write_pci_window(4);
+        ar7100_write_pci_window(5);
+        ar7100_write_pci_window(6);
+        ar7100_write_pci_window(7);
+
+        ag7100_delay1s();
+
+
+	    cmd = PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER | PCI_COMMAND_INVALIDATE |
+              PCI_COMMAND_PARITY|PCI_COMMAND_SERR|PCI_COMMAND_FAST_BACK;
+
+        ar7100_local_write_config(PCI_COMMAND, 4, cmd);
+
+        /*
+         * clear any lingering errors and register core error IRQ
+         */
+        ar7100_check_error(0);
+
+	    register_pci_controller(&ar7100_pci_controller);
+
+        //to do.by gun.
+        //request_irq(AR7100_PCI_IRQ_CORE, ar7100_pci_core_intr, SA_INTERRUPT,
+        //            "ar7100 pci core", NULL);
+    } else {
+        if (((ar7240_reg_rd(AR7240_PCI_LCL_RESET)) & 0x1) == 0x0) {
+            printk("***** Warning *****: PCIe WLAN H/W not found !!!\n");
+            return 0;
+        }
+        if ((is_ar7241() || is_ar7242()))
+        ar7240_reg_wr(AR7240_PCI_LCL_APP,
+            (ar7240_reg_rd(AR7240_PCI_LCL_APP) | (0x1 << 16)));
+
+        printk("PCI init:%s\n", __func__);
+        cmd =	PCI_COMMAND_MEMORY |
+            PCI_COMMAND_MASTER |
+            PCI_COMMAND_INVALIDATE |
+            PCI_COMMAND_PARITY |
+            PCI_COMMAND_SERR |
+            PCI_COMMAND_FAST_BACK;
+
+        printk("%s(%d): PCI CMD write: 0x%x\n", __func__, __LINE__, cmd);
+
+        ar7100_local_write_config(PCI_COMMAND, 4, cmd);
+#if !defined(CONFIG_QCA955x)
+        ar7100_pci_ops.write(NULL, 0, PCI_COMMAND, 4, cmd);
+#endif
+
+        register_pci_controller(&ar7100_pci_controller);
+
+        if (ar7240_cpu())
+            init_ar7240_pcie();
+
+    }
+
+
+    return 0;
+}
+
+
+
+arch_initcall(ar7100_pcibios_init);

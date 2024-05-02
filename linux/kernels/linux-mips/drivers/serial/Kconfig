@@ -275,6 +275,15 @@ config SERIAL_8250_RM9K
 	  port hardware found on MIPS RM9122 and similar processors.
 	  If unsure, say N.
 
+# V54_BSP
+config SERIAL_HORNET
+	tristate "HORNET serial port support"
+	depends on SERIAL_8250
+	select SERIAL_CORE
+	help
+	  Enable High Speed uart.
+# end V54_BSP
+
 comment "Non-8250 serial port support"
 
 config SERIAL_AMBA_PL010

@@ -46,6 +46,9 @@
 #define DBG(fmt...)
 
 extern void bootx_init(unsigned long r4, unsigned long phys);
+#ifdef V54_BSP
+void plat_mem_setup(void);
+#endif
 
 int boot_cpuid;
 EXPORT_SYMBOL_GPL(boot_cpuid);
@@ -317,7 +320,7 @@ void __init setup_arch(char **cmdline_p)
 		ucache_bsize = icache_bsize = dcache_bsize;
 
 	/* reboot on panic */
-	panic_timeout = 180;
+	panic_timeout = 3;
 
 	if (ppc_md.panic)
 		setup_panic();
@@ -353,4 +356,13 @@ void __init setup_arch(char **cmdline_p)
 	/* Initialize the MMU context management stuff */
 	mmu_context_init();
 
+#ifdef V54_BSP
+    plat_mem_setup();
+#endif
+}
+
+void cpu_die(void)
+{
+	if (ppc_md.cpu_die)
+		ppc_md.cpu_die();
 }

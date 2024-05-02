@@ -31,9 +31,9 @@ static const char *const br_port_state_names[] = {
 
 void br_log_state(const struct net_bridge_port *p)
 {
-	pr_info("%s: port %d(%s) entering %s state\n",
+	pr_info("%s: port %d(%s) entering %s state (%s,%d)\n",
 		p->br->dev->name, p->port_no, p->dev->name,
-		br_port_state_names[p->state]);
+        br_port_state_names[p->state], current->comm, current->pid);
 
 }
 

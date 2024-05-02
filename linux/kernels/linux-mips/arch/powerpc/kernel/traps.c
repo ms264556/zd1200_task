@@ -58,6 +58,9 @@
 #ifdef CONFIG_FSL_BOOKE
 #include <asm/dbell.h>
 #endif
+#ifdef V54_BSP //SIM-AP
+#include <rkstrace.h>
+#endif
 
 #if defined(CONFIG_DEBUGGER) || defined(CONFIG_KEXEC)
 int (*__debugger)(struct pt_regs *regs);
@@ -99,6 +102,22 @@ static void pmac_backlight_unblank(void)
 static inline void pmac_backlight_unblank(void) { }
 #endif
 
+#if V54_BSP
+#ifdef RKS_SYSTEM_TRACE
+rks_show_trace_func_t *show_system_trace = NULL;
+EXPORT_SYMBOL(show_system_trace);
+
+void
+rks_register_system_trace(rks_show_trace_func_t *show_system_trace_fn)
+{
+    show_system_trace = show_system_trace_fn;
+}
+#endif /* RKS_SYSTEM_TRACE */
+
+extern void himem_tee_open(void);       /* defined in kernel/printk.c */
+extern void himem_tee_close(void);       /* defined in kernel/printk.c */
+#endif
+
 int die(const char *str, struct pt_regs *regs, long err)
 {
 	static struct {
@@ -131,6 +150,12 @@ int die(const char *str, struct pt_regs *regs, long err)
 	}
 
 	if (++die.lock_owner_depth < 3) {
+#if V54_BSP
+		himem_tee_open();
+#endif
+#ifdef V54_PROD_BUILD
+		printk("---> SW Version: %s <---\n", V54_PROD_BUILD);
+#endif
 		printk("Oops: %s, sig: %ld [#%d]\n", str, err, ++die_counter);
 #ifdef CONFIG_PREEMPT
 		printk("PREEMPT ");
@@ -148,6 +173,10 @@ int die(const char *str, struct pt_regs *regs, long err)
 
 		print_modules();
 		show_regs(regs);
+#if V54_BSP
+		himem_tee_close();
+		RKS_SHOW_SYSTEM_TRACE;
+#endif /* V54_BSP */
 	} else {
 		printk("Recursive die() failure, output suppressed\n");
 	}

@@ -1270,6 +1270,25 @@ static inline int udp4_csum_init(struct sk_buff *skb, struct udphdr *uh,
 	return 0;
 }
 
+#ifdef RKS_WSG //Ruckus, Modify for GRE over UDP.
+int (*_get_ipgre_udp_port)(u16 *, u16 *) = NULL;
+int (*_ipgre_over_udp_rcv_)(struct sk_buff *) = NULL;
+
+int _udp_reg_ipgre_func(int (*func1)(u16 *, u16 *), int (*func2)(struct sk_buff *)) {
+    _get_ipgre_udp_port = func1;
+    _ipgre_over_udp_rcv_ = func2;
+    return 0;
+}
+int _udp_unreg_ipgre_func(void) {
+    _get_ipgre_udp_port = NULL;
+    _ipgre_over_udp_rcv_ = NULL;
+    return 0;
+}
+
+EXPORT_SYMBOL(_udp_reg_ipgre_func);
+EXPORT_SYMBOL(_udp_unreg_ipgre_func);
+#endif /* RKS_WSG */
+
 /*
  *	All we need to do is get the socket, and then do a checksum.
  */
@@ -1283,6 +1302,9 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	struct rtable *rt = skb_rtable(skb);
 	__be32 saddr, daddr;
 	struct net *net = dev_net(skb->dev);
+	#ifdef RKS_WSG //Ruckus, Modify for GRE over UDP.
+	u16 s_port, d_port;
+	#endif /* RKS_WSG */
 
 	/*
 	 *  Validate the packet.
@@ -1304,6 +1326,25 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 			goto short_packet;
 		uh = udp_hdr(skb);
 	}
+	#ifdef RKS_WSG //Ruckus, Modify for GRE over UDP.
+	//If the packet match specific port number, redirect to GRE module.
+	if (_get_ipgre_udp_port && _ipgre_over_udp_rcv_) {
+        (*_get_ipgre_udp_port)(&s_port, &d_port);
+        if(uh->dest == htons(s_port) && uh->source == htons(d_port))
+        {
+            skb->dev = dev_get_by_index(&init_net, skb->iif);
+            skb_pull(skb, sizeof(struct udphdr));
+
+            /* drop any routing info */
+            skb_dst_drop(skb);
+            /* drop conntrack reference */
+            nf_reset(skb);
+
+            (*_ipgre_over_udp_rcv_)(skb);
+            return 0;
+        }
+    }
+	#endif /* RKS_WSG */
 
 	if (udp4_csum_init(skb, uh, proto))
 		goto csum_error;

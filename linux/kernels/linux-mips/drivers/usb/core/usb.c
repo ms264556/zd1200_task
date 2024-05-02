@@ -47,7 +47,11 @@
 
 const char *usbcore_name = "usbcore";
 
+#if !defined(CONFIG_X86)
+static int nousb=1;	/* Disable USB when built into kernel image */
+#else
 static int nousb;	/* Disable USB when built into kernel image */
+#endif
 
 /* Workqueue for autosuspend and for remote wakeup of root hubs */
 struct workqueue_struct *ksuspend_usb_wq;
@@ -991,6 +995,16 @@ EXPORT_SYMBOL_GPL(usb_buffer_unmap_sg);
 module_param(nousb, bool, 0444);
 #else
 core_param(nousb, nousb, bool, 0444);
+#if !defined(CONFIG_X86)
+static int __init usb_setup_enable(char *str)
+{
+	nousb = 0;
+	return 1;
+}
+
+/* format to enable USB on kernel command line is: usb */
+__setup("usb", usb_setup_enable);
+#endif
 #endif
 
 /*

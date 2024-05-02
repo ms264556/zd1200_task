@@ -62,7 +62,11 @@ register struct thread_info *__current_thread_info __asm__("$28");
 
 /* thread information allocation */
 #if defined(CONFIG_PAGE_SIZE_4KB) && defined(CONFIG_32BIT)
+#if 1 /* V54_BSP */
+#define THREAD_SIZE_ORDER (2)
+#else
 #define THREAD_SIZE_ORDER (1)
+#endif
 #endif
 #if defined(CONFIG_PAGE_SIZE_4KB) && defined(CONFIG_64BIT)
 #define THREAD_SIZE_ORDER (2)
@@ -146,7 +150,8 @@ register struct thread_info *__current_thread_info __asm__("$28");
 #define _TIF_LOAD_WATCH		(1<<TIF_LOAD_WATCH)
 
 /* work to do on interrupt/exception return */
-#define _TIF_WORK_MASK		(0x0000ffef & ~_TIF_SECCOMP)
+#define _TIF_WORK_MASK		(0x0000ffef &				\
+					~(_TIF_SECCOMP | _TIF_SYSCALL_AUDIT))
 /* work to do on any return to u-space */
 #define _TIF_ALLWORK_MASK	(0x8000ffff & ~_TIF_SECCOMP)
 

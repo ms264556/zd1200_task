@@ -287,6 +287,34 @@ out:
 	return res;
 }
 
+#if 1 //V54_BSP
+void
+v54_show_cmdline(struct task_struct *task, char * end_mark)
+{
+#define MY_BUFSIZE PAGE_SIZE
+    char buffer[MY_BUFSIZE];
+    char *p = buffer;
+    char *end_str ;
+    int res;
+
+    res = proc_pid_cmdline(task, p);
+    if ( res > 0 ) {
+        if ( res > MY_BUFSIZE - 1 ) {
+            res = MY_BUFSIZE - 1;
+        }
+        buffer[res] = '\0';
+        end_str = &buffer[res];
+        while (p < end_str )  {
+            printk(" %s", p);
+            p = strchr(p, '\0');
+            p++;
+        }
+        printk("%s", end_mark);
+    }
+#undef MY_BUFSIZE
+}
+#endif  //V54_BSP
+
 static int proc_pid_auxv(struct task_struct *task, char *buffer)
 {
 	int res = 0;
@@ -311,7 +339,10 @@ static int proc_pid_auxv(struct task_struct *task, char *buffer)
  * Provides a wchan file via kallsyms in a proper one-value-per-file format.
  * Returns the resolved symbol.  If that fails, simply return the address.
  */
-static int proc_pid_wchan(struct task_struct *task, char *buffer)
+#if 0 //V54_BSP
+static
+#endif
+int proc_pid_wchan(struct task_struct *task, char *buffer)
 {
 	unsigned long wchan;
 	char symname[KSYM_NAME_LEN];
@@ -1409,6 +1440,37 @@ static const struct inode_operations proc_pid_link_inode_operations = {
 	.setattr	= proc_setattr,
 };
 
+#if 1 //V54_BSP
+// dump open file descriptors
+void
+v54_show_fds(struct task_struct *p, char * end_mark)
+{
+    struct files_struct * files;
+    struct fdtable *fdt;
+    unsigned int fd;
+
+    files = get_files_struct(p);
+    if (!files)
+            return;
+
+    printk(" fds ");
+    rcu_read_lock();
+    fdt = files_fdtable(files);
+    for (fd = 0; fd < fdt->max_fds; fd++) {
+
+            if (!fcheck_files(files, fd))
+                    continue;
+            rcu_read_unlock();
+            printk(" %u", fd);
+            rcu_read_lock();
+    }
+    rcu_read_unlock();
+    put_files_struct(files);
+
+    printk("%s", end_mark);
+    return;
+}
+#endif
 
 /* building an inode */
 

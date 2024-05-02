@@ -27,9 +27,16 @@
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
 
+#ifdef CONFIG_MACH_AR7240
+#include <ar7240.h>
+#endif
+
 #include "usb.h"
 #include "hcd.h"
 #include "hub.h"
+#ifdef CONFIG_USB_OTG
+#include "../gadget/ar9130_otg.h"
+#endif
 
 /* if we are in debug mode, always announce new devices */
 #ifdef DEBUG

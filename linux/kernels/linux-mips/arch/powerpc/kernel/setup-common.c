@@ -119,6 +119,10 @@ void machine_restart(char *cmd)
 	while (1) ;
 }
 
+#if defined(V54_BSP)
+EXPORT_SYMBOL(machine_restart);
+#endif
+
 void machine_power_off(void)
 {
 	machine_shutdown();

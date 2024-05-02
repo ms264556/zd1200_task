@@ -14,6 +14,22 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
+#if 1 //V54_BSP
+void show_task_mem(struct mm_struct *mm, char * end_mark)
+{
+    unsigned long total_vm, total_rss;
+
+    total_vm = mm->total_vm;
+    total_rss = get_mm_rss(mm);
+    printk("%-6lu L %-4lu R %-4lu S %-4lu%s",
+          (total_vm - mm->reserved_vm) << (PAGE_SHIFT-10)
+        , mm->locked_vm << (PAGE_SHIFT-10)
+        , total_rss << (PAGE_SHIFT-10)
+        , mm->stack_vm << (PAGE_SHIFT-10)
+        , end_mark
+        );
+}
+#endif
 void task_mem(struct seq_file *m, struct mm_struct *mm)
 {
 	unsigned long data, text, lib;

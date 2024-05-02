@@ -331,6 +331,62 @@ static int igb_desc_unused(struct igb_ring *ring)
 	return ring->count + ring->next_to_clean - ring->next_to_use - 1;
 }
 
+
+#if defined(V54_BSP)
+
+static int __rss_debug = 0;
+
+static void igb_cleanup_proc(void)
+{
+	remove_proc_entry("rssdbg", init_net.proc_net);
+}
+
+/* write out rssdbg to userland. */
+static int igb_rssdbg_read_proc(char* page, char ** start, off_t off, int count,
+                            int* eof, void * data)
+{
+    return sprintf(page, "%d\n", __rss_debug ? 1 : 0);
+}
+
+/* Read in rssdbg from userland */
+static int igb_rssdbg_write_proc(struct file* file, const char* buffer,
+                             unsigned long count, void *data)
+{
+    int len=count;
+    char buf[5] = {0};
+
+    if ( count < 1 ) {
+        printk(KERN_ERR "%s: no data for write", __FUNCTION__);
+        len = 0;
+        goto finish;
+    }
+
+    if ( len > sizeof(buf) ) len = sizeof(buf);
+    if ( copy_from_user(buf, buffer, len) ) {
+        len = -EFAULT;
+        goto finish;
+    }
+    buf[sizeof(buf) - 1] = '\0';
+
+    sscanf(buf, "%d", &__rss_debug);
+
+
+    len = count;        /* reset back to count to ack all data */
+ finish:
+    return len;
+}
+
+/* register the proc file: /proc/net/igbdbg */
+static void igb_init_proc(void)
+{
+	struct proc_dir_entry* entry;
+	entry = create_proc_entry("rssdbg", 0644, init_net.proc_net);
+	entry->read_proc = igb_rssdbg_read_proc;
+	entry->write_proc = igb_rssdbg_write_proc;
+}
+#endif
+
+
 /**
  * igb_init_module - Driver Registration Routine
  *
@@ -351,6 +407,10 @@ static int __init igb_init_module(void)
 	dca_register_notify(&dca_notifier);
 #endif
 
+#if defined(V54_BSP)
+    igb_init_proc();
+#endif
+
 	ret = pci_register_driver(&igb_driver);
 	return ret;
 }
@@ -369,6 +429,10 @@ static void __exit igb_exit_module(void)
 	dca_unregister_notify(&dca_notifier);
 #endif
 	pci_unregister_driver(&igb_driver);
+
+#if defined(V54_BSP)
+	igb_cleanup_proc();
+#endif
 }
 
 module_exit(igb_exit_module);
@@ -1212,6 +1276,7 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 	struct net_device *netdev;
 	struct igb_adapter *adapter;
 	struct e1000_hw *hw;
+	static int cards_found = 0;
 	const struct e1000_info *ei = igb_info_tbl[ent->driver_data];
 	unsigned long mmio_start, mmio_len;
 	int err, pci_using_dac;
@@ -1343,6 +1408,11 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 	}
 
 #endif
+
+#ifdef V54_BSP
+	hw->port_index = cards_found++;
+#endif
+
 	/* setup the private structure */
 	err = igb_sw_init(adapter);
 	if (err)
@@ -1702,7 +1772,7 @@ static int __devinit igb_sw_init(struct igb_adapter *adapter)
 	adapter->rx_ring_count = IGB_DEFAULT_RXD;
 	adapter->rx_buffer_len = MAXIMUM_ETHERNET_VLAN_SIZE;
 	adapter->rx_ps_hdr_size = 0; /* disable packet split */
-	adapter->max_frame_size = netdev->mtu + ETH_HLEN + ETH_FCS_LEN;
+	adapter->max_frame_size = netdev->mtu + ETH_HLEN + ETH_FCS_LEN + VLAN_TAG_SIZE;
 	adapter->min_frame_size = ETH_ZLEN + ETH_FCS_LEN;
 
 	/* This call may decrease the number of queues depending on
@@ -2153,14 +2223,11 @@ static void igb_rlpml_set(struct igb_adapter *adapter)
 	struct e1000_hw *hw = &adapter->hw;
 	u16 pf_id = adapter->vfs_allocated_count;
 
-	if (adapter->vlgrp)
-		max_frame_size += VLAN_TAG_SIZE;
-
 	/* if vfs are enabled we set RLPML to the largest possible request
 	 * size and set the VMOLR RLPML to the size we need */
 	if (pf_id) {
 		igb_set_vf_rlpml(adapter, max_frame_size, pf_id);
-		max_frame_size = MAX_STD_JUMBO_FRAME_SIZE + VLAN_TAG_SIZE;
+		max_frame_size = MAX_STD_JUMBO_FRAME_SIZE;
 	}
 
 	wr32(E1000_RLPML, max_frame_size);
@@ -2202,6 +2269,11 @@ static void igb_configure_rx(struct igb_adapter *adapter)
 	u32 rctl, rxcsum;
 	u32 rxdctl;
 	int i;
+	static const u8 rsshash[40] = {
+		0x6d, 0x5a, 0x56, 0xda, 0x25, 0x5b, 0x0e, 0xc2, 0x41, 0x67,
+		0x25, 0x3d, 0x43, 0xa3, 0x8f, 0xb0, 0xd0, 0xca, 0x2b, 0xcb,
+		0xae, 0x7b, 0x30, 0xb4,	0x77, 0xcb, 0x2d, 0xa3, 0x80, 0x30,
+		0xf2, 0x0c, 0x6a, 0x42, 0xb7, 0x3b, 0xbe, 0xac, 0x01, 0xfa };
 
 	/* disable receives while setting up the descriptors */
 	rctl = rd32(E1000_RCTL);
@@ -2239,15 +2311,12 @@ static void igb_configure_rx(struct igb_adapter *adapter)
 	}
 
 	if (adapter->num_rx_queues > 1) {
-		u32 random[10];
 		u32 mrqc;
 		u32 j, shift;
 		union e1000_reta {
 			u32 dword;
 			u8  bytes[4];
 		} reta;
-
-		get_random_bytes(&random[0], 40);
 
 		if (hw->mac.type >= e1000_82576)
 			shift = 0;
@@ -2266,8 +2335,13 @@ static void igb_configure_rx(struct igb_adapter *adapter)
 			mrqc = E1000_MRQC_ENABLE_RSS_4Q;
 
 		/* Fill out hash function seeds */
-		for (j = 0; j < 10; j++)
-			array_wr32(E1000_RSSRK(0), j, random[j]);
+		for (j = 0; j < 10; j++) {
+			u32 rsskey = rsshash[(j * 4)];
+			rsskey |= rsshash[(j * 4) + 1] << 8;
+			rsskey |= rsshash[(j * 4) + 2] << 16;
+			rsskey |= rsshash[(j * 4) + 3] << 24;
+			array_wr32(E1000_RSSRK(0), j, rsskey);
+		}
 
 		mrqc |= (E1000_MRQC_RSS_FIELD_IPV4 |
 			 E1000_MRQC_RSS_FIELD_IPV4_TCP);
@@ -3417,7 +3491,7 @@ static netdev_tx_t igb_xmit_frame_adv(struct sk_buff *skb,
 	struct igb_ring *tx_ring;
 
 	int r_idx = 0;
-	r_idx = skb->queue_mapping & (IGB_ABS_MAX_TX_QUEUES - 1);
+	r_idx = skb_get_queue_mapping(skb) & (IGB_ABS_MAX_TX_QUEUES - 1);
 	tx_ring = adapter->multi_tx_table[r_idx];
 
 	/* This goes back to the question of how to logically map a tx queue
@@ -3476,7 +3550,7 @@ static struct net_device_stats *igb_get_stats(struct net_device *netdev)
 static int igb_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	struct igb_adapter *adapter = netdev_priv(netdev);
-	int max_frame = new_mtu + ETH_HLEN + ETH_FCS_LEN;
+	int max_frame = new_mtu + ETH_HLEN + ETH_FCS_LEN + VLAN_TAG_SIZE;
 
 	if ((max_frame < ETH_ZLEN + ETH_FCS_LEN) ||
 	    (max_frame > MAX_JUMBO_FRAME_SIZE)) {
@@ -4651,6 +4725,13 @@ static bool igb_clean_rx_irq_adv(struct igb_ring *rx_ring,
 		prefetch(next_rxd);
 		next_buffer = &rx_ring->buffer_info[i];
 
+#if defined(V54_BSP)  /*for debug RSS hash function*/
+        if (__rss_debug && net_ratelimit()) {
+            printk(KERN_DEBUG "RSS hash value:0x%0X [queue idx:%d], pkt type:0x%0x\n",
+              rx_desc->wb.lower.hi_dword.rss , rx_desc->wb.lower.hi_dword.rss % 4, rx_desc->wb.lower.lo_dword.pkt_info);
+        }
+#endif
+
 		length = le16_to_cpu(rx_desc->wb.upper.length);
 		cleaned = true;
 		cleaned_count++;
@@ -4793,6 +4874,8 @@ next_desc:
  * igb_alloc_rx_buffers_adv - Replace used receive buffers; packet split
  * @adapter: address of board private structure
  **/
+/* reserve header room for LWAPP tunne header */
+#define IGB_RX_RESERVE    ((LWAPP_TUNNEL_HEADER_ROOM) - (NET_SKB_PAD))
 static void igb_alloc_rx_buffers_adv(struct igb_ring *rx_ring,
 				     int cleaned_count)
 {
@@ -4834,8 +4917,20 @@ static void igb_alloc_rx_buffers_adv(struct igb_ring *rx_ring,
 					     PCI_DMA_FROMDEVICE);
 		}
 
+		/*
+		 * Ruckus: In this unlikely event, just free it and reallocat to have
+		 * a fresh start; Don't even bother with trim-and-reuse as e1000e does.
+		 * Note other things in buffer_info e.g. dma, page, dma_page are not
+		 * touched.
+		 */
+		if (unlikely(buffer_info->skb)) {
+			dev_kfree_skb(buffer_info->skb);
+			buffer_info->skb = NULL;
+			skb = NULL;
+		}
+
 		if (!buffer_info->skb) {
-			skb = netdev_alloc_skb(netdev, bufsz + NET_IP_ALIGN);
+			skb = netdev_alloc_skb(netdev, bufsz + NET_IP_ALIGN + IGB_RX_RESERVE + LWAPP_TUNNEL_TAIL_ROOM);
 			if (!skb) {
 				adapter->alloc_rx_buff_failed++;
 				goto no_buffers;
@@ -4845,7 +4940,7 @@ static void igb_alloc_rx_buffers_adv(struct igb_ring *rx_ring,
 			 * this will result in a 16 byte aligned IP header after
 			 * the 14 byte MAC header is removed
 			 */
-			skb_reserve(skb, NET_IP_ALIGN);
+			skb_reserve(skb, NET_IP_ALIGN + IGB_RX_RESERVE);
 
 			buffer_info->skb = skb;
 			buffer_info->dma = pci_map_single(pdev, skb->data,

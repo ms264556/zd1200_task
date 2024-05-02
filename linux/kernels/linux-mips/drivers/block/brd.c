@@ -25,6 +25,13 @@
 #define PAGE_SECTORS_SHIFT	(PAGE_SHIFT - SECTOR_SHIFT)
 #define PAGE_SECTORS		(1 << PAGE_SECTORS_SHIFT)
 
+#ifdef V54_BSP
+#define FIX_RD_SIZE
+#ifdef FIX_RD_SIZE
+#endif
+unsigned long __rd_bytes = 0;
+#endif
+
 /*
  * Each block ramdisk device has a radix_tree brd_pages of pages that stores
  * the pages containing the block device's contents. A brd page's ->index is
@@ -511,6 +518,42 @@ static int __init brd_init(void)
 	int i, nr;
 	unsigned long range;
 	struct brd_device *brd, *next;
+
+#if defined(FIX_RD_SIZE)
+#if defined(NAR5520)
+    // obsoleted 11/06/08
+    // __rd_bytes from drivers/block/rd.c
+    int __rd_size  = ( __rd_bytes / 1024 ) + 16; // make sure that we round-up
+#else
+    // Determine the size of the rootfs image and
+    // make sure that the maximum RAMDISK size can accomodate that.
+    // __rd_size from arch/mips/ramdisk/rd_size.o
+    // __rd_start,__rd_end are symbols from linker script
+    extern int __rd_size;
+    extern void * __rd_start, * __rd_end;
+    printk("---> [%p, %p] size=%d\n", &__rd_start, &__rd_end, __rd_size);
+    if ( &__rd_start != &__rd_end ) {
+	__rd_bytes = (unsigned long)(&__rd_end) - (unsigned long)(&__rd_start);
+	__rd_size  = ( __rd_bytes / 1024 ) + 16; // make sure that we round-up
+    } else {
+	__rd_size += 4 ;	// some padding
+    }
+#endif
+    // check rootfs ramdsize to determine if we need to adjust
+    if ( __rd_size > rd_size ) {
+        // adjust to a larger value if needed
+        printk("---> rd_size = 0x%x -> 0x%x ... adjust\n", rd_size, __rd_size);
+        rd_size = __rd_size;
+    } else {
+        printk("---> rd_size = 0x%x __rd_size = 0x%x ... no change\n", rd_size, __rd_size);
+    }
+    if ( rd_size < CONFIG_BLK_DEV_RAM_SIZE ) {
+        printk("Adjusting rd_size %d -> %d\n", rd_size, CONFIG_BLK_DEV_RAM_SIZE);
+        rd_size = CONFIG_BLK_DEV_RAM_SIZE;
+    } else {
+        printk("rd_size=%d BLK_DEV_RAM_SIZE=%d\n", rd_size, CONFIG_BLK_DEV_RAM_SIZE );
+    }
+#endif
 
 	/*
 	 * brd module now has a feature to instantiate underlying device

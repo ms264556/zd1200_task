@@ -327,9 +327,13 @@ static int __devinit of_flash_probe(struct of_device *dev,
 			return err;
 	}
 
-	if (err > 0)
+	if (err > 0) {
+#ifdef V54_BSP
+        // create a partition for the entire flash as /dev/mtd0
+		add_mtd_device(info->cmtd);
+#endif
 		add_mtd_partitions(info->cmtd, info->parts, err);
-	else
+	} else
 #endif
 		add_mtd_device(info->cmtd);
 

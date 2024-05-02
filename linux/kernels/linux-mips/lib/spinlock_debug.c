@@ -61,6 +61,18 @@ static void spin_bug(spinlock_t *lock, const char *msg)
 	printk(KERN_EMERG "BUG: spinlock %s on CPU#%d, %s/%d\n",
 		msg, raw_smp_processor_id(),
 		current->comm, task_pid_nr(current));
+#if 1 /* V54_BSP */
+		dump_stack();
+		printk(KERN_EMERG " lock: %p, .magic: %08x, .owner: %s/%d, .owner_cpu: %d \n.file; %s .line: %d \n .file1; %s .line1: %d \n .file2; %s .line2: %d \n",
+			lock, lock->magic,
+			owner ? owner->comm : "<none>",
+			owner ? task_pid_nr(owner) : -1,
+			lock->owner_cpu,
+			lock->file[0], lock->line[0],
+			lock->file[1], lock->line[1],
+			lock->file[2], lock->line[2]
+			);
+#else
 	printk(KERN_EMERG " lock: %p, .magic: %08x, .owner: %s/%d, "
 			".owner_cpu: %d\n",
 		lock, lock->magic,
@@ -68,6 +80,7 @@ static void spin_bug(spinlock_t *lock, const char *msg)
 		owner ? task_pid_nr(owner) : -1,
 		lock->owner_cpu);
 	dump_stack();
+#endif
 }
 
 #define SPIN_BUG_ON(cond, lock, msg) if (unlikely(cond)) spin_bug(lock, msg)
@@ -159,9 +172,19 @@ static void rwlock_bug(rwlock_t *lock, const char *msg)
 	if (!debug_locks_off())
 		return;
 
+#if 1 /* V54_BSP */
+		printk(KERN_EMERG "BUG: rwlock %s on CPU#%d, %s/%d, %p\n.file; %s .line: %d \n .file1; %s .line1: %d \n .file2; %s .line2: %d \n", msg,
+			raw_smp_processor_id(), current->comm,
+			task_pid_nr(current), lock,
+                        lock->file[0], lock->line[0],
+                        lock->file[1], lock->line[1],
+                        lock->file[2], lock->line[2]
+			);
+#else
 	printk(KERN_EMERG "BUG: rwlock %s on CPU#%d, %s/%d, %p\n",
 		msg, raw_smp_processor_id(), current->comm,
 		task_pid_nr(current), lock);
+#endif
 	dump_stack();
 }
 

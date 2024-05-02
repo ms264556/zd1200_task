@@ -254,6 +254,18 @@ SECTIONS
 
 	BSS_SECTION(0, 0, 0)
 
+#if 1	/* V54 */
+  .data1 : {			/* Data1 */
+   /* Align the initial ramdisk image (INITRD) on page boundaries. */
+   . = ALIGN(PAGE_SIZE);
+   __rd_start = .;
+   *(.initrd)
+   . = ALIGN(PAGE_SIZE);
+   __rd_end = .;
+#endif
+
+  }
+
 	. = ALIGN(PAGE_SIZE);
 	_end = . ;
 	PROVIDE32 (end = .);

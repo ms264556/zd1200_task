@@ -10,7 +10,8 @@
 
 #include "do_mounts.h"
 
-unsigned long initrd_start, initrd_end;
+unsigned long initrd_start = 0,
+              initrd_end = 0;
 int initrd_below_start_ok;
 unsigned int real_root_dev;	/* do_proc_dointvec cannot handle kdev_t */
 static int __initdata old_fd, root_fd;
@@ -119,6 +120,7 @@ int __init initrd_load(void)
 		 * mounted in the normal path.
 		 */
 		if (rd_load_image("/initrd.image") && ROOT_DEV != Root_RAM0) {
+			printk("%s: ROOT_DEV!=Root_RAM0\n", __FUNCTION__);
 			sys_unlink("/initrd.image");
 			handle_initrd();
 			return 1;

@@ -35,6 +35,9 @@ $(obj)/elf2ecoff: $(obj)/elf2ecoff.c
 
 vmlinux.bin: $(VMLINUX)
 	$(OBJCOPY) -O binary $(strip-flags) $(VMLINUX) $(obj)/vmlinux.bin
+# V54_BSP
+	cp $(obj)/vmlinux.bin $(TFTPPATH)
+# end V54_BSP
 
 vmlinux.srec: $(VMLINUX)
 	$(OBJCOPY) -S -O srec $(strip-flags) $(VMLINUX) $(obj)/vmlinux.srec

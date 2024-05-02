@@ -28,7 +28,14 @@ extern unsigned long oprofile_time_slice;
 
 extern struct oprofile_operations oprofile_ops;
 extern unsigned long oprofile_started;
-extern unsigned long oprofile_backtrace_depth;
+
+struct oprofile_backtrace_options_struct {
+  unsigned long depth;
+  int trace_kernel;
+  int trace_user;
+};
+
+extern struct oprofile_backtrace_options_struct oprofile_backtrace_options;
 
 struct super_block;
 struct dentry;
@@ -36,7 +43,7 @@ struct dentry;
 void oprofile_create_files(struct super_block *sb, struct dentry *root);
 void oprofile_timer_init(struct oprofile_operations *ops);
 
-int oprofile_set_backtrace(unsigned long depth);
+int oprofile_set_backtrace(struct oprofile_backtrace_options_struct *options);
 int oprofile_set_timeout(unsigned long time);
 
 #endif /* OPROF_H */

@@ -48,7 +48,11 @@ ifneq ($(SUBARCH),$(ARCH))
   endif
 endif
 
+ifndef CONFIG_PROFILING
+ifndef CONFIG_QCA955x
 cflags-y := -ffunction-sections
+endif
+endif
 cflags-y += $(call cc-option, -mno-check-zero-division)
 
 ifdef CONFIG_32BIT
@@ -127,8 +131,14 @@ cflags-$(CONFIG_CPU_LOONGSON2E) += \
 
 cflags-$(CONFIG_CPU_MIPS32_R1)	+= $(call cc-option,-march=mips32,-mips32 -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS32) \
 			-Wa,-mips32 -Wa,--trap
+ifndef CONFIG_AR934x
 cflags-$(CONFIG_CPU_MIPS32_R2)	+= $(call cc-option,-march=mips32r2,-mips32r2 -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS32) \
 			-Wa,-mips32r2 -Wa,--trap
+else
+cflags-$(CONFIG_CPU_MIPS32_R2)  += $(call cc-option,-march=74kc, -mtune=74kc, -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS32) \
+            -Wa,-march=74kc -Wa,--trap
+endif
+
 cflags-$(CONFIG_CPU_MIPS64_R1)	+= $(call cc-option,-march=mips64,-mips64 -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS64) \
 			-Wa,-mips64 -Wa,--trap
 cflags-$(CONFIG_CPU_MIPS64_R2)	+= $(call cc-option,-march=mips64r2,-mips64r2 -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS64) \
@@ -656,6 +666,10 @@ KBUILD_CPPFLAGS += -D"DATAOFFSET=$(if $(dataoffset-y),$(dataoffset-y),0)"
 
 LDFLAGS			+= -m $(ld-emul)
 
+# V54_BSP
+LDFLAGS_ARCH	= -m $(ld-emul)
+# end V54_BSP
+
 ifdef CONFIG_MIPS
 CHECKFLAGS += $(shell $(CC) $(KBUILD_CFLAGS) -dM -E -xc /dev/null | \
 	egrep -vw '__GNUC_(|MINOR_|PATCHLEVEL_)_' | \
@@ -672,6 +686,16 @@ head-y := arch/mips/kernel/head.o arch/mips/kernel/init_task.o
 libs-y			+= arch/mips/lib/
 
 core-y			+= arch/mips/kernel/ arch/mips/mm/ arch/mips/math-emu/
+
+# V54_BSP
+ifneq ($(strip $(CONFIG_FLASH_ROOTFS)),y)
+core-$(CONFIG_EMBEDDED_RAMDISK)			+= arch/mips/ramdisk/
+ramdisk_obj					=
+else
+ramdisk_obj					= arch/mips/ramdisk/
+endif
+core-y			+= arch/mips/ramdisk/rd_size.o
+# end V54_BSP
 
 drivers-$(CONFIG_OPROFILE)	+= arch/mips/oprofile/
 

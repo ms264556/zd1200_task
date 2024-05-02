@@ -17,6 +17,8 @@
  *		Jos Vos		:	Call forward firewall after routing
  *					(always use output device).
  *		Mike McLagan	:	Routing by source
+ *
+ *		Copyright 2009 Freescale Semiconductor, Inc.
  */
 
 #include <linux/types.h>
@@ -38,6 +40,13 @@
 #include <net/route.h>
 #include <net/xfrm.h>
 
+#ifdef CONFIG_NET_GIANFAR_FP
+extern int netdev_fastroute;
+extern int netdev_fastroute_obstacles;
+
+extern u32 gfar_fastroute_hash(u8 daddr, u8 saddr);
+#endif
+
 static int ip_forward_finish(struct sk_buff *skb)
 {
 	struct ip_options * opt	= &(IPCB(skb)->opt);
@@ -47,6 +56,33 @@ static int ip_forward_finish(struct sk_buff *skb)
 	if (unlikely(opt->optlen))
 		ip_forward_options(skb);
 
+#ifdef CONFIG_NET_GIANFAR_FP
+	else {
+		struct rtable *rt = (struct rtable *)skb->_skb_dst;
+#ifdef FASTPATH_DEBUG
+		if (printk_ratelimit())
+			printk(KERN_INFO" %s: rt = %p, rt->rt_flags = %x "
+			       "(fast=%x), netdev_fastroute_ob=%d\n",
+			       __func___, rt, rt ? rt->rt_flags : 0,
+			       RTCF_FAST, netdev_fastroute_obstacles);
+#endif
+		if ((rt->rt_flags & RTCF_FAST) && !netdev_fastroute_obstacles) {
+			struct dst_entry *old_dst;
+			unsigned h = gfar_fastroute_hash(*(u8 *)&rt->rt_dst,
+							 *(u8 *)&rt->rt_src);
+#ifdef FASTPATH_DEBUG
+			if (printk_ratelimit())
+				printk(KERN_INFO " h = %d (%d, %d)\n",
+				       h, rt->rt_dst, rt->rt_src);
+#endif
+			write_lock_irq(&skb->dev->fastpath_lock);
+			old_dst = skb->dev->fastpath[h];
+			skb->dev->fastpath[h] = dst_clone(&rt->u.dst);
+			write_unlock_irq(&skb->dev->fastpath_lock);
+			dst_release(old_dst);
+		}
+	}
+#endif
 	return dst_output(skb);
 }
 
@@ -109,7 +145,9 @@ int ip_forward(struct sk_buff *skb)
 	if (rt->rt_flags&RTCF_DOREDIRECT && !opt->srr && !skb_sec_path(skb))
 		ip_rt_send_redirect(skb);
 
+#if 0 /* V54_BSP, priority override breaks shaping*/
 	skb->priority = rt_tos2priority(iph->tos);
+#endif
 
 	return NF_HOOK(PF_INET, NF_INET_FORWARD, skb, skb->dev, rt->u.dst.dev,
 		       ip_forward_finish);

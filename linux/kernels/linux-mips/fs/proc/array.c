@@ -343,6 +343,30 @@ int proc_pid_status(struct seq_file *m, struct pid_namespace *ns,
 	return 0;
 }
 
+#if 1 // V54_BSP
+void
+show_task_cpu(struct task_struct *task, char * end_mark)
+{
+    cputime_t cutime, cstime, utime, stime;
+    cutime = cstime = utime = stime = cputime_zero;
+
+    if ( task->signal ) {
+        cutime = task->signal->cutime;
+        cstime = task->signal->cstime;
+    }
+    utime = task->utime;
+    stime = task->stime;
+
+    printk("  cpu %lu %lu %lu %lu %s",
+		  cputime_to_clock_t(utime)
+		, cputime_to_clock_t(stime)
+		, cputime_to_clock_t(cutime)
+		, cputime_to_clock_t(cstime)
+                , end_mark);
+
+}
+#endif
+
 static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 			struct pid *pid, struct task_struct *task, int whole)
 {

@@ -3573,7 +3573,7 @@ postcore_initcall(vtconsole_class_init);
 
 static int set_vesa_blanking(char __user *p)
 {
-	unsigned int mode;
+	unsigned int mode = 0;
 
 	if (get_user(mode, p + 1))
 		return -EFAULT;

@@ -628,6 +628,9 @@ set_rcvbuf:
 		} else {
 			sock_reset_flag(sk, SOCK_RCVTSTAMP);
 			sock_reset_flag(sk, SOCK_RCVTSTAMPNS);
+#if 1 /* V54_BSP */
+			sock_disable_timestamp(sk, SOCK_TIMESTAMP);
+#endif
 		}
 		break;
 
@@ -699,6 +702,28 @@ set_rcvbuf:
 		else
 			sk->sk_mark = val;
 		break;
+
+#if defined(CONFIG_MIPS) || defined(CONFIG_PPC)
+#ifdef V54_SOCK_IN_IFINDEX
+		case SO_INIFINDEX:
+			if (valbool)  {
+				sock_set_flag(sk, SOCK_IN_IFINDEX);
+			} else
+				sock_reset_flag(sk, SOCK_IN_IFINDEX);
+			break;
+#endif
+#ifdef V54_SOCK_OUT_IFINDEX
+		case SO_OUTIFINDEX:
+			if (val >= 0)  {
+				sock_set_flag(sk, SOCK_OUT_IFINDEX);
+				sk->sk_outifindex = val;
+			} else {
+				sock_reset_flag(sk, SOCK_OUT_IFINDEX);
+				sk->sk_outifindex = 0;
+			}
+			break;
+#endif
+#endif
 
 		/* We implement the SO_SNDLOWAT etc to
 		   not be settable (1003.1g 5.3) */

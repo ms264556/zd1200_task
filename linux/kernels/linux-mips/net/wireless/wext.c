@@ -1395,8 +1395,10 @@ void wireless_send_event(struct net_device *	dev,
 	 * and no data is included in the event, this codifies that
 	 * practice.
 	 */
+#ifdef CONFIG_COMPAT
 	if (WARN_ON(cmd == SIOCGIWSCAN && extra))
 		extra = NULL;
+#endif
 
 	/* Get the description of the Event */
 	if (cmd <= SIOCIWLAST) {
@@ -1495,6 +1497,7 @@ void wireless_send_event(struct net_device *	dev,
 		memcpy(((char *) event) + hdr_len, extra, extra_len);
 
 	nlmsg_end(skb, nlh);
+
 #ifdef CONFIG_COMPAT
 	hdr_len = compat_event_type_size[descr->header_type];
 	event_len = hdr_len + extra_len;

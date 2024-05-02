@@ -42,3 +42,6 @@ void machine_power_off(void)
 	if (pm_power_off)
 		pm_power_off();
 }
+#if defined(V54_BSP)
+EXPORT_SYMBOL(machine_restart);
+#endif

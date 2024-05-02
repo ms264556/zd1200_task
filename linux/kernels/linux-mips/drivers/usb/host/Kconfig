@@ -341,6 +341,55 @@ config USB_SL811_CS
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called "sl811_cs".
+# V54_BSP
+config USB_OHCI_AR7100
+	bool "USB OHCI support for AR7100"
+	depends on MACH_AR7100 && USB_OHCI_HCD
+	help
+	  Support for AR7100 OHCI controller
+
+config USB_OHCI_AR7240
+	bool "USB OHCI support for AR7240"
+	depends on (MACH_AR7240 || MACH_HORNET) && USB_OHCI_HCD
+	help
+	  Support for AR7240 OHCI controller
+
+config USB_EHCI_AR7100
+	bool "USB EHCI support for AR7100"
+	depends on MACH_AR7100 && USB_EHCI_HCD
+	help
+	  Support for AR7100 EHCI controller
+
+config USB_EHCI_AR9130
+	bool "USB EHCI support for AR9130"
+	depends on (MACH_AR7100 || MACH_AR7240 || MACH_HORNET) && USB_EHCI_HCD
+	help
+	  Support for AR9130 EHCI controller
+
+config USB_AR9130_OTG
+	bool "USB EHCI-OTG support for AR9130"
+	depends on (MACH_AR7100 || MACH_AR7240) && USB_EHCI_AR9130 && USB_EHCI_HCD
+	help
+	  Support for AR9130 OTG EHCI controller
+
+config USB_OHCI_ATH
+	bool "USB OHCI support for Atheros"
+	depends on (MACH_AR724x || MACH_AR933x || MACH_AR934x) && USB_OHCI_HCD
+	help
+	  Support for Atheros OHCI controller
+
+config USB_EHCI_ATH
+	bool "USB EHCI support for Atheros"
+	depends on (MACH_AR724x || MACH_AR933x || MACH_AR934x) && USB_EHCI_HCD
+	help
+	  Support for Atheros EHCI controller
+
+config USB_ATH_OTG
+	bool "USB EHCI-OTG support for Atheros"
+	depends on (MACH_AR7100 || MACH_AR7240) && USB_EHCI_ATH && USB_EHCI_HCD
+	help
+	  Support for Atheros OTG EHCI controller
+# end V54_BSP
 
 config USB_R8A66597_HCD
 	tristate "R8A66597 HCD support"

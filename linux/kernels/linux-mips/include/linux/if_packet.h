@@ -32,6 +32,13 @@ struct sockaddr_ll
 #define PACKET_LOOPBACK		5		/* MC/BRD frame looped back */
 #define PACKET_FASTROUTE	6		/* Fastrouted frame	*/
 
+#if 1 // V54_TUNNELMGR
+#define PACKET_GRE_L2FRAG         124  // fragment a layer 2 packet
+#define PACKET_GRE_L3FRAG         125  // start our private types from bottom
+                                       // set in skb->cb[0]
+
+#endif // V54_TUNNELMGR
+
 /* Packet socket options */
 
 #define PACKET_ADD_MEMBERSHIP		1

@@ -44,11 +44,11 @@ struct igb_adapter;
 #define IGB_START_ITR 648
 
 /* TX/RX descriptor defines */
-#define IGB_DEFAULT_TXD                  256
+#define IGB_DEFAULT_TXD                  2048
 #define IGB_MIN_TXD                       80
 #define IGB_MAX_TXD                     4096
 
-#define IGB_DEFAULT_RXD                  256
+#define IGB_DEFAULT_RXD                  2048
 #define IGB_MIN_RXD                       80
 #define IGB_MAX_RXD                     4096
 
@@ -100,7 +100,7 @@ struct vf_data_storage {
 #define IGB_RXBUFFER_2048  2048
 #define IGB_RXBUFFER_16384 16384
 
-#define MAX_STD_JUMBO_FRAME_SIZE 9234
+#define MAX_STD_JUMBO_FRAME_SIZE 9238
 
 /* How many Tx Descriptors do we need to call netif_wake_queue ? */
 #define IGB_TX_QUEUE_WAKE	16

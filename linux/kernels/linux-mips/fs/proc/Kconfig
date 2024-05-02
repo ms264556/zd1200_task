@@ -39,6 +39,14 @@ config PROC_VMCORE
         help
         Exports the dump image of crashed kernel in ELF format.
 
+# V54_BSP
+config PROC_TASKLETS
+        bool "/proc/tasklets support (EXPERIMENTAL)"
+        depends on PROC_FS
+        help
+        Exports kernel tasklets stat.
+# end V54_BSP
+
 config PROC_SYSCTL
 	bool "Sysctl support (/proc/sys)" if EMBEDDED
 	depends on PROC_FS

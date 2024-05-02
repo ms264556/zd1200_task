@@ -17,3 +17,9 @@ obj-$(CONFIG_MTD_BLOCK2MTD)	+= block2mtd.o
 obj-$(CONFIG_MTD_DATAFLASH)	+= mtd_dataflash.o
 obj-$(CONFIG_MTD_M25P80)	+= m25p80.o
 obj-$(CONFIG_MTD_SST25L)	+= sst25l.o
+obj-$(CONFIG_MTD_FSL_M25P80)	+= fsl_m25p80.o
+# V54_BSP
+obj-$(CONFIG_MTD_AR934x_SPI_FLASH)	+= ath_flash.o
+obj-$(CONFIG_MTD_SPI_FLASH)	+= spiflash.o
+obj-$(CONFIG_MTD_AR9100_PARALLEL_FLASH)	+= ar9100_pflash.o
+# end V54_BSP

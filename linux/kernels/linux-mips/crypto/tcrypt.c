@@ -28,6 +28,7 @@
 #include <linux/interrupt.h>
 #include "tcrypt.h"
 #include "internal.h"
+#include "testmgr.h"
 
 /*
  * Need slab memory for testing (size in number of pages).
@@ -481,6 +482,162 @@ static inline int tcrypt_test(const char *alg)
 	return ret;
 }
 
+static inline int tcrypt_aesni_blk_test(const char *alg)
+{
+	int item;
+	int ret =0;
+	struct crypto_blkcipher *tfm;
+	struct blkcipher_desc desc;
+	struct scatterlist sg[8];
+	char iv[32];
+	struct cipher_testvec *template;
+
+	template = aes_cbc_enc_tv_template;
+	tfm = crypto_alloc_blkcipher(alg, CRYPTO_ALG_TYPE_BLKCIPHER, CRYPTO_ALG_ASYNC);
+	if (IS_ERR(tfm)) {
+		printk(KERN_ERR "alg: cipher: Failed to load transform for "
+			   "%s: %ld\n",alg, PTR_ERR(tfm));
+		goto out_nobuf;
+	}
+	for(item=0; item < 4; item++) {
+		char *databuf;
+
+		//set key
+		crypto_blkcipher_clear_flags(tfm, ~0);
+		ret = crypto_blkcipher_setkey(tfm, template[item].key, template[item].klen);
+		if (ret) {
+			printk(KERN_ERR "alg: blkcipher: setkey failed "
+				"for %s: flags=%x\n", alg , crypto_blkcipher_get_flags(tfm));
+		}
+
+		//set iv
+		memcpy(iv, template[item].iv, 16);
+		crypto_blkcipher_set_iv(tfm, iv, 16);
+		memset( &desc, 0, sizeof(struct blkcipher_desc));
+		desc.tfm = tfm;
+		desc.flags = 0;
+
+		//prepare input data
+		databuf=kmalloc(300, GFP_KERNEL);
+		memcpy(databuf, template[item].input, template[item].ilen);
+
+		//initialize sg
+		sg_init_table(sg, 8);
+		sg_set_buf(sg, databuf, template[item].ilen);
+
+		//block cipher encryption
+		ret = crypto_blkcipher_encrypt(&desc, sg, sg, template[item].ilen);
+
+		if (memcmp(databuf, template[item].result, template[item].rlen)) {
+			printk(KERN_ERR "alg: blkcipher:%s Encryption Fail !!\n", alg);
+		}else
+			printk(KERN_INFO "alg: blkcipher:%s(%u) block:%u Encryption PASS !!\n",
+				   alg, template[item].klen*8, (template[item].ilen/16));
+		kfree(databuf);
+	}
+
+out_nobuf:
+	crypto_free_blkcipher(tfm);
+	return ret;
+}
+
+/* Measure the time: AES-NI process speed MBbits */
+static inline int tcrypt_aesni_measurement(const char *alg, const int speed)
+{
+	char buf[16]; // one-block
+	struct crypto_cipher *tfm;
+	long run,limit,sec,nsec;
+	struct timespec spent;
+
+	tfm = crypto_alloc_cipher(alg, CRYPTO_ALG_TYPE_CIPHER, CRYPTO_ALG_TYPE_MASK);
+	if (IS_ERR(tfm)) {
+		printk(KERN_ERR "alg: cipher: Failed to load transform for "
+			   "aes-aesni: %ld\n", PTR_ERR(tfm));
+		goto out_nobuf;
+	}
+
+	crypto_cipher_setkey(tfm, aes_dec_tv_template[0].key, aes_dec_tv_template[0].klen);
+
+	limit = (speed*1024*1024)/16/8;
+	memcpy(buf, aes_dec_tv_template[0].input, aes_dec_tv_template[0].ilen);
+	spent = current_kernel_time();
+	for(run=0 ; run < limit ; run++)
+		crypto_cipher_decrypt_one(tfm, buf, buf);
+	sec = current_kernel_time().tv_sec - spent.tv_sec ;
+	nsec = current_kernel_time().tv_nsec - spent.tv_nsec;
+	printk(KERN_INFO "%u MBbits decrypt %ld times spent :%ld s %ld ns \n",speed, limit, sec, nsec);
+
+out_nobuf:
+	crypto_free_cipher(tfm);
+	return 0;
+}
+
+static inline int tcrypt_aesni_test(const char *alg)
+{
+	int i;
+	int ret =0;
+	struct crypto_cipher *tfm;
+	char driver_name[30];
+	char *xbuf;
+	void *data;
+
+	tfm = crypto_alloc_cipher(alg, CRYPTO_ALG_TYPE_CIPHER, CRYPTO_ALG_TYPE_MASK);
+	if (IS_ERR(tfm)) {
+		printk(KERN_ERR "alg: cipher: Failed to load transform for "
+			   "aes-aesni: %ld\n", PTR_ERR(tfm));
+		goto out_nobuf;
+	}
+	strcpy(driver_name, crypto_tfm_alg_driver_name(crypto_cipher_tfm(tfm)));
+
+	//Test AES-128,192,256
+	for (i=0 ; i<3 ; i++ ) {
+
+		xbuf = (void *)__get_free_page(GFP_KERNEL);
+		if (!xbuf)
+			goto out_nobuf;
+
+		data = xbuf;
+		memcpy(data, aes_enc_tv_template[i].input, aes_enc_tv_template[i].ilen);
+		crypto_cipher_clear_flags(tfm, ~0);
+		ret = crypto_cipher_setkey(tfm, aes_enc_tv_template[i].key,
+					   aes_enc_tv_template[i].klen);
+		if (!ret == aes_enc_tv_template[i].fail) {
+			printk(KERN_ERR "alg: cipher: setkey failed "
+				   "on test %d for %s: flags=%x\n", i,
+				   driver_name , crypto_cipher_get_flags(tfm));
+			goto out;
+		}
+		//encrypt
+		crypto_cipher_encrypt_one(tfm, data, data);
+		//check encrypted data
+		if (memcmp(data, aes_enc_tv_template[i].result, aes_enc_tv_template[i].rlen)) {
+			printk(KERN_ERR "alg: cipher: Test aesni failed "
+			   "on enc aes-%d for %s\n", aes_enc_tv_template[i].klen*8, driver_name);
+			goto out;
+		}else
+			printk(KERN_INFO "alg: cipher: Test AES(%d)-NI Encryption Pass !! \n",
+				    aes_enc_tv_template[i].klen*8);
+		//decrypt
+		crypto_cipher_decrypt_one(tfm, data, data);
+		//check decrypted data
+		if (memcmp(data, aes_enc_tv_template[i].input, aes_enc_tv_template[i].ilen)) {
+			printk(KERN_ERR "alg: cipher: Test aesni failed "
+			   "on dec aes-%d for %s\n", aes_enc_tv_template[i].klen*8, driver_name);
+			goto out;
+		}else
+			printk(KERN_INFO "alg: cipher: Test AES(%d)-NI Decryption Pass !! \n",
+				   aes_enc_tv_template[i].klen*8);
+
+		out:
+			free_page((unsigned long)xbuf);
+
+	}
+
+out_nobuf:
+	crypto_free_cipher(tfm);
+	return ret;
+}
+
 static int do_test(int m)
 {
 	int i;
@@ -882,6 +1039,12 @@ static int do_test(int m)
 		if (mode > 300 && mode < 400) break;
 
 	case 399:
+		break;
+
+	case 911:
+		ret += tcrypt_aesni_test("aes-aesni");
+		ret += tcrypt_aesni_measurement("aes-aesni", 900);
+		ret += tcrypt_aesni_blk_test("__driver-cbc-aes-aesni");
 		break;
 
 	case 1000:

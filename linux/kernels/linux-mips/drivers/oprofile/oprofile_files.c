@@ -10,6 +10,7 @@
 #include <linux/fs.h>
 #include <linux/oprofile.h>
 #include <linux/jiffies.h>
+#include <asm/uaccess.h>
 
 #include "event_buffer.h"
 #include "oprofile_stats.h"
@@ -66,7 +67,7 @@ static const struct file_operations timeout_fops = {
 
 static ssize_t depth_read(struct file *file, char __user *buf, size_t count, loff_t *offset)
 {
-	return oprofilefs_ulong_to_user(oprofile_backtrace_depth, buf, count,
+	return oprofilefs_ulong_to_user(oprofile_backtrace_options.depth, buf, count,
 					offset);
 }
 
@@ -75,15 +76,36 @@ static ssize_t depth_write(struct file *file, char const __user *buf, size_t cou
 {
 	unsigned long val;
 	int retval;
+	struct oprofile_backtrace_options_struct options;
 
 	if (*offset)
 		return -EINVAL;
+
+	options.trace_kernel = 0;
+	options.trace_user = 0;
+
+	for (val = 0; val<count; val++) {
+	  char c = ' ';
+	  get_user(c, buf + val);
+	  if (c == 'k') {
+	    options.trace_kernel = 1;
+	  } else if (c == 'u') {
+        options.trace_user = 1;
+	  }
+	}
+
+	if (!options.trace_kernel && !options.trace_user) {
+	  options.trace_kernel = 1;
+	  options.trace_user = 1;
+	}
 
 	retval = oprofilefs_ulong_from_user(&val, buf, count);
 	if (retval)
 		return retval;
 
-	retval = oprofile_set_backtrace(val);
+	options.depth=val;
+
+	retval = oprofile_set_backtrace(&options);
 
 	if (retval)
 		return retval;

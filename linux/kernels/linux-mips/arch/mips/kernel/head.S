@@ -12,6 +12,7 @@
  * Copyright (C) 1999 Silicon Graphics, Inc.
  * Kevin Kissell, kevink@mips.com and Carsten Langgaard, carstenl@mips.com
  * Copyright (C) 2000 MIPS Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
  */
 #include <linux/init.h>
 #include <linux/threads.h>
@@ -98,6 +99,10 @@
 	mfc0	t0, CP0_STATUS
 	or	t0, ST0_CU0|\set|0x1f|\clr
 	xor	t0, 0x1f|\clr
+#ifdef CONFIG_QCA955x
+//#ifdef CONFIG_CPU_HAS_DSP_ASE
+	or      t0, ST0_MX
+#endif
 	mtc0	t0, CP0_STATUS
 	.set	noreorder
 	sll	zero,3				# ehb
@@ -140,6 +145,12 @@ EXPORT(_stext)
 FEXPORT(__kernel_entry)
 	j	kernel_entry
 #endif
+
+#ifdef CONFIG_IMAGE_CMDLINE_HACK
+	.ascii	"CMDLINE:"
+EXPORT(__image_cmdline)
+	.fill	0x400
+#endif /* CONFIG_IMAGE_CMDLINE_HACK */
 
 	__REF
 
@@ -191,10 +202,17 @@ NESTED(kernel_entry, 16, sp)			# kernel entry point
 	/* Set the SP after an empty pt_regs.  */
 	PTR_LI		sp, _THREAD_SIZE - 32 - PT_SIZE
 	PTR_ADDU	sp, $28
-	back_to_back_c0_hazard
 	set_saved_sp	sp, t0, t1
 	PTR_SUBU	sp, 4 * SZREG		# init stack pointer
-
+#ifdef CONFIG_BDI_SWITCH
+    /* Setup the PTE pointers for the Abatron bdiGDB.  */
+    la t0, bdi_ptbase
+    la t1, swapper_pg_dir
+    sw t1, (t0)
+    addiu t0, 4
+    la t1, pgd_current
+    sw t1, (t0)
+#endif
 	j		start_kernel
 	END(kernel_entry)
 
@@ -230,3 +248,6 @@ NESTED(smp_bootstrap, 16, sp)
 #endif /* CONFIG_SMP */
 
 	__FINIT
+#ifdef CONFIG_BDI_SWITCH
+    .comm bdi_ptbase, SZREG*2, SZREG  /* BDI PTBASE should point to this */
+#endif

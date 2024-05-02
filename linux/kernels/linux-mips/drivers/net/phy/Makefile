@@ -20,3 +20,6 @@ obj-$(CONFIG_MDIO_BITBANG)	+= mdio-bitbang.o
 obj-$(CONFIG_MDIO_GPIO)		+= mdio-gpio.o
 obj-$(CONFIG_NATIONAL_PHY)	+= national.o
 obj-$(CONFIG_STE10XP)		+= ste10Xp.o
+# V54_BSP
+obj-$(CONFIG_P10XX)			+= lantiq.o
+# V54_BSP end

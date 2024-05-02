@@ -72,6 +72,7 @@ struct ehci_regs {
 #define STS_RECL	(1<<13)		/* Reclamation */
 #define STS_HALT	(1<<12)		/* Not running (any reason) */
 /* some bits reserved */
+#define STS_RST		(1<<6)		/* Interrupted on async advance */
 	/* these STS_* flags are also intr_enable bits (USBINTR) */
 #define STS_IAA		(1<<5)		/* Interrupted on async advance */
 #define STS_FATAL	(1<<4)		/* such as some PCI access errors */

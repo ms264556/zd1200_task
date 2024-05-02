@@ -624,7 +624,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto tx_drop;
 	}
 
-	tx_ind = skb->queue_mapping;
+	tx_ind = skb_get_queue_mapping(skb);
 	ring = &priv->tx_ring[tx_ind];
 	if (priv->vlgrp && vlan_tx_tag_present(skb))
 		vlan_tag = vlan_tx_tag_get(skb);

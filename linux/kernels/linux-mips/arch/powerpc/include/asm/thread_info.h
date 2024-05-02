@@ -17,7 +17,11 @@
 #elif defined(CONFIG_PPC_256K_PAGES)
 #define THREAD_SHIFT		15
 #else
+#if 1 /* V54_BSP */
+#define THREAD_SHIFT		14
+#else
 #define THREAD_SHIFT		13
+#endif
 #endif
 
 #define THREAD_SIZE		(1 << THREAD_SHIFT)

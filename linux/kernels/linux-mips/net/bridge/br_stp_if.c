@@ -94,8 +94,8 @@ void br_stp_disable_port(struct net_bridge_port *p)
 	int wasroot;
 
 	br = p->br;
-	printk(KERN_INFO "%s: port %i(%s) entering %s state\n",
-	       br->dev->name, p->port_no, p->dev->name, "disabled");
+	printk(KERN_INFO "%s: port %i(%s) entering %s state (%s,%d)\n",
+	       br->dev->name, p->port_no, p->dev->name, "disabled", current->comm, current->pid);
 
 	wasroot = br_is_root_bridge(br);
 	br_become_designated_port(p);

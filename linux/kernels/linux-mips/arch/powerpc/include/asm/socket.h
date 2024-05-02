@@ -67,4 +67,9 @@
 #define SO_PROTOCOL		38
 #define SO_DOMAIN		39
 
+#if 1 /* V54_BSP */
+#define SO_INIFINDEX	40
+#define SO_OUTIFINDEX	41
+#endif
+
 #endif	/* _ASM_POWERPC_SOCKET_H */

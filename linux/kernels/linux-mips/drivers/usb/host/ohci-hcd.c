@@ -1085,6 +1085,11 @@ MODULE_LICENSE ("GPL");
 #define TMIO_OHCI_DRIVER	ohci_hcd_tmio_driver
 #endif
 
+#ifdef CONFIG_USB_OHCI_AR7100
+#include "ohci-ar7100.c"
+#define PLATFORM_DRIVER		ohci_hcd_ar7100_driver
+#endif
+
 #if	!defined(PCI_DRIVER) &&		\
 	!defined(PLATFORM_DRIVER) &&	\
 	!defined(OF_PLATFORM_DRIVER) &&	\

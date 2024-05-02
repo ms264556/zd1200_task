@@ -504,6 +504,7 @@ out:
 	spin_unlock_bh(&session->reorder_q.lock);
 }
 
+#if 0
 static inline int pppol2tp_verify_udp_checksum(struct sock *sk,
 					       struct sk_buff *skb)
 {
@@ -527,6 +528,7 @@ static inline int pppol2tp_verify_udp_checksum(struct sock *sk,
 
 	return __skb_checksum_complete(skb);
 }
+#endif
 
 /* Internal receive frame. Do the real work of receiving an L2TP data frame
  * here. The skb is not on a list when we get here.
@@ -544,12 +546,26 @@ static int pppol2tp_recv_core(struct sock *sock, struct sk_buff *skb)
 	int length;
 	int offset;
 
+	/* Linearize all fragments. */
+        if (skb_shinfo(skb)->frag_list) {
+                struct sk_buff *new_skb;
+                if ((new_skb = skb_copy(skb, GFP_ATOMIC)) == NULL)
+                    goto no_tunnel;
+                kfree_skb(skb);
+                skb = new_skb;
+        }
+
+
 	tunnel = pppol2tp_sock_to_tunnel(sock);
 	if (tunnel == NULL)
 		goto no_tunnel;
 
+
+#if 0
+	/* Ruckus: Don't care about UDP checksum */
 	if (tunnel->sock && pppol2tp_verify_udp_checksum(tunnel->sock, skb))
 		goto discard_bad_csum;
+#endif
 
 	/* UDP always verifies the packet length. */
 	__skb_pull(skb, sizeof(struct udphdr));
@@ -756,6 +772,7 @@ static int pppol2tp_recv_core(struct sock *sock, struct sk_buff *skb)
 
 	/* Try to dequeue as many skbs from reorder_q as we can. */
 	pppol2tp_recv_dequeue(session);
+	sock_put(sock);
 
 	return 0;
 
@@ -772,6 +789,7 @@ discard_bad_csum:
 	UDP_INC_STATS_USER(&init_net, UDP_MIB_INERRORS, 0);
 	tunnel->stats.rx_errors++;
 	kfree_skb(skb);
+	sock_put(sock);
 
 	return 0;
 
@@ -1749,8 +1767,10 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 	po->chan.mtu	 = session->mtu;
 
 	error = ppp_register_net_channel(sock_net(sk), &po->chan);
-	if (error)
-		goto end_put_tun;
+	if (error){
+	        sock_put(tunnel_sock);
+		goto end;
+	}
 
 	/* This is how we get the session context from the socket. */
 	sk->sk_user_data = session;
@@ -1770,8 +1790,7 @@ out_no_ppp:
 	PRINTK(session->debug, PPPOL2TP_MSG_CONTROL, KERN_INFO,
 	       "%s: created\n", session->name);
 
-end_put_tun:
-	sock_put(tunnel_sock);
+
 end:
 	release_sock(sk);
 
@@ -2491,8 +2510,8 @@ static void pppol2tp_seq_session_show(struct seq_file *m, void *v)
 	seq_printf(m, "  SESSION '%s' %08X/%d %04X/%04X -> "
 		   "%04X/%04X %d %c\n",
 		   session->name,
-		   ntohl(session->tunnel_addr.addr.sin_addr.s_addr),
-		   ntohs(session->tunnel_addr.addr.sin_port),
+		   ntohl(session->tunnel_addr.saddr.addr.sin_addr.s_addr),
+		   ntohs(session->tunnel_addr.saddr.addr.sin_port),
 		   session->tunnel_addr.s_tunnel,
 		   session->tunnel_addr.s_session,
 		   session->tunnel_addr.d_tunnel,

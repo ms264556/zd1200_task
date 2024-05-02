@@ -24,7 +24,11 @@ struct udphdr {
 	__be16	dest;
 	__be16	len;
 	__sum16	check;
+#if defined(CONFIG_AR7100) && !defined(CONFIG_AR7240) && !defined(CONFIG_AR934x)
+} __attribute__((packed));
+#else
 };
+#endif
 
 /* UDP socket options */
 #define UDP_CORK	1	/* Never send partially complete segments */

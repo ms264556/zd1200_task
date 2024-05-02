@@ -350,6 +350,9 @@ static int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
 	vlan_dev_info(new_dev)->real_dev = real_dev;
 	vlan_dev_info(new_dev)->dent = NULL;
 	vlan_dev_info(new_dev)->flags = VLAN_FLAG_REORDER_HDR;
+#if 1 /* V54_BSP */
+	vlan_dev_info(new_dev)->mgmt_priority = MGMT_NULL_PRI;
+#endif
 
 	new_dev->rtnl_link_ops = &vlan_link_ops;
 	err = register_vlan_dev(new_dev);
@@ -394,6 +397,7 @@ static void vlan_transfer_features(struct net_device *dev,
 
 	vlandev->features &= ~dev->vlan_features;
 	vlandev->features |= dev->features & dev->vlan_features;
+	vlandev->features |= NETIF_F_LLTX;
 	vlandev->gso_max_size = dev->gso_max_size;
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 	vlandev->fcoe_ddp_xid = dev->fcoe_ddp_xid;
@@ -664,6 +668,14 @@ static int vlan_ioctl_handler(struct net *net, void __user *arg)
 				 sizeof(struct vlan_ioctl_args)))
 		      err = -EFAULT;
 		break;
+
+#if 1 /* V54_BSP */
+	case SET_VLAN_MGMT_PRIORITY_CMD:
+		if (!capable(CAP_NET_ADMIN))
+			return -EPERM;
+		err = vlan_dev_set_mgmt_priority(args.device1, args.prio);
+		break;
+#endif
 
 	default:
 		err = -EOPNOTSUPP;

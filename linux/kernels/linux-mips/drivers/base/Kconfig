@@ -51,14 +51,14 @@ config PREVENT_FIRMWARE_BUILD
 	  should be made.
 	  If unsure say Y here.
 
-config FW_LOADER
-	tristate "Userspace firmware loading support" if EMBEDDED
-	depends on HOTPLUG
-	default y
-	---help---
-	  This option is provided for the case where no in-kernel-tree modules
-	  require userspace firmware loading support, but a module built outside
-	  the kernel tree does.
+#config FW_LOADER
+#	tristate "Userspace firmware loading support" if EMBEDDED
+#	depends on HOTPLUG
+#	default y
+#	---help---
+#	  This option is provided for the case where no in-kernel-tree modules
+#	  require userspace firmware loading support, but a module built outside
+#	  the kernel tree does.
 
 config FIRMWARE_IN_KERNEL
 	bool "Include in-kernel firmware blobs in kernel binary"

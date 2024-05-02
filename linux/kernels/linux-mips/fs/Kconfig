@@ -54,6 +54,18 @@ config FILE_LOCKING
 	  This option enables standard file locking support, required
           for filesystems like NFS and for the flock() system
           call. Disabling this option saves about 11k.
+config DELAY_ASYNC_READAHEAD
+	bool "Enable delay async splice readahead"
+	default n
+	help
+	  This option enables delay async readahead in sendfile that impoves
+	  sendfile performance for large file.
+
+config SEND_PAGES
+	bool "Enable sendpages"
+	default n
+	help
+	  This option enables sendpages mode for sendfile.
 
 source "fs/notify/Kconfig"
 

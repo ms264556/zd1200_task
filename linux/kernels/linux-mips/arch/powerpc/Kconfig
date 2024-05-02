@@ -216,7 +216,8 @@ config ARCH_HIBERNATION_POSSIBLE
 
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
-	depends on ADB_PMU || PPC_EFIKA || PPC_LITE5200 || PPC_83xx
+	depends on ADB_PMU || PPC_EFIKA || PPC_LITE5200 || PPC_83xx || \
+		   PPC_85xx || PPC_86xx
 
 config PPC_DCR_NATIVE
 	bool
@@ -652,6 +653,13 @@ config FSL_PCI
 	select PPC_INDIRECT_PCI
 	select PCI_QUIRKS
 
+config FSL_PMC
+	bool
+	default y
+	depends on SUSPEND && (PPC_85xx || PPC_86xx)
+	help
+	  Freescale MPC85xx/MPC86xx power management controller support
+	  (suspend/resume). For MPC83xx see platforms/83xx/suspend.c
 config 4xx_SOC
 	bool
 
@@ -665,6 +673,18 @@ config FSL_GTM
 	depends on PPC_83xx || QUICC_ENGINE || CPM2
 	help
 	  Freescale General-purpose Timers support
+	  Freescale General-purpose Timers support
+
+config FSL_MPIC_MSG_INTS
+	bool
+	depends on MPIC
+	default y
+	help
+	  Freescale MPIC based Message Interrupt support
+
+config FSL_PME8572
+	bool
+	depends on FSL_PME
 
 # Yes MCA RS/6000s exist but Linux-PPC does not currently support any
 config MCA
@@ -930,6 +950,26 @@ config PHYSICAL_START
 	hex
 	default "0x00000000"
 endif
+
+# V54_BSP
+menu "initrd options"
+	depends on BLK_DEV_INITRD
+
+config EMBEDDED_RAMDISK
+	bool "Embed root filesystem ramdisk into the kernel"
+
+config EMBEDDED_RAMDISK_IMAGE
+	string "Filename of gziped ramdisk image"
+	depends on EMBEDDED_RAMDISK
+	default "ramdisk.img"
+	help
+	  This is the filename of the ramdisk image to be built into the
+	  kernel.  Relative pathnames are relative to arch/powerpc/ramdisk/.
+	  The ramdisk image is not part of the kernel distribution; you must
+	  provide one yourself.
+
+endmenu
+# end V54_BSP
 
 source "net/Kconfig"
 

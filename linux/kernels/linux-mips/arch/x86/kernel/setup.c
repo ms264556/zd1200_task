@@ -126,6 +126,10 @@ unsigned int boot_cpu_id __read_mostly;
 static __initdata unsigned long _brk_start = (unsigned long)__brk_base;
 unsigned long _brk_end = (unsigned long)__brk_base;
 
+#if 1 /* V54_BSP */
+int v54_reserve_himem(unsigned long max_pfn);
+#endif
+
 #ifdef CONFIG_X86_64
 int default_cpu_present_to_apicid(int mps_cpu)
 {
@@ -891,6 +895,11 @@ void __init setup_arch(char **cmdline_p)
 	mtrr_bp_init();
 	if (mtrr_trim_uncached_memory(max_pfn))
 		max_pfn = e820_end_of_ram_pfn();
+
+#ifdef V54_BSP
+	v54_reserve_himem(max_pfn);
+	//	max_pfn = e820_end_of_ram_pfn();
+#endif
 
 #ifdef CONFIG_X86_32
 	/* max_low_pfn get updated here */

@@ -53,6 +53,11 @@ void (*_dma_cache_inv)(unsigned long start, unsigned long size);
 
 EXPORT_SYMBOL(_dma_cache_wback_inv);
 
+#if defined(V54_BSP)
+EXPORT_SYMBOL(_dma_cache_wback);
+EXPORT_SYMBOL(_dma_cache_inv);
+#endif
+
 #endif /* CONFIG_DMA_NONCOHERENT */
 
 /*
@@ -133,7 +138,7 @@ void __update_cache(struct vm_area_struct *vma, unsigned long address,
 }
 
 unsigned long _page_cachable_default;
-EXPORT_SYMBOL_GPL(_page_cachable_default);
+EXPORT_SYMBOL(_page_cachable_default);
 
 static inline void setup_protection_map(void)
 {
@@ -155,7 +160,7 @@ static inline void setup_protection_map(void)
 	protection_map[15] = PAGE_SHARED;
 }
 
-void __devinit cpu_cache_init(void)
+void __cpuinit cpu_cache_init(void)
 {
 	if (cpu_has_3k_cache) {
 		extern void __weak r3k_cache_init(void);

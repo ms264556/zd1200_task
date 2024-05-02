@@ -1,0 +1,31 @@
+* Freescale QorIQ based Cache SRAM
+
+Freescale's QorIQ platforms provide an option of configuring
+a part of (or full) cache memory as SRAM. Any low level
+driver can use its APIs via selecting FSL_85XX_CACHE_SRAM as
+under for the case of gianfar ethernet driver:-
+
+In drivers/net/Kconfig:-
+
+config GIANFAR
+      ....
+      select FSL_85XX_CACHE_SRAM if MPC85xx
+      ....
+
+FSL_85XX_CACHE_SRAM and its base address are defined in
+arch/powerpc/platforms/85xx/Kconfig as under:-
+
+config FSL_85XX_CACHE_SRAM
+	bool
+	select PPC_LIB_RHEAP
+
+config FSL_85XX_CACHE_SRAM_BASE
+	hex
+	depends on FSL_85XX_CACHE_SRAM
+	default "0xfff00000"
+
+The size of the above cache SRAM memory window is passed via the
+kernel command line as <cache-sram-size=....>
+
+Absence of the above parameter in the kernel command line is
+treated as no cache SRAM.

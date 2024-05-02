@@ -79,10 +79,17 @@ struct netem_skb_cb {
 	psched_time_t	time_to_send;
 };
 
+#include <ruckus/rks_cb.h>
 static inline struct netem_skb_cb *netem_skb_cb(struct sk_buff *skb)
 {
+#if 1 /* skb->cb is used by afmod, no rooms for netem_skb_cb at present,  */
+      /* we shouldn't use sch_netem.c unless we enlarge rks_cb->qdisc_skb_cb */
+	BUILD_BUG_ON(sizeof(QDISC_SKB_CB(skb)) <
+		sizeof(struct qdisc_skb_cb) + sizeof(struct netem_skb_cb));
+#else
 	BUILD_BUG_ON(sizeof(skb->cb) <
 		sizeof(struct qdisc_skb_cb) + sizeof(struct netem_skb_cb));
+#endif
 	return (struct netem_skb_cb *)qdisc_skb_cb(skb)->data;
 }
 

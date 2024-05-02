@@ -197,9 +197,23 @@ struct crypto_alg *crypto_alg_lookup(const char *name, u32 type, u32 mask)
 {
 	struct crypto_alg *alg;
 
+#if 1 /* V54_BSP */
+	int     do_sem = 0;
+	if (!in_atomic()) {
+		down_read(&crypto_alg_sem);
+		do_sem = 1;
+	}
+#else
 	down_read(&crypto_alg_sem);
+#endif
 	alg = __crypto_alg_lookup(name, type, mask);
+#if 1 /* V54_BSP */
+	if (do_sem) {
+		up_read(&crypto_alg_sem);
+	}
+#else
 	up_read(&crypto_alg_sem);
+#endif
 
 	return alg;
 }
@@ -360,10 +374,24 @@ struct crypto_tfm *__crypto_alloc_tfm(struct crypto_alg *alg, u32 type,
 {
 	struct crypto_tfm *tfm = NULL;
 	unsigned int tfm_size;
+#if 1 /* V54_BSP */
+	gfp_t        kflags;
+#endif
 	int err = -ENOMEM;
 
+#if 1 /* V54_BSP */
+	if (in_atomic()) {
+		kflags = GFP_ATOMIC;
+	} else {
+		kflags = GFP_KERNEL;
+	}
+#endif
 	tfm_size = sizeof(*tfm) + crypto_ctxsize(alg, type, mask);
+#if 1 /* V54_BSP */
+	tfm = kzalloc(tfm_size, kflags);
+#else
 	tfm = kzalloc(tfm_size, GFP_KERNEL);
+#endif
 	if (tfm == NULL)
 		goto out_err;
 

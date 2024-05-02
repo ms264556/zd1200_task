@@ -1,0 +1,10 @@
+#
+# QCA955x configuration
+#
+
+config MACH_QCA955x
+	tristate "Qualcomm QCA955x GigE"
+    depends on MACH_AR7100 && AG7100=n
+	help
+	  This enables the building of QCA955x gigE driver module.
+	  Note that this module cannot be compiled as built-in, currently

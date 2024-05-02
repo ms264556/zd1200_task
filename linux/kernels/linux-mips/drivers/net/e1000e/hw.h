@@ -924,6 +924,10 @@ struct e1000_hw {
 		struct e1000_dev_spec_82571	e82571;
 		struct e1000_dev_spec_ich8lan	ich8lan;
 	} dev_spec;
+
+#ifdef V54_BSP
+	int port_index;
+#endif
 };
 
 #ifdef DEBUG

@@ -157,3 +157,13 @@ void __init time_init(void)
 	if (!mips_clockevent_init() || !cpu_has_mfc0_count_bug())
 		init_mips_clocksource();
 }
+
+#if defined(V54_BSP)
+unsigned int mips_hpt_read(void)
+{
+    return read_c0_count();
+}
+
+EXPORT_SYMBOL(mips_hpt_read);
+EXPORT_SYMBOL(mips_hpt_frequency);
+#endif

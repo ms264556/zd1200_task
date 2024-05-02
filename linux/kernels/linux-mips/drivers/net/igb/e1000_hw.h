@@ -493,6 +493,9 @@ struct e1000_hw {
 	u16 vendor_id;
 
 	u8  revision_id;
+#ifdef V54_BSP
+	int port_index;
+#endif
 };
 
 #ifdef DEBUG

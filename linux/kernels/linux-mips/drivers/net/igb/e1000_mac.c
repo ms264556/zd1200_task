@@ -170,6 +170,11 @@ s32 igb_vfta_set(struct e1000_hw *hw, u32 vid, bool add)
  *  prgrammed into RAR0 and the cuntion returns success, otherwise the
  *  fucntion returns an error.
  **/
+
+#ifdef V54_BSP
+	extern int bd_get_lan_macaddr(int lanid, unsigned char *macaddr);
+#endif
+
 s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 {
 	u32 i;
@@ -177,6 +182,14 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 	u16 offset, nvm_alt_mac_addr_offset, nvm_data;
 	u8 alt_mac_addr[ETH_ALEN];
 
+#ifdef V54_BSP
+	if (bd_get_lan_macaddr(hw->port_index, (unsigned char*)alt_mac_addr)) {
+		printk("Using Ruckus MAC:[%02x:%02x:%02x:%02x:%02x:%02x] for NIC:[%d]\n"
+			, alt_mac_addr[0], alt_mac_addr[1], alt_mac_addr[2]
+			, alt_mac_addr[3], alt_mac_addr[4], alt_mac_addr[5]
+			, hw->port_index);
+	} else {
+#endif
 	ret_val = hw->nvm.ops.read(hw, NVM_ALT_MAC_ADDR_PTR, 1,
 				 &nvm_alt_mac_addr_offset);
 	if (ret_val) {
@@ -208,6 +221,10 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 		hw_dbg("Ignoring Alternate Mac Address with MC bit set\n");
 		goto out;
 	}
+
+#ifdef V54_BSP
+	}
+#endif
 
 	/*
 	 * We have a valid alternate MAC address, and we want to treat it the

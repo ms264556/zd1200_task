@@ -122,7 +122,11 @@ struct ipv6hdr {
 
 	struct	in6_addr	saddr;
 	struct	in6_addr	daddr;
+#if defined(CONFIG_AR7100) && !defined(CONFIG_AR7240) && !defined(CONFIG_AR934x)
+} __attribute__((packed));
+#else
 };
+#endif
 
 #ifdef __KERNEL__
 /*

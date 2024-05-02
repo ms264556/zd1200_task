@@ -288,6 +288,13 @@ config ARPD
 
 	  If unsure, say N.
 
+config ARP_EXTRAS
+	bool "IP: ARP Extras"
+	default n
+	---help---
+	  Ignore arp requests / replies not for self when updating ARP cache.
+	  Respond to Inverse ARP Request packets.
+
 config SYN_COOKIES
 	bool "IP: TCP syncookie support (disabled per default)"
 	---help---

@@ -1,3 +1,6 @@
+/*
+ * Copyright 2009-2010 Freescale Semiconductor, Inc.
+ */
 #include <linux/stat.h>
 #include <linux/sysctl.h>
 #include "../fs/xfs/linux-2.6/xfs_sysctl.h"
@@ -146,7 +149,8 @@ static const struct trans_ctl_table trans_net_core_table[] = {
 	{ NET_CORE_RMEM_DEFAULT,	"rmem_default" },
 	/* NET_CORE_DESTROY_DELAY unused */
 	{ NET_CORE_MAX_BACKLOG,		"netdev_max_backlog" },
-	/* NET_CORE_FASTROUTE unused */
+	{ NET_CORE_FASTROUTE,		"netdev_fastroute" },
+	{ RCV_PKT_STEERING,		"rcv_pkt_steering" },
 	{ NET_CORE_MSG_COST,		"message_cost" },
 	{ NET_CORE_MSG_BURST,		"message_burst" },
 	{ NET_CORE_OPTMEM_MAX,		"optmem_max" },

@@ -5271,22 +5271,21 @@ static netdev_tx_t ixgbe_xmit_frame(struct sk_buff *skb,
 		tx_flags |= vlan_tx_tag_get(skb);
 		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
 			tx_flags &= ~IXGBE_TX_FLAGS_VLAN_PRIO_MASK;
-			tx_flags |= (skb->queue_mapping << 13);
+			tx_flags |= (skb_get_queue_mapping(skb) << 13);
 		}
 		tx_flags <<= IXGBE_TX_FLAGS_VLAN_SHIFT;
 		tx_flags |= IXGBE_TX_FLAGS_VLAN;
 	} else if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) {
 		if (skb->priority != TC_PRIO_CONTROL) {
-			tx_flags |= (skb->queue_mapping << 13);
+			tx_flags |= (skb_get_queue_mapping(skb) << 13);
 			tx_flags <<= IXGBE_TX_FLAGS_VLAN_SHIFT;
 			tx_flags |= IXGBE_TX_FLAGS_VLAN;
 		} else {
-			skb->queue_mapping =
-				adapter->ring_feature[RING_F_DCB].indices-1;
+			skb_set_queue_mapping(skb, adapter->ring_feature[RING_F_DCB].indices-1);
 		}
 	}
 
-	r_idx = skb->queue_mapping;
+	r_idx = skb_get_queue_mapping(skb);
 	tx_ring = &adapter->tx_ring[r_idx];
 
 	if ((adapter->flags & IXGBE_FLAG_FCOE_ENABLED) &&

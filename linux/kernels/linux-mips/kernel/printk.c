@@ -33,9 +33,12 @@
 #include <linux/bootmem.h>
 #include <linux/syscalls.h>
 #include <linux/kexec.h>
+#include <linux/time.h>
 
 #include <asm/uaccess.h>
-
+#if defined(CONFIG_PPC)
+#include <asm/cacheflush.h>
+#endif
 /*
  * for_each_console() allows you to iterate on each console
  */
@@ -76,6 +79,73 @@ static int saved_console_loglevel = -1;
 int oops_in_progress;
 EXPORT_SYMBOL(oops_in_progress);
 
+#if defined(NAR5520)
+extern int oops_occurred;
+void nar5520_save_oops(void);
+#endif
+
+#ifdef V54_BSP
+
+/* send a copy of printk output to reserved himem area */
+
+
+static int _tee_himem = 0;
+static unsigned long _himem_loc = 0;
+static struct _himem_oops *oops_hdr = NULL;
+
+static ssize_t (*_himem_logger) (const char *buf, int len) = NULL;
+void printk_register_himem_logger( ssize_t (*f)(const char *, int) ) {
+  _himem_logger = f;
+}
+
+
+void
+himem_tee_open(void)
+{
+#if 0
+    if ( oops_hdr == NULL || oops_hdr->used == 0 ) {
+        himem_tee_reset();
+    } else {    // (oops_hdr!= NULL) && (oops_hdr->used != 0)
+        // append to previous oops
+        _himem_loc = HIMEM_OOPS_DATA_START + oops_hdr->len;
+    }
+#else
+#if defined(NAR5520)
+    if (oops_occurred)
+        return;
+#endif
+    if ( _tee_himem < 1 || oops_hdr == NULL ) {
+        // only reset if not already opened.
+        oops_hdr->used = 1;
+        _tee_himem = 1;
+        console_loglevel = DEFAULT_CONSOLE_LOGLEVEL ;	// reset to print on console
+#ifdef CONFIG_MIPS
+        printk("\n @ j=%lx, c0=%lx, current=%s\n",
+               (unsigned long)jiffies, (unsigned long)read_c0_count(), current->comm);
+#elif defined(NAR5520)
+        {
+            struct tm dt;
+            time_to_tm(get_seconds(), 0, &dt);
+            printk("\n @ j=%lx, datetime= UTC %4d-%02d-%02d %02d:%02d:%02d\n", (unsigned long)jiffies,
+              dt.tm_year + 1900, dt.tm_mon + 1, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec);
+        }
+#else
+        printk("\n @ j=%lx\n", (unsigned long)jiffies);
+#endif
+    }
+#endif
+#if 0
+printk("%s: oops_hdr(%p): used=%d len=%d magic=%x ... _tee_himem=%d\n", __FUNCTION__,
+        oops_hdr, (int) oops_hdr->used, oops_hdr->len, oops_hdr->magic, _tee_himem);
+#endif
+    _tee_himem = 1;
+}
+unsigned long
+himem_get_loc(void)
+{
+    return _himem_loc;
+}
+#endif
 /*
  * console_sem protects the console_drivers list, and also
  * provides serialisation for access to the entire console
@@ -651,7 +721,11 @@ static const char recursion_bug_msg [] =
 		KERN_CRIT "BUG: recent printk recursion!\n";
 static int recursion_bug;
 static int new_text_line = 1;
+#if 1 /* V54_BSP */
+static char printk_buf[4096];
+#else
 static char printk_buf[1024];
+#endif
 
 int printk_delay_msec __read_mostly;
 
@@ -714,6 +788,7 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	printed_len += vscnprintf(printk_buf + printed_len,
 				  sizeof(printk_buf) - printed_len, fmt, args);
 
+//#endif
 
 	p = printk_buf;
 
@@ -777,7 +852,7 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 		if (*p == '\n')
 			new_text_line = 1;
 	}
-
+release_console_buflck:
 	/*
 	 * Try to acquire and then immediately release the
 	 * console semaphore. The release will do all the

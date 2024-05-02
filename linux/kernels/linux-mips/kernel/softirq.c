@@ -140,7 +140,13 @@ EXPORT_SYMBOL(_local_bh_enable);
 
 static inline void _local_bh_enable_ip(unsigned long ip)
 {
+#if defined(CONFIG_AR531X) || defined(CONFIG_AR7100) //V54
+	if ( unlikely(in_irq() || irqs_disabled())) {
+		printk("Badness in %s at %s:%d\n", __FUNCTION__, __FILE__, __LINE__);
+	}
+#else
 	WARN_ON_ONCE(in_irq() || irqs_disabled());
+#endif
 #ifdef CONFIG_TRACE_IRQFLAGS
 	local_irq_disable();
 #endif
@@ -186,7 +192,12 @@ EXPORT_SYMBOL(local_bh_enable_ip);
  * we want to handle softirqs as soon as possible, but they
  * should not be able to lock up the box.
  */
+#if 1 /* V54_BSP */
+int MAX_SOFTIRQ_RESTART=10;
+EXPORT_SYMBOL(MAX_SOFTIRQ_RESTART);
+#else
 #define MAX_SOFTIRQ_RESTART 10
+#endif
 
 asmlinkage void __do_softirq(void)
 {
@@ -416,6 +427,10 @@ static void tasklet_action(struct softirq_action *a)
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
 				t->func(t->data);
+#ifdef CONFIG_PROC_TASKLETS
+				/* Ruckus Wireless: kernel stat for tasklets in /proc */
+				kstat_incr_tasklets_this_cpu(t->func);
+#endif
 				tasklet_unlock(t);
 				continue;
 			}
@@ -451,6 +466,10 @@ static void tasklet_hi_action(struct softirq_action *a)
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
 				t->func(t->data);
+#ifdef CONFIG_PROC_TASKLETS
+				/* Ruckus Wireless: kernel stat for tasklets in /proc */
+				kstat_incr_tasklets_this_cpu(t->func);
+#endif
 				tasklet_unlock(t);
 				continue;
 			}
@@ -475,6 +494,10 @@ void tasklet_init(struct tasklet_struct *t,
 	atomic_set(&t->count, 0);
 	t->func = func;
 	t->data = data;
+#ifdef CONFIG_PROC_TASKLETS
+	/* Ruckus Wireless: kernel stat for tasklets in /proc */
+	kstat_init_tasklets_this_cpu(func, 0);
+#endif
 }
 
 EXPORT_SYMBOL(tasklet_init);

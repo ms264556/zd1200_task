@@ -1398,8 +1398,8 @@ static void print_bug_trap(struct pt_regs *regs)
 		return;
 
 #ifdef CONFIG_DEBUG_BUGVERBOSE
-	printf("kernel BUG at %s:%u!\n",
-	       bug->file, bug->line);
+	printf("kernel BUG at %s:%u (%p)!\n",
+	       bug->file, bug->line, (void *)bug->bug_addr);
 #else
 	printf("kernel BUG at %p!\n", (void *)bug->bug_addr);
 #endif

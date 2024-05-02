@@ -612,11 +612,6 @@ ipv6_add_addr(struct inet6_dev *idev, const struct in6_addr *addr, int pfxlen,
 		goto out2;
 	}
 
-	if (idev->cnf.disable_ipv6) {
-		err = -EACCES;
-		goto out2;
-	}
-
 	write_lock(&addrconf_hash_lock);
 
 	/* Ignore adding duplicate addresses on an interface */
@@ -2465,6 +2460,8 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 
 	switch(event) {
 	case NETDEV_REGISTER:
+		if (dev_net(dev)->ipv6.devconf_dflt->disable_ipv6)
+			break;
 		if (!idev && dev->mtu >= IPV6_MIN_MTU) {
 			idev = ipv6_add_dev(dev);
 			if (!idev)
@@ -2529,7 +2526,8 @@ static int addrconf_notify(struct notifier_block *this, unsigned long event,
 			break;
 
 		default:
-			addrconf_dev_config(dev);
+			if (!dev_net(dev)->ipv6.devconf_dflt->disable_ipv6)
+				addrconf_dev_config(dev);
 			break;
 		}
 		if (idev) {

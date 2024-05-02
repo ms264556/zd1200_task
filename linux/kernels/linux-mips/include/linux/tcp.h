@@ -54,7 +54,11 @@ struct tcphdr {
 	__be16	window;
 	__sum16	check;
 	__be16	urg_ptr;
+#if defined(CONFIG_AR7100) && !defined(CONFIG_AR7240) && !defined(CONFIG_AR934x)
+} __attribute__((packed));
+#else
 };
+#endif
 
 /*
  *	The union cast uses a gcc extension to avoid aliasing problems

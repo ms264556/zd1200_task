@@ -679,6 +679,22 @@ int devinet_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 		}
 	}
 
+	switch(cmd) {
+	case SIOCGIFADDR:	/* Get interface address */
+	case SIOCGIFBRDADDR:	/* Get the broadcast address */
+	case SIOCGIFDSTADDR:	/* Get the destination address */
+	case SIOCGIFNETMASK:	/* Get the netmask for the interface */
+		/* -- Ruckus --: return OK if IP is 0 */
+		if (!ifa) {
+			ret = 0;
+			goto rarok;
+		}
+		break;
+
+	default:
+		break;
+	}
+
 	ret = -EADDRNOTAVAIL;
 	if (!ifa && cmd != SIOCSIFADDR && cmd != SIOCSIFFLAGS)
 		goto done;

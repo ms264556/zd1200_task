@@ -133,6 +133,46 @@ static int show_stat(struct seq_file *p, void *v)
 	return 0;
 }
 
+#if 1 // V54_BSP
+void
+v54_show_cpu_stat(void)
+{
+	int i;
+	cputime64_t user, nice, system, idle, iowait, irq, softirq, steal;
+
+	user = nice = system = idle = iowait =
+		irq = softirq = steal = cputime64_zero;
+	for_each_possible_cpu(i) {
+		user = cputime64_add(user, kstat_cpu(i).cpustat.user);
+		nice = cputime64_add(nice, kstat_cpu(i).cpustat.nice);
+		system = cputime64_add(system, kstat_cpu(i).cpustat.system);
+		idle = cputime64_add(idle, kstat_cpu(i).cpustat.idle);
+		iowait = cputime64_add(iowait, kstat_cpu(i).cpustat.iowait);
+		irq = cputime64_add(irq, kstat_cpu(i).cpustat.irq);
+		softirq = cputime64_add(softirq, kstat_cpu(i).cpustat.softirq);
+		steal = cputime64_add(steal, kstat_cpu(i).cpustat.steal);
+	}
+
+	printk("cpu  %llu %llu %llu %llu %llu %llu %llu %llu\n",
+		(unsigned long long)cputime64_to_clock_t(user),
+		(unsigned long long)cputime64_to_clock_t(nice),
+		(unsigned long long)cputime64_to_clock_t(system),
+		(unsigned long long)cputime64_to_clock_t(idle),
+		(unsigned long long)cputime64_to_clock_t(iowait),
+		(unsigned long long)cputime64_to_clock_t(irq),
+		(unsigned long long)cputime64_to_clock_t(softirq),
+		(unsigned long long)cputime64_to_clock_t(steal));
+
+	printk( "processes %lu  "
+		"procs_running %lu  "
+		"procs_blocked %lu\n",
+		total_forks,
+		nr_running(),
+		nr_iowait());
+        return;
+}
+#endif
+
 static int stat_open(struct inode *inode, struct file *file)
 {
 	unsigned size = 4096 * (1 + num_possible_cpus() / 32);

@@ -12,6 +12,7 @@
 #define _ASM_CHECKSUM_H
 
 #include <linux/in6.h>
+#include <linux/unaligned/packed_struct.h>
 
 #include <asm/uaccess.h>
 
@@ -91,6 +92,41 @@ static inline __sum16 csum_fold(__wsum sum)
 	return (__force __sum16)sum;
 }
 
+#if defined(CONFIG_AR7100) && !defined(CONFIG_AR7240) && !defined(CONFIG_AR934x)
+static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
+{
+	const unsigned int *word = iph;
+	const unsigned int *stop = word + ihl;
+	unsigned int csum;
+	int carry;
+	unsigned int w;
+
+	csum = __get_unaligned_cpu32(word++);
+	w = __get_unaligned_cpu32(word++);
+	csum += w;
+	carry = (csum < w);
+	csum += carry;
+
+	w = __get_unaligned_cpu32(word++);
+	csum += w;
+	carry = (csum < w);
+	csum += carry;
+
+	w = __get_unaligned_cpu32(word++);
+	csum += w;
+	carry = (csum < w);
+	csum += carry;
+
+	do {
+		w = __get_unaligned_cpu32(word++);
+		csum += w;
+		carry = (csum < w);
+		csum += carry;
+	} while (word != stop);
+
+	return csum_fold(csum);
+}
+#else
 /*
  *	This is a version of ip_compute_csum() optimized for IP headers,
  *	which always checksum on 4 octet boundaries.
@@ -128,6 +164,7 @@ static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
 
 	return csum_fold(csum);
 }
+#endif
 
 static inline __wsum csum_tcpudp_nofold(__be32 saddr,
 	__be32 daddr, unsigned short len, unsigned short proto,

@@ -1,0 +1,103 @@
+#
+# AG7100 configuration
+#
+
+config AG7100
+	tristate "Atheros AR7100 GigE"
+	depends on MACH_AR7100
+	help
+	  This enables the building of Atheros AR7100 gigE driver module.
+	  Note that this module cannot be compiled as built-in, currently
+
+if AG7100
+
+choice
+	prompt "PHY (or switch) used"
+
+config MV_PHY
+	bool "Marvell 88E1116R or 88E1121R"
+
+config BCM5397_PHY
+	bool "Broadcom BCM5397"
+
+config AG7100_GENERIC_PHY
+	bool "Generic Phy"
+
+if AG7100_GENERIC_PHY
+
+config AG7100_GENERIC_PHY_VERBOSE
+	bool "Verbose output for phy?"
+
+endif # AG7100_GENERIC_PHY
+
+config VITESSE_8201_PHY
+	bool "Vitesse GigE Phy 8201"
+
+config VITESSE_8601_PHY
+	bool "Vitesse Gige Phy 8601"
+
+config VITESSE_8601_7395_PHY
+	bool "Vitesse Gige Phy 8601_7395"
+
+config AG7100_ICPLUS_PHY
+	bool "IP Icplus Phy"
+
+config AG7100_REALTEK_PHY
+	bool "Rtl8201"
+
+config ADM6996FC_PHY
+	bool "AdmTek 6996FC"
+
+config BROADCOM_AC201_PHY
+	bool "Broadcom ethernet chip AC201"
+
+endchoice
+
+config VENETDEV
+	bool "enable venetdev"
+
+choice
+	prompt "port 0 interface"
+
+config AG7100_GE0_MII
+	bool "MII mode"
+
+config AG7100_GE0_RMII
+	bool "RMII mode"
+
+config AG7100_GE0_RGMII
+	bool "RGMII mode"
+
+config AG7100_GE0_GMII
+	bool "GMII mode"
+
+endchoice
+
+config AG7100_GE1_IS_CONNECTED
+	bool "port 1 is connected to a PHY"
+
+if AG7100_GE1_IS_CONNECTED
+
+choice
+	prompt "port 1 interface (depends on port0)"
+
+config AG7100_GE1_RMII
+	bool "RMII mode"
+
+config AG7100_GE1_RGMII
+	bool "RGMII mode"
+
+endchoice
+
+endif # AG7100_GE1_IS_CONNECTED
+
+config AG7100_DMA_HANG_FIX
+	bool "DMA hang fix"
+	help
+	  This enables Atheros AR7100 GigE Rx/Tx DMA hang fix:
+	  Rx and Tx DMA hangs and goes to an invalid state in HOWL boards
+	  when the link partner is forced to 10/100 Mode. By resetting the MAC
+	  we are able to recover from this state. This is a software WAR and
+	  will be removed once we have a hardware fix.
+
+endif # AG7100

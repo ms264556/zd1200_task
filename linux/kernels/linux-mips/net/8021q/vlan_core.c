@@ -32,12 +32,21 @@ int vlan_hwaccel_do_receive(struct sk_buff *skb)
 {
 	struct net_device *dev = skb->dev;
 	struct net_device_stats *stats;
+	unsigned int prio;
 
 	skb->dev = vlan_dev_info(dev)->real_dev;
 	netif_nit_deliver(skb);
 
 	skb->dev = dev;
+#if 1 /* V54_BSP */
+	prio = vlan_get_ingress_priority(dev, skb->vlan_tci);
+	if( prio ) {
+		skb->priority &= ~0xf;          /* clear previous priority value */
+		skb->priority |= prio & 0xf;    /* set new priority value        */
+	}
+#else
 	skb->priority = vlan_get_ingress_priority(dev, skb->vlan_tci);
+#endif
 	skb->vlan_tci = 0;
 
 	stats = &dev->stats;

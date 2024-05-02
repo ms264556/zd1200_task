@@ -25,7 +25,7 @@
 struct oprofile_operations oprofile_ops;
 
 unsigned long oprofile_started;
-unsigned long oprofile_backtrace_depth;
+struct oprofile_backtrace_options_struct oprofile_backtrace_options;
 static unsigned long is_setup;
 static DEFINE_MUTEX(start_mutex);
 
@@ -225,7 +225,7 @@ post_sync:
 	mutex_unlock(&start_mutex);
 }
 
-int oprofile_set_backtrace(unsigned long val)
+int oprofile_set_backtrace(struct oprofile_backtrace_options_struct *options)
 {
 	int err = 0;
 
@@ -241,7 +241,7 @@ int oprofile_set_backtrace(unsigned long val)
 		goto out;
 	}
 
-	oprofile_backtrace_depth = val;
+	oprofile_backtrace_options = *options;
 
 out:
 	mutex_unlock(&start_mutex);

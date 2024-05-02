@@ -20,11 +20,53 @@
 
 #include <asm/irq_regs.h>
 
+#if 1 /* V54_BSP */
+#include <linux/reboot.h>
+#endif
+
 static DEFINE_SPINLOCK(print_lock);
 
 static DEFINE_PER_CPU(unsigned long, touch_timestamp);
 static DEFINE_PER_CPU(unsigned long, print_timestamp);
 static DEFINE_PER_CPU(struct task_struct *, watchdog_task);
+
+#if 1 /* V54_BSP */
+// softwatchdog defines
+#include <linux/sched.h>
+#endif
+
+#ifdef V54_SOFT_WATCHDOG
+#include <linux/kernel.h>
+
+extern int machine_paniced; /* kernel/panic.c */
+#define WATCHDOG_DEFAULT_S      120      /* 120 seconds */
+static unsigned long last_wdt_ts = INITIAL_JIFFIES;   // last time the hardware wd was fed.
+static unsigned long wdt_timestamp = INITIAL_JIFFIES;   // user level watchdog timestamp
+
+#if defined(NAR5520)
+extern int oops_occurred;
+#endif
+
+void touch_wdt_timestamp(void)
+{
+    wdt_timestamp = jiffies;
+    return;
+}
+// update the hardware wd  timestamp
+void touch_hw_wdt_ts(void)
+{
+    last_wdt_ts = jiffies;
+    return;
+}
+
+static int wdt_stopped = 0;        // indicate if soft_watchdog is still running
+void _soft_wdt_stop(int yes_no)
+{
+    if ( yes_no )
+        printk("*** soft watchdog stopped ***\n");
+    wdt_stopped = yes_no;
+}
+#endif  /* V54_SOFT_WATCHDOG */
 
 static int __read_mostly did_panic;
 int __read_mostly softlockup_thresh = 60;
@@ -97,6 +139,8 @@ int proc_dosoftlockup_thresh(struct ctl_table *table, int write,
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
+int test_watchdog_timeout=0;
+EXPORT_SYMBOL(test_watchdog_timeout);
 /*
  * This callback runs from the timer interrupt, and checks
  * whether the watchdog thread has hung or not:
@@ -108,6 +152,41 @@ void softlockup_tick(void)
 	unsigned long print_timestamp;
 	struct pt_regs *regs = get_irq_regs();
 	unsigned long now;
+
+#ifdef V54_SOFT_WATCHDOG
+        if ( wdt_stopped )  {
+            // already in wdt_stopped.
+            return;
+        }
+
+        // check to see if we have not seen a userlevel feed
+	if (test_watchdog_timeout || time_after(jiffies, wdt_timestamp + WATCHDOG_DEFAULT_S * HZ)) {
+            // haven't heard from user space, trigger a reset.
+            // disable irqs, we are going down.
+            unsigned long flags;
+            local_irq_save(flags);
+            _soft_wdt_stop(1);
+
+            himem_tee_open();
+#ifdef CONFIG_MIPS
+            printk("Watchdog Timeout ! @ jiffies=%lx, c0_count=%lx\n",
+                    (unsigned long)jiffies, (unsigned long)read_c0_count());
+#else
+            printk("Watchdog Timeout ! @ jiffies=%lx\n",
+                    (unsigned long)jiffies);
+#endif
+            dump_stack();
+            OOPS_SHOW_STATE();
+            if ( ! machine_paniced ) {
+                BUG();
+            }
+#if defined(NAR5520)
+            if (oops_occurred)
+                mdelay(5000);
+#endif
+            machine_restart(NULL);
+        }
+#endif
 
 	/* Is detection switched off? */
 	if (!per_cpu(watchdog_task, this_cpu) || softlockup_thresh <= 0) {
@@ -150,6 +229,9 @@ void softlockup_tick(void)
 	per_cpu(print_timestamp, this_cpu) = touch_timestamp;
 
 	spin_lock(&print_lock);
+#ifdef V54_BSP
+	himem_tee_open();
+#endif
 	printk(KERN_ERR "BUG: soft lockup - CPU#%d stuck for %lus! [%s:%d]\n",
 			this_cpu, now - touch_timestamp,
 			current->comm, task_pid_nr(current));

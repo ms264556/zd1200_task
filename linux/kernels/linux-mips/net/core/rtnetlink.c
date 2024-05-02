@@ -624,6 +624,9 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 	ifm->ifi_change = change;
 
 	NLA_PUT_STRING(skb, IFLA_IFNAME, dev->name);
+#if 1 /* V54_BSP */
+	NLA_PUT_STRING(skb, IFLA_CALLER, current->comm);
+#endif
 	NLA_PUT_U32(skb, IFLA_TXQLEN, dev->tx_queue_len);
 	NLA_PUT_U8(skb, IFLA_OPERSTATE,
 		   netif_running(dev) ? dev->operstate : IF_OPER_DOWN);

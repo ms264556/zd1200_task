@@ -70,6 +70,13 @@
 #define IFF_XMIT_DST_RELEASE 0x400	/* dev_hard_start_xmit() is allowed to
 					 * release skb->dst
 					 */
+#if defined(CONFIG_ETYPE_DEVICE) || defined(CONFIG_ETYPE_DEVICE_MODULE)
+#define IFF_ETYPE_DEVICE 0x800		/* special ethertype device, e.g eth0!88bc */
+#endif
+#define IFF_ETHER_DEVICE    0x1000  /* Ethernet device, for eth0, eth1... */
+#define IFF_802_11_DEVICE   0x2000  /* 802.11 WLAN device */
+#define IFF_802_11AC_DEVICE 0x4000  /* 802.11ac WLAN device */
+#define IFF_UIF_DEVICE      0x8000  /* uif device */
 
 #define IF_GET_IFACE	0x0001		/* for querying only */
 #define IF_GET_PROTO	0x0002

@@ -1365,6 +1365,11 @@ static int pegasus_probe(struct usb_interface *intf,
 		goto out;
 	}
 
+#if 1
+	/* Ruckus: Use unified USB Ethernet interface name */
+	strcpy (net->name, "usb%d");
+#endif
+
 	pegasus = netdev_priv(net);
 	pegasus->dev_index = dev_index;
 	init_waitqueue_head(&pegasus->ctrl_wait);

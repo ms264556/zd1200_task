@@ -44,7 +44,7 @@ void mips_set_clock_mode(enum clock_event_mode mode,
 }
 
 DEFINE_PER_CPU(struct clock_event_device, mips_clockevent_device);
-int cp0_timer_irq_installed;
+int cp0_timer_irq_installed=0;
 
 #ifndef CONFIG_MIPS_MT_SMTC
 
@@ -180,10 +180,10 @@ int __cpuinit r4k_clockevent_init(void)
 	 * interrupt number of it's liking.
 	 */
 	irq = MIPS_CPU_IRQ_BASE + cp0_compare_irq;
-	if (get_c0_compare_int)
-		irq = get_c0_compare_int();
+    if (get_c0_compare_int)
+        irq = get_c0_compare_int();
 
-	cd = &per_cpu(mips_clockevent_device, cpu);
+    cd = &per_cpu(mips_clockevent_device, cpu);
 
 	cd->name		= "MIPS";
 	cd->features		= CLOCK_EVT_FEAT_ONESHOT;
@@ -201,16 +201,20 @@ int __cpuinit r4k_clockevent_init(void)
 	cd->set_mode		= mips_set_clock_mode;
 	cd->event_handler	= mips_event_handler;
 
-	clockevents_register_device(cd);
+    /* Irq is set up first before registering into the CPU clockevent.
+       This avoids the racing condition that is mentioned in request_threaded_irq in        linux/kernels/linux-2.6.32.24/kernel/irq/manage.c */
 
-	if (cp0_timer_irq_installed)
-		return 0;
+    if (cp0_timer_irq_installed)
+    {
+	/* In case IRQ has been set up */
+        clockevents_register_device(cd);
+        return 0;
+    }
+    setup_irq(irq, &c0_compare_irqaction);
 
-	cp0_timer_irq_installed = 1;
-
-	setup_irq(irq, &c0_compare_irqaction);
-
-	return 0;
+    clockevents_register_device(cd);
+    cp0_timer_irq_installed = 1;
+    return 0;
 }
 
 #endif /* Not CONFIG_MIPS_MT_SMTC */

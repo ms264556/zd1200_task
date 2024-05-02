@@ -95,6 +95,10 @@ int eth_header(struct sk_buff *skb, struct net_device *dev,
 		saddr = dev->dev_addr;
 	memcpy(eth->h_source, saddr, ETH_ALEN);
 
+#if 1 /* V54_BSP */
+	// update mac.raw pointer after pre-pending ethernet header.
+	skb_reset_mac_header(skb);
+#endif
 	if (daddr) {
 		memcpy(eth->h_dest, daddr, ETH_ALEN);
 		return ETH_HLEN;

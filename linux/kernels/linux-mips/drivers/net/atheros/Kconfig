@@ -1,0 +1,10 @@
+#
+# AG934x configuration
+#
+
+config MACH_AR934x
+	tristate "Atheros AR934x GigE"
+    depends on MACH_AR7100 && AG7100=n
+	help
+	  This enables the building of Atheros AR934x gigE driver module.
+	  Note that this module cannot be compiled as built-in, currently

@@ -202,6 +202,8 @@ int ip_options_echo(struct ip_options * dopt, struct sk_buff * skb)
 	return 0;
 }
 
+EXPORT_SYMBOL(ip_options_fragment);
+
 /*
  *	Options "fragmenting", just fill options not
  *	allowed in fragments with NOOPs.

@@ -666,7 +666,9 @@ void __sock_recv_timestamp(struct msghdr *msg, struct sock *sk,
 			 SCM_TIMESTAMPING, sizeof(ts), &ts);
 }
 
-EXPORT_SYMBOL_GPL(__sock_recv_timestamp);
+//EXPORT_SYMBOL_GPL(__sock_recv_timestamp);
+//TODO: Fix me! This is a HACK for AP module, we should fix it before release.
+EXPORT_SYMBOL(__sock_recv_timestamp);
 
 static inline int __sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 				 struct msghdr *msg, size_t size, int flags)
@@ -863,7 +865,7 @@ void brioctl_set(int (*hook) (struct net *, unsigned int, void __user *))
 EXPORT_SYMBOL(brioctl_set);
 
 static DEFINE_MUTEX(vlan_ioctl_mutex);
-static int (*vlan_ioctl_hook) (struct net *, void __user *arg);
+static int (*vlan_ioctl_hook) (struct net *, void __user *arg) = NULL;
 
 void vlan_ioctl_set(int (*hook) (struct net *, void __user *))
 {
@@ -874,8 +876,50 @@ void vlan_ioctl_set(int (*hook) (struct net *, void __user *))
 
 EXPORT_SYMBOL(vlan_ioctl_set);
 
+#if defined(CONFIG_ETYPE_DEVICE) || defined(CONFIG_ETYPE_DEVICE_MODULE)
+#include <linux/if_etype.h>
+static DEFINE_MUTEX(etype_ioctl_mutex);
+static int (*etype_ioctl_hook)(struct net *, void __user *arg) = NULL;
+
+void etype_ioctl_set(int (*hook)(struct net *, void __user *))
+{
+	mutex_lock(&etype_ioctl_mutex);
+	etype_ioctl_hook = hook;
+	mutex_unlock(&etype_ioctl_mutex);
+}
+EXPORT_SYMBOL(etype_ioctl_set);
+#endif
+
+#if defined(CONFIG_8021X) || defined(CONFIG_8021X_MODULE)
+#include <linux/dot1x.h>
+static DEFINE_MUTEX(dot1x_ioctl_mutex);
+static int (*dot1x_ioctl_hook)(unsigned int cmd, void __user *arg) = NULL;
+
+void dot1x_ioctl_set(int (*hook)(unsigned int, void __user *))
+{
+	mutex_lock(&dot1x_ioctl_mutex);
+	dot1x_ioctl_hook = hook;
+	mutex_unlock(&dot1x_ioctl_mutex);
+}
+EXPORT_SYMBOL(dot1x_ioctl_set);
+#endif
+
+#if defined(CONFIG_RKS_IOCTL) || defined(CONFIG_RKS_IOCTL_MODULE)
+#include <ruckus/rks_ioctl.h>
+static DECLARE_MUTEX(rks_ioctl_mutex);
+static int (*rks_ioctl_hook)(void __user *arg) = NULL;
+
+void rks_ioctl_set(int (*hook)(void __user *))
+{
+	down(&rks_ioctl_mutex);
+	rks_ioctl_hook = hook;
+	up(&rks_ioctl_mutex);
+}
+EXPORT_SYMBOL(rks_ioctl_set);
+#endif
+
 static DEFINE_MUTEX(dlci_ioctl_mutex);
-static int (*dlci_ioctl_hook) (unsigned int, void __user *);
+static int (*dlci_ioctl_hook) (unsigned int, void __user *) = NULL;
 
 void dlci_ioctl_set(int (*hook) (unsigned int, void __user *))
 {
@@ -947,6 +991,43 @@ static long sock_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 				err = vlan_ioctl_hook(net, argp);
 			mutex_unlock(&vlan_ioctl_mutex);
 			break;
+#if defined(CONFIG_ETYPE_DEVICE) || defined(CONFIG_ETYPE_DEVICE_MODULE)
+		case SIOCGETYPEDEV:
+		case SIOCSETYPEDEV:
+			err = -ENOPKG;
+			if (!etype_ioctl_hook)
+				request_module("etype_device");
+
+			mutex_lock(&etype_ioctl_mutex);
+			if (etype_ioctl_hook)
+				err = etype_ioctl_hook(net, argp);
+			mutex_unlock(&etype_ioctl_mutex);
+			break;
+#endif
+#if defined(CONFIG_8021X) || defined(CONFIG_8021X_MODULE)
+		case SIOCGDOT1X:
+		case SIOCSDOT1X:
+			err = -ENOPKG;
+			if (!dot1x_ioctl_hook)
+				request_module("dot1x");
+
+			mutex_lock(&dot1x_ioctl_mutex);
+			if (dot1x_ioctl_hook)
+				err = dot1x_ioctl_hook(cmd, argp);
+			mutex_unlock(&dot1x_ioctl_mutex);
+			break;
+#endif
+#if defined(CONFIG_RKS_IOCTL) || defined(CONFIG_RKS_IOCTL_MODULE)
+		case SIOCRKS:
+			err = -ENOPKG;
+			if (!rks_ioctl_hook)
+				request_module("rks_ioctl");
+			down(&rks_ioctl_mutex);
+			if (rks_ioctl_hook)
+				err = rks_ioctl_hook(argp);
+			up(&rks_ioctl_mutex);
+			break;
+#endif
 		case SIOCADDDLCI:
 		case SIOCDELDLCI:
 			err = -ENOPKG;
@@ -2432,6 +2513,11 @@ int kernel_sock_shutdown(struct socket *sock, enum sock_shutdown_cmd how)
 	return sock->ops->shutdown(sock, how);
 }
 
+int is_sock_file(struct file *f)
+{
+	return (f->f_op == &socket_file_ops) ? 1 : 0;
+}
+EXPORT_SYMBOL(is_sock_file);
 EXPORT_SYMBOL(sock_create);
 EXPORT_SYMBOL(sock_create_kern);
 EXPORT_SYMBOL(sock_create_lite);

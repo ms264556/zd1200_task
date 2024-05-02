@@ -29,6 +29,18 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/etherdevice.h>
 #include <linux/if_ether.h>
+#if 1 // V54_TUNNELMGR
+#include <linux/if_bridge.h>
+#include <linux/scatterlist.h>
+#include <linux/crypto.h>
+#include <linux/version.h>
+#include <linux/highmem.h>
+#include <ruckus/l2_frag.h>
+#include <linux/if_vlan.h>
+#include <linux/time.h>
+#include <linux/netfilter_ipv4/ip_tables.h>
+#include <ruckus/ieee80211_linux.h>
+#endif // V54_TUNNELMGR
 
 #include <net/sock.h>
 #include <net/ip.h>
@@ -120,6 +132,14 @@ static struct rtnl_link_ops ipgre_link_ops __read_mostly;
 static int ipgre_tunnel_init(struct net_device *dev);
 static void ipgre_tunnel_setup(struct net_device *dev);
 static int ipgre_tunnel_bind_dev(struct net_device *dev);
+#if 1 // V54_TUNNELMGR
+static int ipgre_rcv(struct sk_buff *skb);
+static int ipgre_tunnel_get_wlanid(struct net_device *dev);
+void rks_dump_pkt(struct sk_buff *skb, char *s);
+// for GRE over UDP. Register/deregister function pointer in UDP stack for redirecting GREoUDP packet here.
+extern int _udp_reg_ipgre_func(int (*func1)(u16 *, u16 *), int (*func2)(struct sk_buff *));
+extern int _udp_unreg_ipgre_func(void);
+#endif // V54_TUNNELMGR
 
 /* Fallback tunnel: no source, no destination, no key, no options */
 
@@ -158,6 +178,120 @@ struct ipgre_net {
 #define tunnels_wc	tunnels[0]
 
 static DEFINE_RWLOCK(ipgre_lock);
+
+#if 1 // V54_TUNNELMGR
+/* TODO: The following definition is the same as defined in tunnelmgr.h
+ * Need to have a separate .h file to be shared
+ */
+
+/* Ruckus-GRE always enables GRE_SEQ flag */
+#define IS_RKS_GRE_TUNNEL(t)    ((t)->parms.o_flags & GRE_SEQ)
+
+/* Netlink sock */
+#define WT_APPL_INIT           0x5454           /* semi-unique message identifier */
+#define WT_APPL_SENDMSG        0x5455           /* semi-unique message identifier */
+#define WT_APPL_UPDATE_TIMEOUT 0x5456           /* semi-unique message identifier */
+#define WT_APPL_INIT_MSG       "RaisingRuckus"  /* semi-unique appl name          */
+
+static struct sock *appl_sock = NULL;
+static DECLARE_MUTEX(appl_semaphore);
+
+static void ipgre_cntl_pkt_recv( struct sk_buff *skb );
+static void ipgre_cntl_pkt_wakeup(struct sk_buff *skb);
+
+// change need to match cavium/common/include/rks-ip-gre.h
+#define WT_GRE_KEEPALIVE         __cpu_to_be32(0x80000000)
+#define WT_GRE_ENCRYPTION        __cpu_to_be32(0x40000000)
+#define WT_GRE_PADDING           __cpu_to_be32(0x20000000)
+#define WT_GRE_L2FRAG            __cpu_to_be32(0x10000000)
+#define WT_GRE_POLICY_MASK       __cpu_to_be32(0x000F0000)
+#define WT_GRE_POLICY_BIT_SHIFT 16
+#define SET_WT_GRE_POLICY(p)    ((p) << WT_GRE_POLICY_BIT_SHIFT)
+// mask on csum/route fields
+#define WT_GRE_WLANID            __cpu_to_be32(0x0000FFFF)
+#define WT_GRE_TUNNELID          __cpu_to_be32(0x0000FFFF)
+
+
+typedef enum {
+    WSG_ERROR = -1,
+    WSG_OK = 0,
+    WSG_DISCARD,
+    WSG_TIMEOUT,
+    WSG_EVENT,
+    WSG_SKIP_ACCT,
+} WSG_STATUS;
+
+typedef enum {
+    WSG_APPL_TUNNEL = 0,
+    WSG_APPL_MAX,       /* this entry must be last */
+} WSG_APPL_ID;
+
+typedef struct {
+    unsigned int   appl_pid[WSG_APPL_MAX]; /* applications for DTLS handshaking   */
+    int            appl_tid[WSG_APPL_MAX]; /* applications for tunnel id          */
+    unsigned char  psk[32];                /* cipher pre-shared key */
+    unsigned short psk_bits;               /* length of pre-shared key */
+    unsigned char  iv[16];                 /* Inital Vector */
+    unsigned short iv_len;                 /* length of Inital Vector  */
+    unsigned short s_port;                 /* The source UDP port # for GRE over UDP. */
+    unsigned short d_port;                 /* The destination UDP port # for GRE over UDP. 0 means no GRE over UDP */
+    __u32          saddr;                  /* AP IP (src) address of GRE */
+    __u32          daddr;                  /* WSG-D (dst) address of GRE */
+    int            stat_cp_inatomic;       /* # of skb_copy calls in atomic mode  */
+    int            stat_cp_not_inatomic;   /* # of skb_copy calls not in atomic   */
+    int            stat_cl_inatomic;       /* # of clone calls in atomic mode     */
+    int            stat_cl_not_inatomic;   /* # of clone calls not in atomic mode */
+} WSG_GLOBAL;
+
+WSG_GLOBAL *_wsgGlobal = NULL;
+
+/* Crypto */
+#define ENCRYPT 1
+#define DECRYPT 0
+#define MODE_ECB 1
+#define MODE_CBC 0
+
+#include <ruckus/rks_policy.h>
+// set FWD_policy in skb
+static inline void
+SKB_SET_FWD_POLICY(struct sk_buff *skb, u32 * key)
+{
+	_l2_cb_t * skb_cb ;
+	_rks_policy_t  my_policy;
+#define MY_FWD_CLASS	my_policy.p.fwd_class
+
+	skb_cb = (_l2_cb_t *)&skb->cb[0];
+
+	if ( skb_cb->fwd_class != RKS_FWD_Default ) {
+		MY_FWD_CLASS = skb_cb->fwd_class ;
+	} else {
+		// only set to match setting in net_device  if not already set.
+		if ( _dev_get_policy(skb->input_dev, &(my_policy._word32)) < 0 ) {
+			// get policy failed
+			printk(KERN_NOTICE "_dev_get_policy(%p,) failed\n", skb->input_dev);
+			return;
+		}
+	}
+	if ( MY_FWD_CLASS != 0 ) {
+		*key |= (SET_WT_GRE_POLICY(MY_FWD_CLASS) &  WT_GRE_POLICY_MASK) ;
+#if 0
+		printk(KERN_NOTICE "%s: set policy %01X , key=%08x\n", __FUNCTION__,
+			(unsigned) (my_policy.p.fwd_class), (unsigned) key );
+#endif
+	}
+	return ;
+}
+
+#if defined(CONFIG_CRYPTO_DEV_TALITOS) /* SEC with Talitos driver */
+struct ipgre_ablkcipher_data
+{
+	struct sk_buff *skb;
+	uint8_t is_padding;
+	uint8_t is_udp;
+	uint16_t gre_hdr_len;
+};
+#endif
+#endif // V54_TUNNELMGR
 
 /* Given src, dst and key, find appropriate for input tunnel. */
 
@@ -404,6 +538,22 @@ static void ipgre_tunnel_uninit(struct net_device *dev)
 	struct net *net = dev_net(dev);
 	struct ipgre_net *ign = net_generic(net, ipgre_net_id);
 
+#if 1 // V54_TUNNELMGR
+	/* Free created crypto tfm structure */
+{
+	struct ip_tunnel *tunnel = netdev_priv(dev);
+
+#if defined(CONFIG_CRYPTO_DEV_TALITOS) /* SEC with Talitos driver */
+	if(tunnel->parms.tfm)
+		crypto_free_ablkcipher(tunnel->parms.tfm);
+	tunnel->parms.tfm = NULL;
+#else /* Kernel Crypto */
+	if(tunnel->parms.tfm)
+		crypto_free_blkcipher(tunnel->parms.tfm);
+	tunnel->parms.tfm = NULL;
+#endif
+}
+#endif // V54_TUNNELMGR
 	ipgre_tunnel_unlink(ign, netdev_priv(dev));
 	dev_put(dev);
 }
@@ -520,6 +670,491 @@ ipgre_ecn_encapsulate(u8 tos, struct iphdr *old_iph, struct sk_buff *skb)
 	return INET_ECN_encapsulate(tos, inner);
 }
 
+#if 1 // V54_TUNNELMGR
+extern int ieee80211_get_wlanid(struct net_device *dev);
+static int
+ipgre_tunnel_get_wlanid(struct net_device *dev)
+{
+	return ieee80211_get_wlanid(dev);
+}
+
+static void
+ipgre_cntl_pkt_recv( struct sk_buff *skb )
+{
+    struct sk_buff      *new_skb;
+    struct nlmsghdr     *nlh;
+    unsigned int         dst_pid;
+    int                  appl_id, err;
+    int                  offset_to_pkt;
+    struct net_device   *dev;
+    gfp_t                skb_priority;
+
+    nlh = (struct nlmsghdr *)skb->data;
+    dst_pid  = nlh->nlmsg_pid;
+    appl_id  = nlh->nlmsg_type;
+
+    switch( nlh->nlmsg_flags ) {
+    case WT_APPL_INIT:
+        _wsgGlobal->appl_pid[appl_id] = dst_pid;
+        if( in_atomic() ) {
+            skb_priority = GFP_ATOMIC;
+            _wsgGlobal->stat_cl_inatomic++;
+        } else {
+            skb_priority = GFP_KERNEL;
+            _wsgGlobal->stat_cl_not_inatomic++;
+        }
+        new_skb = skb_clone(skb, skb_priority);
+        if( new_skb != NULL ) {
+            NETLINK_CB(new_skb).pid     = 0;
+
+            err = netlink_unicast( appl_sock, new_skb, dst_pid, MSG_DONTWAIT );
+            if( err < 0 ) {
+                if (net_ratelimit())
+                    printk("IP_GRE: Appl %d echo initialize message failed, rc=%d\n",
+		            dst_pid, err );
+            }
+        }
+        if (net_ratelimit())
+            printk("IP_GRE: Appl %d echo initialize message successfully\n", _wsgGlobal->appl_pid[appl_id]);
+		break;
+
+    case WT_APPL_SENDMSG:
+        dev = dev_get_by_name( &init_net, "gre1" );
+        if( dev ) {
+            struct sk_buff *newskb;
+
+            skb->dev = dev;
+            offset_to_pkt = (unsigned char *)(NLMSG_DATA(nlh)) - skb->data;
+            skb_pull( skb, offset_to_pkt );
+
+            skb->len = sizeof(struct keep_alive_msg);
+
+            //printk("offset_to_pkt %d, skb->mac.raw %p, skb->data %p, skb->h.raw %p, skb->len %d\n", offset_to_pkt, skb->mac.raw, skb->data, skb->h.raw, skb->len);
+            //printk("skb->dev->name %s\n", skb->dev->name);
+
+            newskb = skb_clone(skb, GFP_ATOMIC);
+            err = dev_queue_xmit( newskb );
+            dev_put(dev);
+            if(err){
+                if (net_ratelimit())
+                    printk("IP_GRE: Appl %d send packet to dev %s failed\n",
+                            dst_pid,  "gre1" );
+            }
+        }else {
+        if (net_ratelimit())
+            printk("IP_GRE: Appl %d send packet to dev %s failed\n",
+                    dst_pid,  "gre1" );
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+static int
+ipgre_cntl_pkt_send( WSG_APPL_ID appl_id, struct sk_buff *skb )
+{
+    WSG_STATUS	     ret;
+    unsigned int     dst_pid;
+    int              idx, len;
+    unsigned char   *pkt;
+    int              nl_rc;
+    struct sk_buff  *out_skb = NULL;
+    struct nlmsghdr *nlh;
+    gfp_t            skb_priority;
+    struct net_device   *dev;
+
+    ret = WSG_OK;
+
+    if( skb == NULL ||
+	    appl_id > WSG_APPL_MAX ) {
+        printk("ipgre_cntl_pkt_send: validation failure for Appl %d\n",
+               appl_id );
+        ret = WSG_ERROR;
+        goto exit;
+    }
+
+    dst_pid = _wsgGlobal->appl_pid[appl_id];
+    if( dst_pid == 0 ) {
+        printk("ipgre_cntl_pkt_send: NULL pid for Appl %d\n",
+               appl_id );
+        goto exit;
+    }
+
+    dev = dev_get_by_name( &init_net, "gre1" );
+    if(dev)
+        skb->dev = dev;
+    else
+    {
+        printk("ipgre_cntl_pkt_send: unable to get valid dev\n");
+        ret = WSG_ERROR;
+        goto exit;
+    }
+
+	pkt = skb_mac_header(skb);
+	len = skb_tail_pointer(skb) - pkt;
+	idx = skb->dev->ifindex;
+
+    if( in_atomic() ) {
+        skb_priority = GFP_ATOMIC;
+        _wsgGlobal->stat_cl_inatomic++;
+    } else {
+        skb_priority = GFP_KERNEL;
+        _wsgGlobal->stat_cl_not_inatomic++;
+    }
+
+    out_skb = alloc_skb( NLMSG_SPACE(len), skb_priority );
+    if( out_skb == NULL ) {
+        goto exit;
+    }
+
+    nlh = NLMSG_PUT( out_skb, 0, idx, appl_id, len );
+    nlh->nlmsg_flags = WT_APPL_SENDMSG;
+    memcpy( NLMSG_DATA(nlh), pkt, len );
+
+    NETLINK_CB(out_skb).pid        = 0;
+
+    nl_rc = netlink_unicast( appl_sock, out_skb, dst_pid, MSG_DONTWAIT );
+
+    if( nl_rc < 0 ) {
+        ret = WSG_ERROR;
+        if( net_ratelimit() ) {
+            printk( "IP_GRE: Appl %d send message failed, rc=%d\n",
+                    dst_pid, nl_rc );
+        }
+    } else {
+#if 0
+        if (p->flgs & PKT_INFO_FLGS_IGMP_PARSED) {
+            _v54Global->stat_msg_igmp++;
+        } else if (p->flgs & PKT_INFO_FLGS_MLD_PARSED) {
+            _v54Global->stat_msg_mld++;
+        } else {
+            _v54Global->stat_msg_queued++;
+        }
+#endif
+        ret = WSG_OK;
+    }
+
+exit:
+    dev_put(dev);
+    return(ret);
+
+nlmsg_failure:
+    if( out_skb ) dev_kfree_skb( out_skb );
+
+    return WSG_ERROR;
+}
+
+static void
+ipgre_cntl_pkt_wakeup(struct sk_buff *skb)
+{
+	//if (down_trylock(&appl_semaphore))
+	//	return;
+
+	ipgre_cntl_pkt_recv(skb);
+
+	//up(&appl_semaphore);
+
+}
+
+#if defined(CONFIG_CRYPTO_DEV_TALITOS) /* SEC with Talitos driver */
+static void ipgre_talitos_encrypt_complete(struct crypto_async_request *req, int err)
+{
+	struct ipgre_ablkcipher_data *ablkcipher_data = (struct ipgre_ablkcipher_data *)req->data;
+	struct sk_buff *skb = (struct sk_buff *)ablkcipher_data->skb;
+    struct iphdr  *iph;
+    struct rtable *rt;
+	struct ip_tunnel *tunnel;
+	struct net_device_stats *stats;
+	struct ablkcipher_request *ablk_req = ablkcipher_request_cast(req);
+	int rc = 0;
+
+	if(skb->dev)
+	{
+	    tunnel = netdev_priv(skb->dev);
+	    stats = &tunnel->dev->stats;
+
+	    iph = ip_hdr(skb);
+	    rt = skb_rtable(skb);
+
+		IPTUNNEL_XMIT();
+	}
+	else
+	{
+		rc = -1;
+		goto out;
+	}
+
+out:
+	kfree(ablkcipher_data);
+	ablkcipher_request_free(ablk_req);
+	if(rc < 0)
+		dev_kfree_skb(skb);
+	return;
+}
+
+static void ipgre_talitos_decrypt_complete(struct crypto_async_request *req, int err)
+{
+	struct ipgre_ablkcipher_data *ablkcipher_data = (struct ipgre_ablkcipher_data *)req->data;
+	struct sk_buff *skb = (struct sk_buff *)ablkcipher_data->skb;
+	int is_padding = ablkcipher_data->is_padding;
+	int hdr_len = ablkcipher_data->gre_hdr_len;
+	struct ablkcipher_request *ablk_req = ablkcipher_request_cast(req);
+	int rc = 0;
+
+	if (is_padding) {
+		int i = 0;
+		uint8_t *data_ptr = skb->data + hdr_len;
+		int data_len = skb->len - hdr_len;
+
+		if ((data_len % 16) != 0) {
+			if (net_ratelimit())
+				printk("encrypted payload has wrong padding size\n");
+			rc = -1;
+			goto out;
+		}
+		data_ptr += data_len; // point to the end of payload
+		for (i=1; i<16; i++) { // backtrace to check the padding pattern
+			if (*(--data_ptr) == 0x80) {
+				break;
+			}
+		}
+		skb_trim(skb, skb->len - i); // remove the padding
+	}
+
+	ipgre_rcv(skb);
+
+out:
+	kfree(ablkcipher_data);
+	ablkcipher_request_free(ablk_req);
+	if(rc < 0)
+		dev_kfree_skb(skb);
+	return;
+}
+
+static int ipgre_tunnel_cipher(struct crypto_ablkcipher *tfm, u8 *key, int key_len, u8 *iv, int iv_len, int enc, struct sk_buff *skb, int hdr_len, int is_padding, int is_udp)
+{
+    struct scatterlist sg[8];
+	int   ret = 0;
+	struct ablkcipher_request *req;
+	struct ipgre_ablkcipher_data *ablkcipher_data;
+	uint8_t *input;
+	int ilen;
+	input = skb->data + hdr_len;
+	ilen = skb->len - hdr_len;
+
+	req = ablkcipher_request_alloc(tfm, GFP_ATOMIC);
+	if (!req) {
+		if (net_ratelimit())
+			printk("alg: skcipher: Failed to allocate request "
+			   "for %s\n", "cbc(aes)-talitos");
+		return -1;
+	}
+
+	ablkcipher_data = kmalloc(sizeof(struct ipgre_ablkcipher_data), GFP_ATOMIC);
+	if(!ablkcipher_data)
+	{
+        if (net_ratelimit())
+            printk("ipgre_tunnel_cipher() alloc ablkcipher_data failed size %d\n", sizeof(struct ipgre_ablkcipher_data));
+		ret = -1;
+		goto err_data;
+	}
+	ablkcipher_data->skb = skb;
+	ablkcipher_data->is_padding = is_padding;
+	ablkcipher_data->is_udp = is_udp;
+	ablkcipher_data->gre_hdr_len = hdr_len;
+
+	if (enc)
+		ablkcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
+						ipgre_talitos_encrypt_complete, ablkcipher_data);
+	else
+		ablkcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
+						ipgre_talitos_decrypt_complete, ablkcipher_data);
+
+	crypto_ablkcipher_clear_flags(tfm, ~0);
+
+	ret = crypto_ablkcipher_setkey(tfm, key, key_len/8);
+
+	if (ret) {
+        if (net_ratelimit())
+            printk("crypto_ablkcipher_setkey() failed ret=%d flags=%x\n", ret, tfm->base.crt_flags);
+		ret = -1;
+		goto err;
+	}
+
+	sg_init_one(&sg[0], input, ilen);
+
+	ablkcipher_request_set_crypt(req, sg, sg,
+					 ilen, iv);
+
+	if (enc)
+		ret = crypto_ablkcipher_encrypt(req);
+	else
+		ret = crypto_ablkcipher_decrypt(req);
+
+	switch (ret) {
+	case 0:
+	case -EINPROGRESS:
+	case -EBUSY:
+		break;
+	case -EAGAIN:
+		if (net_ratelimit())
+			printk("ipgre_tunnel_cipher send reqest failed ret %d, drop it!\n", ret);
+			goto err;
+		break;
+		/* fall through */
+	default:
+		if (net_ratelimit())
+			printk("ipgre_tunnel_cipher send reqest failed ret %d, drop it!\n", ret);
+		goto err;
+	}
+
+	return 0;
+
+err:
+	kfree(ablkcipher_data);
+err_data:
+	ablkcipher_request_free(req);
+	return ret;
+}
+#else /* Kernel Crypto */
+static int ipgre_tunnel_cipher(struct crypto_blkcipher *tfm, u8 *key, int key_len, u8 *iv, int iv_len, int enc, char *input, unsigned short ilen)
+{
+    /* Always use AES CBC */
+    struct scatterlist sg[8];
+    int   ret = 0;
+    const char *e;
+    struct blkcipher_desc desc;
+
+    if (enc == ENCRYPT)
+        e = "encryption";
+    else
+        e = "decryption";
+
+    memset( &desc, 0, sizeof(struct blkcipher_desc));
+
+    desc.tfm = tfm;
+    desc.flags = 0;
+
+    ret = crypto_blkcipher_setkey(tfm, key, key_len/8);
+
+	if (ret) {
+        if (net_ratelimit())
+            printk("setkey() failed flags=%x\n", tfm->base.crt_flags);
+		ret = -1;
+		goto out;
+	}
+
+	sg_init_table(sg, 8);
+	sg_set_buf(&sg[0], input, ilen);
+
+    crypto_blkcipher_set_iv(tfm, iv, crypto_blkcipher_ivsize(tfm));
+
+	if (enc)
+		ret = crypto_blkcipher_encrypt(&desc, sg, sg, ilen);
+	else
+		ret = crypto_blkcipher_decrypt(&desc, sg, sg, ilen);
+
+	if (ret) {
+        if (net_ratelimit())
+            printk("%s () failed flags=%x\n", e, tfm->base.crt_flags);
+		goto out;
+	}
+
+out:
+	return ret;
+
+}
+#endif
+
+void
+rks_dump_pkt(struct sk_buff *skb, char *s)
+{
+	int i = 0;
+
+	printk("\n raw data: %s ", s);
+	for (i = 0; i < 100; i++) {
+		if ((i != 0) && ((i % 4) == 0))
+			printk(" ");
+		printk("%02x", skb->data[i]);
+		if ((i % 16) == 15)
+			printk("\n");
+	}
+	printk("\n mac raw: ");
+	for (i = 0; i < 30; i++) {
+                printk("%02x", skb->mac_header[i]);
+	}
+	printk("\n nh raw: ");
+	for (i = 0; i < 40; i++) {
+                printk("%02x", skb->network_header[i]);
+	}
+	printk("\n data");
+}
+
+#define TCP_SYN 0x02
+
+static inline int rks_is_pkt_tcp_syn (struct tcphdr *m)
+{
+	if (m->syn)
+		return 1;
+
+	return 0;
+}
+
+static u_int16_t
+rks_fcheck (u_int32_t oldvalinv, u_int32_t newval, u_int16_t oldcheck)
+{
+    u_int32_t diffs[] = { oldvalinv, newval };
+	return csum_fold(csum_partial((char *)diffs, sizeof(diffs),
+						oldcheck^0xFFFF));
+}
+
+static inline int
+IS_PROTO_IP(struct sk_buff *skb)
+{
+	if (skb->protocol == __constant_htons(ETH_P_IP))  {
+		return 1;
+	} else if ( skb->protocol == __constant_htons(ETH_P_8021Q) ) {
+		struct vlan_ethhdr vlanehdr ;
+		memcpy(&vlanehdr, vlan_eth_hdr(skb), sizeof(struct vlan_ethhdr));
+		if ( vlanehdr.h_vlan_encapsulated_proto == __constant_htons(ETH_P_IP)) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static inline void
+rks_modify_tcp_mss (struct sk_buff *skb, struct iphdr *old_iph, int mtu)
+{
+	uint16_t oldmss, newmss;
+
+	if (old_iph == NULL)
+		return;
+
+	if (IS_PROTO_IP(skb) && old_iph && (old_iph->protocol == IPPROTO_TCP)) {
+		int ihl = old_iph->ihl*4;
+		struct tcphdr *tcph = (void *)old_iph + ihl;
+		uint8_t *tcp_opt = ((uint8_t *) old_iph) + ihl + sizeof(struct tcphdr);
+
+		if ((tcph == NULL) || (tcp_opt == NULL))
+			return;
+		if (rks_is_pkt_tcp_syn(tcph)) { // check mss and adjust it if required
+			oldmss = (tcp_opt[2] << 8) | tcp_opt[3];
+			// 40 bytes is the largest size of TCP options. include in MSS calculation per RFC
+			newmss = mtu - ihl - sizeof(struct tcphdr) - ETH_HLEN - VLAN_HLEN - 40;
+			if (oldmss > newmss) {
+				tcp_opt[2] = (newmss & 0xff00) >> 8;
+				tcp_opt[3] = (newmss & 0x00ff);
+				tcph->check = rks_fcheck(htons(oldmss)^0xFFFF, htons(newmss), tcph->check);
+			}
+		}
+	}
+}
+
+#endif // V54_TUNNELMGR
+
 static int ipgre_rcv(struct sk_buff *skb)
 {
 	struct iphdr *iph;
@@ -532,6 +1167,11 @@ static int ipgre_rcv(struct sk_buff *skb)
 	int    offset = 4;
 	__be16 gre_proto;
 	unsigned int len;
+#if 1 // V54_TUNNELMGR
+	int    crypto_enabled = 0, is_padding = 0, is_keepalive = 0;
+#endif // V54_TUNNELMGR
+	struct vlan_ethhdr *vhdr;
+	int vlen = 0;
 
 	if (!pskb_may_pull(skb, 16))
 		goto drop_nolock;
@@ -548,6 +1188,9 @@ static int ipgre_rcv(struct sk_buff *skb)
 			goto drop_nolock;
 
 		if (flags&GRE_CSUM) {
+			// We do not perform checksum calculation but
+			// just use field for carrying wlan id inforamtion
+#if 0 // V54_TUNNELMGR
 			switch (skb->ip_summed) {
 			case CHECKSUM_COMPLETE:
 				csum = csum_fold(skb->csum);
@@ -559,10 +1202,15 @@ static int ipgre_rcv(struct sk_buff *skb)
 				csum = __skb_checksum_complete(skb);
 				skb->ip_summed = CHECKSUM_COMPLETE;
 			}
+#endif
 			offset += 4;
 		}
 		if (flags&GRE_KEY) {
 			key = *(__be32*)(h + offset);
+			#if 1 //V54_TUNNELMGR
+			/* remove crypto/padding flag in GRE key field from being processed again next time */
+			*(__be32*)(h + offset) = *(__be32*)(h + offset) & WT_GRE_TUNNELID;
+			#endif
 			offset += 4;
 		}
 		if (flags&GRE_SEQ) {
@@ -571,6 +1219,22 @@ static int ipgre_rcv(struct sk_buff *skb)
 		}
 	}
 
+#if 1 // V54_TUNNELMGR
+	is_keepalive = key & WT_GRE_KEEPALIVE;
+	/* Send keep alive up to tunnelmgr */
+	if (is_keepalive)
+		ipgre_cntl_pkt_send(WSG_APPL_TUNNEL, skb);
+
+	if (key & WT_GRE_ENCRYPTION) {
+		crypto_enabled = 1;
+		if (key & WT_GRE_PADDING) {
+			is_padding = 1;
+		}
+	}
+
+	key = key & WT_GRE_TUNNELID; // first 4 bytes are not used in standard GRE and should be marked as zero
+#endif // V54_TUNNELMGR
+
 	gre_proto = *(__be16 *)(h + 2);
 
 	read_lock(&ipgre_lock);
@@ -578,8 +1242,41 @@ static int ipgre_rcv(struct sk_buff *skb)
 					  iph->saddr, iph->daddr, key,
 					  gre_proto))) {
 		struct net_device_stats *stats = &tunnel->dev->stats;
+#if 1 // V54_TUNNELMGR
+		struct iptun_stats *tun_stats = &tunnel->parms.tun_stats;
+#endif
 
 		secpath_reset(skb);
+
+#if 1 // V54_TUNNELMGR
+		if (is_keepalive) {
+			tunnel->dev->stats.rx_packets++;
+			tunnel->dev->stats.rx_bytes += skb->len;
+			tunnel->parms.tun_stats.tun_rx_packets++;
+			tunnel->parms.tun_stats.tun_rx_bytes += skb->len;
+			read_unlock(&ipgre_lock);
+			dev_kfree_skb(skb);
+			return (0);
+		}
+
+#if defined(CONFIG_CRYPTO_DEV_TALITOS) /* SEC with Talitos driver */
+		if (crypto_enabled) {
+			int rc = 0;
+
+			rc = ipgre_tunnel_cipher(tunnel->parms.tfm, tunnel->parms.psk, tunnel->parms.psk_bits,
+			tunnel->parms.iv, tunnel->parms.iv_len, DECRYPT, skb, offset, is_padding, 0);
+			if(rc < 0)
+			{
+				/* increase drop counter */
+				stats->tx_dropped++;
+				tun_stats->tun_tx_dropped++;
+				kfree_skb(skb);
+			}
+			read_unlock(&ipgre_lock);
+			return 0;
+		}
+#endif
+#endif // V54_TUNNELMGR
 
 		skb->protocol = gre_proto;
 		/* WCCP version 1 and 2 protocol decoding.
@@ -592,8 +1289,57 @@ static int ipgre_rcv(struct sk_buff *skb)
 				offset += 4;
 		}
 
-		skb->mac_header = skb->network_header;
-		__pskb_pull(skb, offset);
+#if 1 // V54_TUNNELMGR
+		if (IS_RKS_GRE_TUNNEL(tunnel) && seqno) {
+			// This is a layer 2 fragmented packet. Send it to layer 2 re-assembly
+#ifdef DEBUG_FRAG
+			rks_dump_pkt(skb,"fragmented packet");
+#endif
+			skb = l2_local_deliver(skb, seqno, offset);
+			if (skb == NULL) {
+#ifdef DEBUG_FRAG
+				printk("\n %s: waiting for remaining fragments to arrive", __FUNCTION__);
+#endif
+				return 0; // Waiting for remaining fragments to arrive
+			}
+		}
+#endif // V54_TUNNELMGR
+
+        skb->mac_header = skb->network_header;
+        __pskb_pull(skb, offset);
+
+#if 1 // V54_TUNNELMGR
+#if !(defined(CONFIG_CRYPTO_DEV_TALITOS)) /* Kernel Crypto */
+        if (crypto_enabled) {
+            unsigned char *ptr = skb->data;
+            int i;
+
+            ipgre_tunnel_cipher(tunnel->parms.tfm, tunnel->parms.psk, tunnel->parms.psk_bits,
+            tunnel->parms.iv, tunnel->parms.iv_len, DECRYPT, skb->data, skb->len);
+
+            if (is_padding) {
+                if ((skb->len % 16) != 0) {
+                    if (net_ratelimit())
+                        printk("encrypted payload has wrong padding size\n");
+                    goto drop;
+                }
+                ptr += skb->len; // point to the end of payload
+                for (i=1; i<16; i++) { // backtrace to check the padding pattern
+                    if (*(--ptr) == 0x80) {
+                        break;
+                    }
+                }
+                skb_trim(skb, skb->len - i); // remove the padding
+            }
+		}
+#endif
+#endif // V54_TUNNELMGR
+
+		vhdr = (struct vlan_ethhdr *)skb->data;
+		if (vhdr->h_vlan_proto == __constant_htons(ETH_P_8021Q)) {
+			vlen = VLAN_HLEN;
+		}
+
 		skb_postpull_rcsum(skb, skb_transport_header(skb), offset);
 		skb->pkt_type = PACKET_HOST;
 #ifdef CONFIG_NET_IPGRE_BROADCAST
@@ -606,10 +1352,20 @@ static int ipgre_rcv(struct sk_buff *skb)
 		}
 #endif
 
+#if 1 // V54_TUNNELMGR
+#ifdef DEBUG_FRAG
+		if (seqno != 0) {
+			rks_dump_pkt(skb, "reassembled packet");
+		}
+#endif
+#endif // V54_TUNNELMGR
 		if (((flags&GRE_CSUM) && csum) ||
 		    (!(flags&GRE_CSUM) && tunnel->parms.i_flags&GRE_CSUM)) {
 			stats->rx_crc_errors++;
 			stats->rx_errors++;
+#if 1 // V54_TUNNELMGR
+			tun_stats->tun_rx_errors++;
+#endif // V54_TUNNELMGR
 			goto drop;
 		}
 		if (tunnel->parms.i_flags&GRE_SEQ) {
@@ -617,6 +1373,9 @@ static int ipgre_rcv(struct sk_buff *skb)
 			    (tunnel->i_seqno && (s32)(seqno - tunnel->i_seqno) < 0)) {
 				stats->rx_fifo_errors++;
 				stats->rx_errors++;
+#if 1 // V54_TUNNELMGR
+				tun_stats->tun_rx_errors++;
+#endif // V54_TUNNELMGR
 				goto drop;
 			}
 			tunnel->i_seqno = seqno + 1;
@@ -629,6 +1388,9 @@ static int ipgre_rcv(struct sk_buff *skb)
 			if (!pskb_may_pull(skb, ETH_HLEN)) {
 				stats->rx_length_errors++;
 				stats->rx_errors++;
+#if 1 // V54_TUNNELMGR
+				tun_stats->tun_rx_errors++;
+#endif // V54_TUNNELMGR
 				goto drop;
 			}
 
@@ -637,8 +1399,15 @@ static int ipgre_rcv(struct sk_buff *skb)
 			skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
 		}
 
+		/* Update the last RX time */
+		tunnel->dev->last_rx = jiffies;
+
 		stats->rx_packets++;
 		stats->rx_bytes += len;
+#if 1 // V54_TUNNELMGR
+		tun_stats->tun_rx_packets++;
+		tun_stats->tun_rx_bytes += len;
+#endif // V54_TUNNELMGR
 		skb->dev = tunnel->dev;
 		skb_dst_drop(skb);
 		nf_reset(skb);
@@ -646,10 +1415,25 @@ static int ipgre_rcv(struct sk_buff *skb)
 		skb_reset_network_header(skb);
 		ipgre_ecn_decapsulate(iph, skb);
 
+#if 1 // V54_TUNNELMGR
+		iph = (struct iphdr *) ((uint8_t *) skb->data + vlen);
+		rks_modify_tcp_mss(skb, iph, tunnel->dev->mtu);
+#endif // V54_TUNNELMGR
+#if 1 // V54_TUNNELMGR
+                /* clear previous classification result and let inner payload can be classified again. */
+                skb->priority &= ~0x0f;
+                M_FLAG_CLR(skb, M_PRIORITY);
+#endif // V54_TUNNELMGR
 		netif_rx(skb);
 		read_unlock(&ipgre_lock);
 		return(0);
 	}
+
+#if 1 // V54_TUNNELMGR
+    if (net_ratelimit())
+	    printk("packet is dropped because configuration of gre1 mis-matches the received gre pkts (or gre1 down)\n");
+#endif // V54_TUNNELMGR
+
 	icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0);
 
 drop:
@@ -659,21 +1443,123 @@ drop_nolock:
 	return(0);
 }
 
+#if 1 //V54_TUNNELMGR
+int ipgre_get_udp_port(u16 *s_port, u16 *d_port)
+{
+	struct net_device *dev;
+	struct ip_tunnel *tunnel;
+	dev = dev_get_by_name( &init_net, "gre1");
+	if(dev)
+	{
+		tunnel = (struct ip_tunnel *)netdev_priv(dev);
+
+		*s_port = tunnel->parms.s_port;
+		*d_port = tunnel->parms.d_port;
+		dev_put(dev);
+	}
+	else
+	{
+		*s_port = 0;
+		*d_port = 0;
+		return -1;
+	}
+	return 0;
+}
+int ipgre_rcv_from_udp(struct sk_buff *skb)
+{
+	ipgre_rcv(skb);
+	return 0;
+}
+
+EXPORT_SYMBOL(ipgre_get_udp_port);
+EXPORT_SYMBOL(ipgre_rcv_from_udp);
+#endif //V54_TUNNELMGR
 static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
 	struct net_device_stats *stats = &tunnel->dev->stats;
+#if 1 // V54_TUNNELMGR
+	struct iptun_stats *tun_stats = &tunnel->parms.tun_stats;
+#endif //V54_TUNNELMGR
 	struct iphdr  *old_iph = ip_hdr(skb);
 	struct iphdr  *tiph;
 	u8     tos;
 	__be16 df;
-	struct rtable *rt;     			/* Route to the other host */
+	struct rtable *rt;                  /* Route to the other host */
 	struct net_device *tdev;			/* Device to other host */
 	struct iphdr  *iph;			/* Our new IP header */
 	unsigned int max_headroom;		/* The extra header space needed */
 	int    gre_hlen;
+#if 1 // V54_TUNNELMGR
+	//int    push_hlen;
+	int    is_keepalive = 0, is_padding = 0, is_udp = 0;
+	int    crypto_enabled = 0, clen = 0, plen = 0;
+	struct keep_alive_msg *msg;
+	u32 *ptr;
+	rks_gre_frag_dbg_t *rdbg = NULL;
+	struct udphdr *udph;
+	char *greh;
+	int pure_gre_hlen = 0;
+#endif // V54_TUNNELMGR
 	__be32 dst;
 	int    mtu;
+
+#if 1 // V54_TUNNELMGR
+	rks_modify_tcp_mss(skb, old_iph, dev->mtu);
+
+	/* Run rks_gre_tunnel_frag() only for Ruckus-GRE */
+	if (IS_RKS_GRE_TUNNEL(tunnel) && skb->len > dev->mtu) {
+		// RKS_UPD_TSTAMP(rdbg);
+		/* If IP and DF bit is set, sends back ICMP type 3, code 4. Otherwise frag it. */
+		if ((skb->protocol == ETH_P_IP) && old_iph && (old_iph->frag_off & htons(IP_DF))) {
+			rks_icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,
+			              dev->mtu - sizeof(struct vlan_ethhdr), tunnel->parms.iph.saddr);
+			rdbg = rks_dbg_get_ent(old_iph->saddr, old_iph->daddr);
+			RKS_UPD_PKT_ICMP_SENT(rdbg);
+		} else {
+			rks_gre_tunnel_frag(skb, dev, old_iph, rdbg);
+		}
+		return 0;
+	}
+#endif // V54_TUNNELMGR
+
+#if 1 // V54_TUNNELMGR
+	/* GRE Keep Alive ?? */
+	msg = (struct keep_alive_msg *)skb->data;
+	if( msg->magic == 0x54545454 ) {
+		is_keepalive = 1;
+	} else {
+		is_keepalive = 0;
+	}
+
+	if (tunnel->parms.d_port) {
+		is_udp = 1;
+	}
+
+	if (tunnel->parms.psk_bits != 0 ) { // psk 0 mean no encryption applied
+		crypto_enabled = 1;
+		clen = skb->len;
+
+		plen = 16 - (clen % 16); // valid padding len should be 1 <= plen <= 15
+		if (plen != 16) {
+			u8 *tmp;
+
+			//skb = skb_pad(skb, plen);
+			//if (skb != NULL) {
+			if(skb_pad(skb, plen) == 0) {
+				tmp  = skb_put(skb, plen);
+				*tmp = 0x80;
+			} else {
+				stats->tx_errors++;
+				tun_stats->tun_tx_errors++;
+				goto tx_error;
+			}
+
+			clen += plen;
+			is_padding = 1;
+		}
+	}
+#endif // V54_TUNNELMGR
 
 	if (dev->type == ARPHRD_ETHER)
 		IPCB(skb)->flags = 0;
@@ -683,6 +1569,9 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 		tiph = (struct iphdr *)skb->data;
 	} else {
 		gre_hlen = tunnel->hlen;
+		pure_gre_hlen = gre_hlen - sizeof(struct iphdr);
+		if(is_udp)
+			gre_hlen = gre_hlen + sizeof(struct udphdr);
 		tiph = &tunnel->parms.iph;
 	}
 
@@ -762,6 +1651,15 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	if (skb_dst(skb))
 		skb_dst(skb)->ops->update_pmtu(skb_dst(skb), mtu);
 
+#if 1 // V54_TUNNELMGR
+    if (!IS_RKS_GRE_TUNNEL(tunnel) && dev->type == ARPHRD_ETHER) {
+        /* Allow outer IP layer to do fragmentation if exceeds the size of mtu */
+        if (skb->len > dev->mtu) {
+            df &= ~htons(IP_DF);
+            tun_stats->tun_tx_fragmented++;
+        }
+    } else {
+#endif // V54_TUNNELMGR
 	if (skb->protocol == htons(ETH_P_IP)) {
 		df |= (old_iph->frag_off&htons(IP_DF));
 
@@ -792,6 +1690,9 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 		}
 	}
 #endif
+#if 1 // V54_TUNNELMGR
+    }
+#endif // V54_TUNNELMGR
 
 	if (tunnel->err_count > 0) {
 		if (time_before(jiffies,
@@ -811,6 +1712,9 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 		if (!new_skb) {
 			ip_rt_put(rt);
 			stats->tx_dropped++;
+#if 1 // V54_TUNNELMGR
+			tun_stats->tun_tx_dropped++;
+#endif // V54_TUNNELMGR
 			dev_kfree_skb(skb);
 			return NETDEV_TX_OK;
 		}
@@ -824,21 +1728,42 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	skb_reset_transport_header(skb);
 	skb_push(skb, gre_hlen);
 	skb_reset_network_header(skb);
+#if 1 // V54_TUNNELMGR
+	if ((skb->cb[0] != PACKET_GRE_L2FRAG) && (skb->cb[0] != PACKET_GRE_L3FRAG)) {
 	memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+	}
+#else
+	memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
+#endif // V54_TUNNELMGR
 	IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED |
 			      IPSKB_REROUTED);
 	skb_dst_drop(skb);
 	skb_dst_set(skb, &rt->u.dst);
 
+#if 1 // V54_TUNNELMGR
+	skb->tag_vid = 0;	/* zero out tag_vid in case packet comes from bridge */
+#endif // V54_TUNNELMGR
 	/*
 	 *	Push down and install the IPIP header.
 	 */
 
-	iph 			=	ip_hdr(skb);
-	iph->version		=	4;
+	iph             =	ip_hdr(skb);
+	iph->version    =	4;
 	iph->ihl		=	sizeof(struct iphdr) >> 2;
+#if 1 // V54_TUNNELMGR
+	iph->frag_off		=	(IS_RKS_GRE_TUNNEL(tunnel) ? htons(IP_DF) : df);
+	iph->id = 0;
+#else // V54_TUNNELMGR
 	iph->frag_off		=	df;
+#endif // V54_TUNNELMGR
+#if 1 // V54_TUNNELMGR
+	if(is_udp)
+		iph->protocol		=	IPPROTO_UDP;
+	else
+		iph->protocol		=	IPPROTO_GRE;
+#else // V54_TUNNELMGR
 	iph->protocol		=	IPPROTO_GRE;
+#endif // V54_TUNNELMGR
 	iph->tos		=	ipgre_ecn_encapsulate(tos, old_iph, skb);
 	iph->daddr		=	rt->rt_dst;
 	iph->saddr		=	rt->rt_src;
@@ -854,31 +1779,131 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 			iph->ttl = dst_metric(&rt->u.dst, RTAX_HOPLIMIT);
 	}
 
+#if 1 //V54_TUNNELMGR
+	if(is_udp)
+	{
+		udph = (struct udphdr *)(iph+1);
+		udph->source = htons(tunnel->parms.s_port);
+		udph->dest = htons(tunnel->parms.d_port);
+		udph->check = 0;
+		udph->len = htons(skb->len - sizeof(struct iphdr));
+		greh = (char *)(udph+1);
+	}
+	else
+	{
+		greh = (char *)(iph+1);
+	}
+#endif
+#if 1 // V54_TUNNELMGR
+	((__be16 *)(greh))[0] = tunnel->parms.o_flags;
+#else // V54_TUNNELMGR
 	((__be16 *)(iph + 1))[0] = tunnel->parms.o_flags;
-	((__be16 *)(iph + 1))[1] = (dev->type == ARPHRD_ETHER) ?
+#endif // V54_TUNNELMGR
+	((__be16 *)(greh))[1] = (dev->type == ARPHRD_ETHER) ?
 				   htons(ETH_P_TEB) : skb->protocol;
+#if 1 // V54_TUNNELMGR
+	ptr = (u32*)(((u8*)greh) + pure_gre_hlen - 4);
+
+#ifdef DEBUG_FRAG
+	printk("\n %s: skb->cb[0] %d PACKET_GRE_L2FRAG %d", __FUNCTION__, skb->cb[0], PACKET_GRE_L2FRAG);
+#endif
+	if (skb->cb[0] == PACKET_GRE_L2FRAG) {
+		u32 seq_num = (((skb->cb[4] << 24) & 0xFF000000) |
+					   ((skb->cb[3] << 16) & 0x00FF0000) |
+					   ((skb->cb[2] <<	8) & 0x0000FF00) |
+					   (skb->cb[1]		   & 0x000000FF));
+		*ptr = htonl(seq_num);
+#ifdef DEBUG_FRAG
+		printk("\n seq_num in pkt %d", *ptr);
+#endif
+		ptr--;
+	}
+#endif // V54_TUNNELMGR
 
 	if (tunnel->parms.o_flags&(GRE_KEY|GRE_CSUM|GRE_SEQ)) {
-		__be32 *ptr = (__be32*)(((u8*)iph) + tunnel->hlen - 4);
-
+#if 1 // V54_TUNNELMGR
+		if (skb->cb[0] != PACKET_GRE_L2FRAG) {
+#endif // V54_TUNNELMGR
 		if (tunnel->parms.o_flags&GRE_SEQ) {
-			++tunnel->o_seqno;
+			// ++tunnel->o_seqno;
+			tunnel->o_seqno = 0;
 			*ptr = htonl(tunnel->o_seqno);
 			ptr--;
 		}
+#if 1 // V54_TUNNELMGR
+		}
+#endif // V54_TUNNELMGR
 		if (tunnel->parms.o_flags&GRE_KEY) {
+#if 1 // V54_TUNNELMGR
+			u32 key = tunnel->parms.o_key;
+
+			if( is_keepalive ) key |= WT_GRE_KEEPALIVE;
+			if( crypto_enabled ) key |= WT_GRE_ENCRYPTION;
+			if( is_padding ) key |= WT_GRE_PADDING;
+			if (skb->cb[0] == PACKET_GRE_L2FRAG)
+				key |= WT_GRE_L2FRAG;
+
+			SKB_SET_FWD_POLICY(skb, &key);
+
+			*ptr = key;
+#else // V54_TUNNELMGR
 			*ptr = tunnel->parms.o_key;
+#endif // V54_TUNNELMGR
 			ptr--;
 		}
 		if (tunnel->parms.o_flags&GRE_CSUM) {
+#if 1 // V54_TUNNELMGR
+			// We do not perform checksum calculation but
+			// just use field for carrying wlan id inforamtion
+			int wlanid = 0;
+
+			if (skb->input_dev != NULL) {
+				if (skb->input_dev->wireless_handlers != NULL) { // determine if this pkt is coming from wireless interface
+					wlanid = ipgre_tunnel_get_wlanid(skb->input_dev);
+				}
+			}
+#if 0
+            else {
+				if (net_ratelimit())
+					printk("%s: skb->input_dev is NULL and wrong wlanid is embedded\n", __func__);
+			}
+#endif
+			*ptr = htonl(wlanid) & WT_GRE_WLANID;
+#else // V54_TUNNELMGR
 			*ptr = 0;
 			*(__sum16*)ptr = ip_compute_csum((void*)(iph+1), skb->len - sizeof(struct iphdr));
+#endif // V54_TUNNELMGR
 		}
 	}
 
 	nf_reset(skb);
 
+#if 1 // V54_TUNNELMGR
+    if( crypto_enabled ) {
+#if defined(CONFIG_CRYPTO_DEV_TALITOS) /* SEC with Talitos driver */
+		int rc = 0;
+        rc = ipgre_tunnel_cipher(tunnel->parms.tfm, tunnel->parms.psk, tunnel->parms.psk_bits,
+        tunnel->parms.iv, tunnel->parms.iv_len, ENCRYPT, skb, gre_hlen, is_padding, is_udp);
+		if(rc < 0)
+		{
+			/* increase drop counter */
+			stats->tx_dropped++;
+			tun_stats->tun_tx_dropped++;
+			dev_kfree_skb(skb);
+		}
+		return NETDEV_TX_OK;
+#else /* Kernel Crypto */
+        ipgre_tunnel_cipher(tunnel->parms.tfm, tunnel->parms.psk, tunnel->parms.psk_bits,
+        tunnel->parms.iv, tunnel->parms.iv_len, ENCRYPT, skb->data + gre_hlen, clen);
+#endif
+    }
+#endif // V54_TUNNELMGR
+
+#if 1 // V54_TUNNELMGR
+	IPTUNNEL_GRE_XMIT();
+#else
 	IPTUNNEL_XMIT();
+#endif // V54_TUNNELMGR
 	return NETDEV_TX_OK;
 
 tx_error_icmp:
@@ -886,9 +1911,24 @@ tx_error_icmp:
 
 tx_error:
 	stats->tx_errors++;
+#if 1 // V54_TUNNELMGR
+	tun_stats->tun_tx_errors++;
+#endif // V54_TUNNELMGR
 	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
+
+#if 1 // V54_TUNNELMGR
+int cavium_init_fraginfo_proc(void);
+
+#define PPP_HDR_SIZE		8
+#define IP_HDR_SIZE			20
+#define UDP_HDR_SIZE		8
+#define GRE_HDR_SIZE		16
+
+#define GRE_TUN_EXTRA_BYTES	(PPP_HDR_SIZE + IP_HDR_SIZE + UDP_HDR_SIZE + GRE_HDR_SIZE)
+#define FIX_BLOCK_PAD(m)	((m / 16) * 16) // 16-byte boundary
+#endif // V54_TUNNELMGR
 
 static int ipgre_tunnel_bind_dev(struct net_device *dev)
 {
@@ -896,8 +1936,18 @@ static int ipgre_tunnel_bind_dev(struct net_device *dev)
 	struct ip_tunnel *tunnel;
 	struct iphdr *iph;
 	int hlen = LL_MAX_HEADER;
-	int mtu = ETH_DATA_LEN;
+	int mtu;
 	int addend = sizeof(struct iphdr) + 4;
+	struct net_device *wan_dev = NULL;
+	uint32_t wan_mtu;
+
+	wan_dev = dev_get_by_name(&init_net, "br0");
+	if (wan_dev) {
+		wan_mtu = wan_dev->mtu;
+		dev_put(wan_dev);
+	} else {
+		wan_mtu = ETH_DATA_LEN;
+	}
 
 	tunnel = netdev_priv(dev);
 	iph = &tunnel->parms.iph;
@@ -926,7 +1976,7 @@ static int ipgre_tunnel_bind_dev(struct net_device *dev)
 
 	if (tdev) {
 		hlen = tdev->hard_header_len + tdev->needed_headroom;
-		mtu = tdev->mtu;
+		// mtu = tdev->mtu;
 	}
 	dev->iflink = tunnel->parms.link;
 
@@ -940,7 +1990,32 @@ static int ipgre_tunnel_bind_dev(struct net_device *dev)
 			addend += 4;
 	}
 	dev->needed_headroom = addend + hlen;
-	mtu -= dev->hard_header_len + addend;
+	mtu = wan_mtu - (dev->hard_header_len + addend);
+
+#if 1 // V54_TUNNELMGR
+	/* This parameter decides how to fragment a packet; Be liberal and
+	 * clear: Ethernet header 14 + VLAN header 4 + IP header 20 + GRE header
+	 * basic/key/seq 12, round up to nearest 16 bytes alignment is 64.
+	 */
+	dev->hard_header_len = 64;
+	dev->needed_headroom = 64;
+
+	/*
+	 * MTU decides the threshold when to fragment a packet; Be conservative:
+	 * Ruckus GRE interface supporting Transparent Ethernet Bridge (TEB) MTU
+	 * is Ethernet data length, minus IP header length, UDP header length,
+	 * GRE basic, key, rounded down to 16B alignment for optional encryption.
+	 */
+	mtu = FIX_BLOCK_PAD((wan_mtu - GRE_TUN_EXTRA_BYTES));
+
+#if 0 // V54_TUNNELMGR
+    //cavium_init_fraginfo_proc may trigger kernel exception
+    cavium_init_fraginfo_proc();
+#endif // V54_TUNNELMGR
+
+    /* Set device fragmentation inner payload flag */
+    dev->features   |= NETIF_F_FRAGINNER;
+#endif // V54_TUNNELMGR
 
 	if (mtu < 68)
 		mtu = 68;
@@ -948,6 +2023,39 @@ static int ipgre_tunnel_bind_dev(struct net_device *dev)
 	tunnel->hlen = addend;
 
 	return mtu;
+}
+
+int rks_gre_tunnel_frag (struct sk_buff *skb, struct net_device *dev,
+						 struct iphdr *iph, struct rks_gre_frag_dbg *rdbg)
+{
+#ifdef DEBUG_FRAG
+	printk("\n %s: skb->len %d dev->mtu %d gre_ip_fragment skb->protocol %x",
+			__FUNCTION__, skb->len, dev->mtu, skb->protocol);
+#endif
+	if (skb->protocol == ETH_P_IP) {
+		rdbg = rks_dbg_get_ent(iph->saddr, iph->daddr);
+		RKS_UPD_PKT_L3(rdbg);
+		RKS_UPD_INGR_PKTLEN(rdbg, skb->len);
+		gre_ip_fragment(skb, dev, rdbg);
+	} else if (skb->protocol == ETH_P_8021Q &&
+		ntohs(((struct vlan_ethhdr *)skb->mac_header)->h_vlan_encapsulated_proto) == ETH_P_IP) {
+		rdbg = rks_dbg_get_ent(iph->saddr, iph->daddr);
+		RKS_UPD_PKT_L3(rdbg);
+		RKS_UPD_INGR_PKTLEN(rdbg, skb->len);
+		gre_ip_fragment(skb, dev, rdbg);
+	} else {
+		struct ethhdr *l2h = (struct ethhdr *) skb->data;
+		rks_gre_frag_dbg_t *rdbg;
+		__u32 dmac = (l2h->h_dest[2] << 24 | l2h->h_dest[3] << 16 |
+						l2h->h_dest[4] <<  8 | l2h->h_dest[5]);
+		__u32 smac = (l2h->h_source[2] << 24 | l2h->h_source[3] << 16 |
+						l2h->h_source[4] <<  8 | l2h->h_source[5]);
+		rdbg = rks_dbg_get_ent(smac, dmac);
+		RKS_UPD_PKT_L2(rdbg);
+		RKS_UPD_INGR_PKTLEN(rdbg, skb->len);
+		gre_l2_fragment(skb, dev, rdbg);
+	}
+	return 0;
 }
 
 static int
@@ -958,6 +2066,10 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 	struct ip_tunnel *t;
 	struct net *net = dev_net(dev);
 	struct ipgre_net *ign = net_generic(net, ipgre_net_id);
+#if 1 // V54_TUNNELMGR
+	unsigned long last_rx;
+	struct timeval rx_idle;
+#endif // V54_TUNNELMGR
 
 	switch (cmd) {
 	case SIOCGETTUNNEL:
@@ -972,6 +2084,7 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 		if (t == NULL)
 			t = netdev_priv(dev);
 		memcpy(&p, &t->parms, sizeof(p));
+		p.flags = dev->flags; // used for tunnelmgr to access gre1 interface info
 		if (copy_to_user(ifr->ifr_ifru.ifru_data, &p, sizeof(p)))
 			err = -EFAULT;
 		break;
@@ -1028,6 +2141,11 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 				t->parms.o_key = p.o_key;
 				memcpy(dev->dev_addr, &p.iph.saddr, 4);
 				memcpy(dev->broadcast, &p.iph.daddr, 4);
+#if 1 // V54_TUNNELMGR
+				/* Have a copy of src/dst address in global area */
+				memcpy(&_wsgGlobal->saddr, &p.iph.saddr, 4);
+				memcpy(&_wsgGlobal->daddr, &p.iph.daddr, 4);
+#endif
 				ipgre_tunnel_link(ign, t);
 				netdev_state_change(dev);
 			}
@@ -1071,6 +2189,80 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 		unregister_netdevice(dev);
 		err = 0;
 		break;
+
+#if 1 // V54_TUNNELMGR
+		case SIOCGETTUNNRXIDLE:
+			last_rx = dev->last_rx;
+			jiffies_to_timeval(jiffies - last_rx, &rx_idle);
+			if (copy_to_user(ifr->ifr_ifru.ifru_data, &rx_idle, sizeof(rx_idle)))
+				err = -EFAULT;
+			break;
+
+		case SIOCSETTUNNID:
+			err = -EPERM;
+			if (!capable(CAP_NET_ADMIN))
+				goto done;
+			err = -EFAULT;
+			if (copy_from_user(&p, ifr->ifr_ifru.ifru_data, sizeof(p)))
+				goto done;
+
+            t = (struct ip_tunnel*)netdev_priv(dev);
+			t->parms.tid = _wsgGlobal->appl_tid[WSG_APPL_TUNNEL] = p.tid;
+			err = 0;
+			break;
+
+		case SIOCSETTUNNCRYPTO:
+			err = -EPERM;
+			if (!capable(CAP_NET_ADMIN))
+				goto done;
+			err = -EFAULT;
+			if (copy_from_user(&p, ifr->ifr_ifru.ifru_data, sizeof(p)))
+				goto done;
+
+			t = (struct ip_tunnel*)netdev_priv(dev);
+
+			t->parms.psk_bits =_wsgGlobal->psk_bits = p.psk_bits;
+			memcpy(_wsgGlobal->psk, p.psk, p.psk_bits/8);
+			memcpy(t->parms.psk, p.psk, p.psk_bits/8);
+
+			t->parms.iv_len = _wsgGlobal->iv_len = p.iv_len;
+			memcpy(_wsgGlobal->iv, p.iv, p.iv_len);
+			memcpy(t->parms.iv, p.iv, p.iv_len);
+			err = 0;
+			break;
+
+		case SIOCSETTUNNSK:
+			err = -EPERM;
+			if (!capable(CAP_NET_ADMIN))
+				goto done;
+			err = -EFAULT;
+			if (copy_from_user(&p, ifr->ifr_ifru.ifru_data, sizeof(p)))
+				goto done;
+
+			if (net_ratelimit())
+				printk("IP_GRE: create udp sock with src port %u and dest port %u\n", p.s_port, p.d_port);
+			_wsgGlobal->s_port = p.s_port;
+			_wsgGlobal->d_port = p.d_port;
+
+			t = (struct ip_tunnel*)netdev_priv(dev);
+			t->parms.d_port = p.d_port;
+			t->parms.s_port = p.s_port;
+
+			err = 0;
+			break;
+
+		case SIOCDELTUNNSK:
+			_wsgGlobal->d_port = 0;
+			t = (struct ip_tunnel*)netdev_priv(dev);
+			t->parms.d_port = 0;
+
+			err = 0;
+			break;
+
+		case SIOCSETTUNNSKOPT:
+			err = 0;
+			break;
+#endif
 
 	default:
 		err = -EINVAL;
@@ -1216,12 +2408,32 @@ static const struct net_device_ops ipgre_netdev_ops = {
 
 static void ipgre_tunnel_setup(struct net_device *dev)
 {
+    uint32_t wan_mtu;
+    struct net_device *wan_dev = NULL;
+
 	dev->netdev_ops		= &ipgre_netdev_ops;
-	dev->destructor 	= free_netdev;
+	dev->destructor     = free_netdev;
 
 	dev->type		= ARPHRD_IPGRE;
-	dev->needed_headroom 	= LL_MAX_HEADER + sizeof(struct iphdr) + 4;
-	dev->mtu		= ETH_DATA_LEN - sizeof(struct iphdr) - 4;
+	dev->needed_headroom    = LL_MAX_HEADER + sizeof(struct iphdr) + 4;
+	wan_dev = dev_get_by_name( &init_net, "br0" );
+	if (wan_dev) {
+		wan_mtu = wan_dev->mtu;
+		dev_put(wan_dev);
+	} else {
+		wan_mtu = ETH_DATA_LEN;
+	}
+
+#if 1 // V54_TUNNELMGR
+	/*
+	 * GRE interface MTU is Ethernet data length, minus IP header length,
+	 * GRE basic, csum, key, seq. In latest kerel 2.6.3x, this is made
+	 * per GRE tunnel flags. We don't need that complicated logic for now.
+	 */
+	dev->mtu		= FIX_BLOCK_PAD((wan_mtu - GRE_TUN_EXTRA_BYTES));
+#else
+	dev->mtu		= wan_mtu - sizeof(struct iphdr) - 4;
+#endif
 	dev->flags		= IFF_NOARP;
 	dev->iflink		= 0;
 	dev->addr_len		= 4;
@@ -1454,8 +2666,11 @@ static const struct net_device_ops ipgre_tap_netdev_ops = {
 	.ndo_init		= ipgre_tap_init,
 	.ndo_uninit		= ipgre_tunnel_uninit,
 	.ndo_start_xmit		= ipgre_tunnel_xmit,
-	.ndo_set_mac_address 	= eth_mac_addr,
-	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_set_mac_address    = eth_mac_addr,
+	.ndo_validate_addr  = eth_validate_addr,
+#if 1 // V54_TUNNELMGR
+	.ndo_do_ioctl		= ipgre_tunnel_ioctl,
+#endif // V54_TUNNELMGR
 	.ndo_change_mtu		= ipgre_tunnel_change_mtu,
 };
 
@@ -1465,7 +2680,7 @@ static void ipgre_tap_setup(struct net_device *dev)
 	ether_setup(dev);
 
 	dev->netdev_ops		= &ipgre_tap_netdev_ops;
-	dev->destructor 	= free_netdev;
+	dev->destructor     = free_netdev;
 
 	dev->iflink		= 0;
 	dev->features		|= NETIF_F_NETNS_LOCAL;
@@ -1483,6 +2698,12 @@ static int ipgre_newlink(struct net_device *dev, struct nlattr *tb[],
 	nt = netdev_priv(dev);
 	ipgre_netlink_parms(data, &nt->parms);
 
+#if 1 //V54_TUNNELMGR
+	/* Have a copy of src/dst address in global area */
+	memcpy(&_wsgGlobal->saddr, &nt->parms.iph.saddr, 4);
+	memcpy(&_wsgGlobal->daddr, &nt->parms.iph.daddr, 4);
+	printk("ipgre_newlink sa %08x da %08x\n", nt->parms.iph.saddr, nt->parms.iph.daddr);
+#endif // V54_TUNNELMGR
 	if (ipgre_tunnel_find(net, &nt->parms, dev->type))
 		return -EEXIST;
 
@@ -1499,6 +2720,29 @@ static int ipgre_newlink(struct net_device *dev, struct nlattr *tb[],
 
 	dev_hold(dev);
 	ipgre_tunnel_link(ign, nt);
+
+#if 1 //V54_TUNNELMGR
+	/* Create and store crypto tfm for each created GRE device */
+#if defined(CONFIG_CRYPTO_DEV_TALITOS) /* SEC with Talitos driver */
+	nt->parms.tfm = crypto_alloc_ablkcipher("cbc(aes)", 0, 0);
+
+	if (IS_ERR(nt->parms.tfm)) {
+		if (net_ratelimit())
+			printk(KERN_ERR "alg: ablkcipher: Failed to load transform for "
+				"%s: %ld\n", "cbc(aes)", PTR_ERR(nt->parms.tfm));
+		return PTR_ERR(nt->parms.tfm);
+	}
+#else /* Kernel Crypto */
+	nt->parms.tfm = crypto_alloc_blkcipher("cbc(aes)", 0, 0);
+
+	if (IS_ERR(nt->parms.tfm)) {
+        if (net_ratelimit())
+            printk(KERN_ERR "alg: blkcipher: Failed to load transform for "
+                "%s: %ld\n", "cbc(aes)", PTR_ERR(nt->parms.tfm));
+		return PTR_ERR(nt->parms.tfm);
+	}
+#endif
+#endif // V54_TUNNELMGR
 
 out:
 	return err;
@@ -1655,6 +2899,10 @@ static struct rtnl_link_ops ipgre_tap_ops __read_mostly = {
 	.fill_info	= ipgre_fill_info,
 };
 
+int cavium_init_fraginfo_proc(void);
+void rks_tunnel_mtu_proc_initialize(void);
+void rks_tunnel_mtu_proc_shutdown(void);
+
 /*
  *	And now the modules code and kernel interface.
  */
@@ -1682,6 +2930,26 @@ static int __init ipgre_init(void)
 	if (err < 0)
 		goto tap_ops_failed;
 
+#if 1 //V54_TUNNELMGR
+    /* Initialize netlink sock */
+    appl_sock = netlink_kernel_create( &init_net, NETLINK_IPGRE, 0, ipgre_cntl_pkt_wakeup, NULL, THIS_MODULE);
+    if (appl_sock == NULL) {
+        printk(KERN_ERR "ip_gre: failed to create netlink socket\n");
+    }
+
+    /* Initialize Global data */
+    _wsgGlobal = (WSG_GLOBAL *)kmalloc( sizeof(WSG_GLOBAL), GFP_KERNEL|__GFP_NOFAIL );
+    if( _wsgGlobal == NULL ) {
+		return WSG_ERROR;
+    } else {
+        memset( (void *)_wsgGlobal, 0, sizeof(WSG_GLOBAL) );
+    }
+    cavium_init_fraginfo_proc();
+    rks_tunnel_mtu_proc_initialize();
+    // Register function pointer in UDP stack for redirecting GRE over UDP packet into IPGRE module.
+    _udp_reg_ipgre_func(&ipgre_get_udp_port, &ipgre_rcv_from_udp);
+#endif // V54_TUNNELMGR
+
 out:
 	return err;
 
@@ -1696,11 +2964,22 @@ gen_device_failed:
 
 static void __exit ipgre_fini(void)
 {
+#if 1 //V54_TUNNELMGR
+	netlink_kernel_release(appl_sock);
+#endif // V54_TUNNELMGR
 	rtnl_link_unregister(&ipgre_tap_ops);
 	rtnl_link_unregister(&ipgre_link_ops);
 	unregister_pernet_gen_device(ipgre_net_id, &ipgre_net_ops);
 	if (inet_del_protocol(&ipgre_protocol, IPPROTO_GRE) < 0)
 		printk(KERN_INFO "ipgre close: can't remove protocol\n");
+#if 1 //V54_TUNNELMGR
+	//ipgre_delete_sock();
+	kfree(_wsgGlobal);
+    // remove registered func pointer from UDP stack
+    _udp_unreg_ipgre_func();
+#endif // V54_TUNNELMGR
+
+    rks_tunnel_mtu_proc_shutdown();
 }
 
 module_init(ipgre_init);

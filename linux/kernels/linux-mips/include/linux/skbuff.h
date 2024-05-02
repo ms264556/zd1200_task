@@ -5,6 +5,8 @@
  *		Alan Cox, <gw4pts@gw4pts.ampr.org>
  *		Florian La Roche, <rzsfl@rz.uni-sb.de>
  *
+ * 	    Copyright 2009 Freescale Semiconductor, Inc.
+ *
  *	This program is free software; you can redistribute it and/or
  *	modify it under the terms of the GNU General Public License
  *	as published by the Free Software Foundation; either version
@@ -39,7 +41,7 @@
 #define SKB_DATA_ALIGN(X)	(((X) + (SMP_CACHE_BYTES - 1)) & \
 				 ~(SMP_CACHE_BYTES - 1))
 #define SKB_WITH_OVERHEAD(X)	\
-	((X) - SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
+	((X) - SKB_DATA_ALIGN(sizeof(struct skb_shared_info_pointer)))
 #define SKB_MAX_ORDER(X, ORDER) \
 	SKB_WITH_OVERHEAD((PAGE_SIZE << (ORDER)) - (X))
 #define SKB_MAX_HEAD(X)		(SKB_MAX_ORDER((X), 0))
@@ -209,6 +211,11 @@ struct skb_shared_info {
 	void *		destructor_arg;
 };
 
+struct skb_shared_info_pointer {
+	struct skb_shared_info *info;
+};
+
+
 /* We divide dataref into two halves.  The higher 16 bits hold references
  * to the payload part of skb->data.  The lower 16 bits hold references to
  * the entire skb->data.  A clone of a headerless skb holds the length of
@@ -318,7 +325,9 @@ struct sk_buff {
 	struct sock		*sk;
 	ktime_t			tstamp;
 	struct net_device	*dev;
-
+#if 1 /* V54_BSP */
+	struct net_device	*input_dev;
+#endif
 	unsigned long		_skb_dst;
 #ifdef CONFIG_XFRM
 	struct	sec_path	*sp;
@@ -365,7 +374,15 @@ struct sk_buff {
 #ifdef CONFIG_BRIDGE_NETFILTER
 	struct nf_bridge_info	*nf_bridge;
 #endif
+#ifdef CONFIG_BRIDGE_VLAN
+	__u16			tag_priority:3,	/* 802.1p priority levels */
+				tag_cfi:1,	/* Canonical Format Indicator */
+				tag_vid:12;	/* VLAN identifier */
+#endif
 
+#ifdef CONFIG_GFAR_SKBUFF_RECYCLING
+	void		*skb_owner;
+#endif
 	int			iif;
 #ifdef CONFIG_NET_SCHED
 	__u16			tc_index;	/* traffic control index */
@@ -524,7 +541,7 @@ static inline unsigned char *skb_end_pointer(const struct sk_buff *skb)
 #endif
 
 /* Internal */
-#define skb_shinfo(SKB)	((struct skb_shared_info *)(skb_end_pointer(SKB)))
+#define skb_shinfo(SKB)	(((struct skb_shared_info_pointer *)(skb_end_pointer(SKB)))->info)
 
 static inline struct skb_shared_hwtstamps *skb_hwtstamps(struct sk_buff *skb)
 {
@@ -2010,12 +2027,12 @@ static inline void skb_init_secmark(struct sk_buff *skb)
 
 static inline void skb_set_queue_mapping(struct sk_buff *skb, u16 queue_mapping)
 {
-	skb->queue_mapping = queue_mapping;
+	skb->queue_mapping = queue_mapping + 1;
 }
 
 static inline u16 skb_get_queue_mapping(const struct sk_buff *skb)
 {
-	return skb->queue_mapping;
+	return skb->queue_mapping ? skb->queue_mapping - 1 : 0;
 }
 
 static inline void skb_copy_queue_mapping(struct sk_buff *to, const struct sk_buff *from)
@@ -2085,5 +2102,60 @@ static inline void skb_forward_csum(struct sk_buff *skb)
 }
 
 bool skb_partial_csum_set(struct sk_buff *skb, u16 start, u16 off);
+
+extern void skb_dump(struct sk_buff *skb);
+static inline void __skb_dump(struct sk_buff *skb)
+{
+#define BYTES_PER_LINE  16
+	char strbuf[BYTES_PER_LINE * 4], *ptr;
+	u16 i, j, byte;
+
+	/* Note the trick to print net_device->name taking advantage of
+	 * the fact that name is always the first field
+	 */
+	printk("Packet buffer dump, skb=%p\n", skb);
+	printk("====================================\n");
+	printk("dev                = %p (%s)\n"
+	       "input_dev          = %p (%s)\n"
+	       "len                = %d\n"
+	       "data_len           = %d\n"
+	       "mac_len            = %d\n"
+	       "hdr_len            = %d\n"
+	       "truesize           = %d\n"
+	       "headroom           = %d\n"
+	       "tailroom           = %d\n"
+	       "transport_header   = %p\n"
+	       "network_header     = %p\n"
+	       "mac_header         = %p\n"
+	       "head               = %p\n"
+	       "tail               = %p\n"
+	       "end                = %p\n"
+	       "data               = %p\n",
+	       skb->dev, skb->dev ? (char *)skb->dev : "",
+	       skb->input_dev, skb->input_dev ? (char *)skb->input_dev : "",
+	       skb->len, skb->data_len, skb->mac_len, skb->hdr_len,
+	       skb->truesize, skb_headroom(skb), skb_tailroom(skb),
+	       (unsigned char *)skb->transport_header,
+	       (unsigned char *)skb->network_header,
+	       (unsigned char *)skb->mac_header,
+	       (unsigned char *)skb->head,
+	       (unsigned char *)skb->tail,
+	       (unsigned char *)skb->end,
+	       (unsigned char *)skb->data);
+
+	byte = 0;
+	for (i = 0; i < (skb->len + BYTES_PER_LINE - 1) / BYTES_PER_LINE; i++) {
+		memset(strbuf, 0, sizeof(strbuf));
+		ptr = strbuf;
+		ptr += snprintf(ptr, sizeof(strbuf),
+		                "%04x: ", i * BYTES_PER_LINE);
+		for (j = 0; (j < BYTES_PER_LINE) && (byte < skb->len); j++) {
+			ptr += snprintf(ptr, (int)(strbuf + sizeof(strbuf) - ptr),
+			                "%02x ", skb->data[byte++]);
+		}
+		printk("%s\n", strbuf);
+	}
+}
+
 #endif	/* __KERNEL__ */
 #endif	/* _LINUX_SKBUFF_H */

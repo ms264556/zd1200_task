@@ -15,6 +15,14 @@ extern void     arp_send(int type, int ptype, __be32 dest_ip,
 			 struct net_device *dev, __be32 src_ip,
 			 const unsigned char *dest_hw,
 			 const unsigned char *src_hw, const unsigned char *th);
+extern void	rks_arp_send(int type, int ptype, __be32 dest_ip,
+			struct net_device *dev, __be32 src_ip,
+			const unsigned char *dest_hw, const unsigned char *src_hw,
+			const unsigned char *target_hw,
+			const unsigned char vlan_aware,
+			const unsigned short tag_priority,
+			const unsigned short tag_vid);
+
 extern int	arp_bind_neighbour(struct dst_entry *dst);
 extern int	arp_mc_map(__be32 addr, u8 *haddr, struct net_device *dev, int dir);
 extern void	arp_ifdown(struct net_device *dev);

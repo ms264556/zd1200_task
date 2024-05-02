@@ -23,6 +23,11 @@
 
 #include "br_private.h"
 
+#if defined(CONFIG_CI_WHITELIST) || defined (CONFIG_SOURCE_MAC_GUARD)
+extern int (*br_ci_filter_hook)(const struct sk_buff *, const struct net_bridge_port *,unsigned short );
+extern int br_ci_filter(const struct sk_buff *, const struct net_bridge_port *, const unsigned short);
+#endif /* CONFIG_CI_WHITELIST || CONFIG_SOURCE_MAC_GUARD */
+
 /*
  * Determine initial path cost based on speed.
  * using recommendations from 802.1d standard
@@ -32,7 +37,7 @@
 static int port_cost(struct net_device *dev)
 {
 	if (dev->ethtool_ops && dev->ethtool_ops->get_settings) {
-		struct ethtool_cmd ecmd = { .cmd = ETHTOOL_GSET, };
+		struct ethtool_cmd ecmd = { .cmd = (u32) ETHTOOL_GSET, };
 
 		if (!dev->ethtool_ops->get_settings(dev, &ecmd)) {
 			switch(ecmd.speed) {
@@ -131,26 +136,37 @@ static void del_nbp(struct net_bridge_port *p)
 	struct net_bridge *br = p->br;
 	struct net_device *dev = p->dev;
 
+
 	sysfs_remove_link(br->ifobj, dev->name);
+
+	/*
+	 * Ruckus: With VLAN-aware bridge, need to lock/unlock bottom half
+	 * handling throughout for better protection.
+	 */
+	spin_lock_bh(&br->lock);
 
 	dev_set_promiscuity(dev, -1);
 
-	spin_lock_bh(&br->lock);
 	br_stp_disable_port(p);
-	spin_unlock_bh(&br->lock);
 
 	br_ifinfo_notify(RTM_DELLINK, p);
 
 	br_fdb_delete_by_port(br, p, 1);
 
+#ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
+	br_ipdb_delete_by_port(br, dev->ifindex);
+	br_ipv6db_delete_by_port(br, dev->ifindex);
+#endif
+
 	list_del_rcu(&p->list);
 
 	rcu_assign_pointer(dev->br_port, NULL);
 
+	call_rcu(&p->rcu, destroy_nbp_rcu);
+	spin_unlock_bh(&br->lock);
+
 	kobject_uevent(&p->kobj, KOBJ_REMOVE);
 	kobject_del(&p->kobj);
-
-	call_rcu(&p->rcu, destroy_nbp_rcu);
 }
 
 /* called with RTNL */
@@ -163,6 +179,13 @@ static void del_br(struct net_bridge *br)
 	}
 
 	del_timer_sync(&br->gc_timer);
+
+#ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
+	br_ipdb_clear(br);
+	del_timer_sync(&br->ipdb_gc_timer);
+	br_ipv6db_clear(br);
+	del_timer_sync(&br->ipv6db_gc_timer);
+#endif
 
 	br_sysfs_delbr(br->dev);
 	unregister_netdevice(br->dev);
@@ -202,16 +225,62 @@ static struct net_device *new_bridge_dev(struct net *net, const char *name)
 	br->bridge_forward_delay = br->forward_delay = 15 * HZ;
 	br->topology_change = 0;
 	br->topology_change_detected = 0;
+#if 1 /* V54_BSP */
+	br->eapol_filter = 1; // default: do not forward eapol mcast frame
+#endif
 	br->ageing_time = 300 * HZ;
 
 	br_netfilter_rtable_init(br);
 
 	INIT_LIST_HEAD(&br->age_list);
 
+#ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
+	spin_lock_init(&br->ip_hash_lock);
+	INIT_LIST_HEAD(&br->ip_age_list);
+	spin_lock_init(&br->ipv6_hash_lock);
+	INIT_LIST_HEAD(&br->ipv6_age_list);
+	br->ip_ageing_time = IP_AGEING_INIT;
+	br->is_pif_enabled = 0;
+	br->pif_drop = 0;
+	br->pif_token_max = PIF_TOKEN_MAX_INIT;
+	br->pif_token_count = PIF_TOKEN_COUNT_INIT;
+	br->pif_token_timestamp = 0;
+	br->pif_proxy_arp_count = 0;
+	br->pif_directed_arp_count = 0;
+	br->pif_directed_arp = 0;
+	setup_timer(&br->ipdb_gc_timer, br_ipdb_cleanup, (unsigned long) br);
+	setup_timer(&br->ipv6db_gc_timer, br_ipv6db_cleanup, (unsigned long) br);
+#endif
+
+#ifdef CONFIG_BRIDGE_BR_MODE
+	br->br_mode = BR_BRIDGE_MODE_NORMAL;
+#endif
+#ifdef CONFIG_BRIDGE_LOOP_GUARD
+	br->mac_track.track_window = 0;
+	br->mac_track.flap_cnt = 0;
+	br->hostonly = 0; // initialized to zero for feature off.
+	br->hostonly_cnt = 0;
+	br->flap_threshold = FLAP_THRESHOLD;
+#endif
+
+#ifdef CONFIG_BRIDGE_MESH_PKT_FORWARDING_FILTER
+	br->pff_drop = 0;
+	br->skip_learning = 0;
+	br->drop_from_self = 0;
+#endif
+
 	br_stp_timer_init(br);
 
 	return dev;
 }
+
+#if 1 /* V54_BSP */
+int is_bridge_device(struct net_device *dev)
+{
+	return (dev->netdev_ops->ndo_start_xmit == br_dev_xmit) ? 1 : 0;
+}
+EXPORT_SYMBOL(is_bridge_device);
+#endif
 
 /* find an available port number */
 static int find_portno(struct net_bridge *br)
@@ -260,7 +329,9 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 	br_init_port(p);
 	p->state = BR_STATE_DISABLED;
 	br_stp_port_timer_init(p);
-
+#if 1 /* V54_BSP */
+	p->stp_forward_drop = 0;
+#endif
 	return p;
 }
 
@@ -310,7 +381,7 @@ int br_del_bridge(struct net *net, const char *name)
 	rtnl_lock();
 	dev = __dev_get_by_name(net, name);
 	if (dev == NULL)
-		ret =  -ENXIO; 	/* Could not find device */
+		ret =  -ENXIO; /* Could not find device */
 
 	else if (!(dev->priv_flags & IFF_EBRIDGE)) {
 		/* Attempt to delete non bridge device! */
@@ -403,7 +474,11 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 	if (err)
 		goto err0;
 
-	err = br_fdb_insert(br, p, dev->dev_addr);
+#ifdef BR_FDB_VLAN
+	err = br_fdb_insert(br, p, BR_ALL_VLAN, dev->dev_addr, 1);
+#else
+	err = br_fdb_insert(br, p, dev->dev_addr, 1);
+#endif
 	if (err)
 		goto err1;
 
@@ -478,3 +553,186 @@ restart:
 	rtnl_unlock();
 
 }
+
+#if defined(CONFIG_BRIDGE_BR_MODE) || defined(CONFIG_BRIDGE_LOOP_GUARD)
+int br_set_br_mode(struct net_bridge *br, int param, int value)
+{
+	switch (param) {
+#if defined(CONFIG_BRIDGE_BR_MODE)
+	case BR_BRIDGE_MODE_NORMAL:
+	case BR_BRIDGE_MODE_HOST_ONLY:
+		br->br_mode = param;
+		break;
+#endif
+#if defined(CONFIG_BRIDGE_LOOP_GUARD)
+	case BR_BRIDGE_MODE_SET_LOOP_HOLD:
+		BR_SET_LOOP_HOLD(value * HZ);
+		break;
+
+	case BR_BRIDGE_MODE_SET_FLAP_THRESHOLD:
+		br->flap_threshold = value;
+		break;
+#endif
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_BRIDGE_PORT_MODE
+int br_set_port_mode(struct net_bridge *br, int ifindex, int mode)
+{
+	struct net_device *dev;
+	struct net_bridge_port *p;
+
+	if (mode < 0 || mode > BR_PORT_MODE_MAX) {
+		return -EINVAL;
+	}
+
+	dev = dev_get_by_index(dev_net(br->dev), ifindex);
+	if (dev == NULL)
+		return -EINVAL;
+
+	p = dev->br_port;
+	if (!p || p->br != br) {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	if (p->port_mode != mode) {
+		p->port_mode = mode;
+	}
+
+	dev_put(dev);
+	return 0;
+}
+
+#if defined (CONFIG_SOURCE_MAC_GUARD) || \
+	defined(CONFIG_CI_WHITELIST) || \
+	defined(CONFIG_ANTI_SPOOF)
+int br_set_port_ci_state(struct net_bridge * br,int ifidx ,int state)
+{
+	struct net_device * dev;
+	struct net_bridge_port * p;
+
+	if( state < BR_PORT_CI_INIT || state > BR_PORT_CI_ISOLATION)
+		return -EINVAL;
+
+	dev = dev_get_by_index(dev_net(br->dev), ifidx);
+	if(dev == NULL)
+	return -EINVAL;
+
+	p = dev->br_port;
+	if( !p || p->br != br ) {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	if( p->port_ci_state != state)
+		p->port_ci_state = state;
+
+	dev_put(dev);
+	return 0;
+}
+#endif
+#endif
+
+#ifdef CONFIG_BRIDGE_MESH_PKT_FORWARDING_FILTER
+int br_clear_macs(struct net_bridge *br)
+{
+	br_fdb_clear(br);
+	return 0;
+}
+
+int br_add_mac(struct net_bridge *br, int ifindex, unsigned char *mac)
+{
+	struct net_device *dev;
+	struct net_bridge_port *p;
+	int ret;
+
+	dev = dev_get_by_index(dev_net(br->dev), ifindex);
+	if (dev == NULL)
+		return -EINVAL;
+
+	p = dev->br_port;
+	if (p == NULL) {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	printk( FMT_MAC "\n", ARG_MAC(mac));
+
+	ret = br_fdb_insert(br,p,0,mac,0);
+	dev_put(dev);
+	return ret;
+}
+
+int br_set_learning(struct net_bridge *br, int ifindex, int learning)
+{
+	struct net_device *dev;
+	struct net_bridge_port *p;
+
+	dev = dev_get_by_index(dev_net(br->dev), ifindex);
+	if (dev == NULL)
+		return -EINVAL;
+
+	p = dev->br_port;
+	if (p == NULL) {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	spin_lock_bh(&br->lock);
+	p->is_disable_learning = !learning;
+	spin_unlock_bh(&br->lock);
+
+	dev_put(dev);
+	return 0;
+}
+
+int br_set_pff(struct net_bridge *br, int ifindex, int pff)
+{
+	struct net_device *dev;
+	struct net_bridge_port *p;
+
+	dev = dev_get_by_index(dev_net(br->dev), ifindex);
+	if (dev == NULL)
+		return -EINVAL;
+
+	p = dev->br_port;
+	if (p == NULL) {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	spin_lock_bh(&br->lock);
+	p->is_pff = pff;
+	spin_unlock_bh(&br->lock);
+
+	dev_put(dev);
+	return 0;
+}
+#endif
+
+#if 1 /* V54_BSP */
+int br_set_port_stp_forward_drop(struct net_bridge *br, int ifindex, int drop)
+{
+	struct net_device *dev;
+	struct net_bridge_port *p;
+
+	dev = dev_get_by_index(dev_net(br->dev), ifindex);
+	if (dev == NULL)
+		return -EINVAL;
+
+	p = dev->br_port;
+	if (!p || p->br != br) {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	p->stp_forward_drop = drop;
+	dev_put(dev);
+	return 0;
+}
+#endif

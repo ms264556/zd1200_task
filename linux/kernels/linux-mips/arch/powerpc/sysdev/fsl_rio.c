@@ -1,7 +1,7 @@
 /*
  * Freescale MPC85xx/MPC86xx RapidIO support
  *
- * Copyright (C) 2007, 2008 Freescale Semiconductor, Inc.
+ * Copyright (C) 2007-2010 Freescale Semiconductor, Inc.
  * Zhang Wei <wei.zhang@freescale.com>
  *
  * Copyright 2005 MontaVista Software, Inc.
@@ -198,13 +198,15 @@ static int fsl_rio_doorbell_send(struct rio_mport *mport,
 		out_be16(priv->dbell_win, data);
 		break;
 	case RIO_PHY_SERIAL:
-		/* In the serial version silicons, such as MPC8548, MPC8641,
-		 * below operations is must be.
-		 */
-		out_be32(&priv->msg_regs->odmr, 0x00000000);
+		/* busy wait, replace with spin_event_timeout() later */
+		while (in_be32(&priv->msg_regs->odsr) & 0x4) {
+			cpu_relax();
+		}
+		out_be32(&priv->msg_regs->odsr, 0x1602);
 		out_be32(&priv->msg_regs->odretcr, 0x00000004);
 		out_be32(&priv->msg_regs->oddpr, destid << 16);
-		out_be32(&priv->msg_regs->oddatr, data);
+		out_be32(&priv->msg_regs->oddatr, data | 0x20000000);
+		out_be32(&priv->msg_regs->odmr, 0x00000000);
 		out_be32(&priv->msg_regs->odmr, 0x00000001);
 		break;
 	}

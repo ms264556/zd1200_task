@@ -514,11 +514,11 @@ static inline unsigned int run_filter(struct sk_buff *skb, struct sock *sk,
 {
 	struct sk_filter *filter;
 
-	rcu_read_lock_bh();
+	rcu_read_lock();
 	filter = rcu_dereference(sk->sk_filter);
 	if (filter != NULL)
 		res = sk_run_filter(skb, filter->insns, filter->len);
-	rcu_read_unlock_bh();
+	rcu_read_unlock();
 
 	return res;
 }
@@ -605,10 +605,21 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 	sll->sll_hatype = dev->type;
 	sll->sll_protocol = skb->protocol;
 	sll->sll_pkttype = skb->pkt_type;
+#ifdef V54_SOCK_IN_IFINDEX
+	if ( sock_flag(sk, SOCK_IN_IFINDEX) && skb->input_dev ) {
+		// if sock_flag SOCK_IN_IFINDEX set, pass up input device index
+		sll->sll_ifindex = skb->input_dev->ifindex;
+#if 0
+		printk(" ... %d:%s %s(%d)->(%s)%d\n", __LINE__, __FUNCTION__, dev->name, dev->ifindex, skb->input_dev->name, sll->sll_ifindex);
+#endif
+	} else
+#endif
+	{
 	if (unlikely(po->origdev))
 		sll->sll_ifindex = orig_dev->ifindex;
 	else
 		sll->sll_ifindex = dev->ifindex;
+	}
 
 	sll->sll_halen = dev_parse_header(skb, sll->sll_addr);
 
@@ -1072,7 +1083,9 @@ static int packet_snd(struct socket *sock,
 	__be16 proto;
 	unsigned char *addr;
 	int ifindex, err, reserve = 0;
-
+#ifdef V54_SOCK_OUT_IFINDEX
+	struct net_device *orig_dev = NULL;
+#endif
 	/*
 	 *	Get and verify the address.
 	 */
@@ -1119,9 +1132,36 @@ static int packet_snd(struct socket *sock,
 	skb_reset_network_header(skb);
 
 	err = -EINVAL;
-	if (sock->type == SOCK_DGRAM &&
-	    dev_hard_header(skb, dev, ntohs(proto), addr, NULL, len) < 0)
-		goto out_free;
+	if (sock->type == SOCK_DGRAM) {
+		if (dev_hard_header(skb, dev, ntohs(proto), addr, NULL, len) < 0)
+			goto out_free;
+	} else {
+		/* Advance skb->data pointer to make sure skb->network_header exactly pointing to network header after data copied */
+		skb->data -= dev->hard_header_len;
+		skb->tail = skb->data;
+	}
+	skb_reset_mac_header(skb); /* Make sure skb->mac_header is set */
+
+#ifdef V54_SOCK_OUT_IFINDEX
+	if ( sock_flag(sk, SOCK_OUT_IFINDEX) ) {
+		// if sock_flag SOCK_OUT_IFINDEX set, force packet to that interface
+		orig_dev = dev;
+		dev = dev_get_by_index(sock_net(sk), sk->sk_outifindex);
+#if 0
+		{
+			struct sockaddr_ll *sll = (struct sockaddr_ll*)skb->cb;
+			printk("OUT_IFINDEX: orig ... %d:%s %s(%d)->(%s)%d\n", __LINE__, __FUNCTION__, orig_dev->name, orig_dev->ifindex, skb->input_dev->name, sll->sll_ifindex);
+			if( dev == NULL )
+				printk( "OUT_IFINDEX: target %d:%s dev == NULL\n", __LINE__, __FUNCTION__);
+			else
+				printk( "OUT_IFINDEX: target ... %d:%s %s(%d)->(%s)%d\n", __LINE__, __FUNCTION__, dev->name, dev->ifindex, skb->input_dev->name, sll->sll_ifindex);
+		}
+#endif
+		err = -ENXIO;
+		if (dev == NULL)
+			goto out_free;
+	}
+#endif
 
 	/* Returns -EFAULT on error */
 	err = memcpy_fromiovec(skb_put(skb, len), msg->msg_iov, len);
@@ -1142,6 +1182,11 @@ static int packet_snd(struct socket *sock,
 
 	dev_put(dev);
 
+#ifdef V54_SOCK_OUT_IFINDEX
+	if (orig_dev)
+		dev_put(orig_dev);
+#endif
+
 	return len;
 
 out_free:
@@ -1149,6 +1194,11 @@ out_free:
 out_unlock:
 	if (dev)
 		dev_put(dev);
+#ifdef V54_SOCK_OUT_IFINDEX
+	if (orig_dev)
+		dev_put(orig_dev);
+#endif
+
 out:
 	return err;
 }

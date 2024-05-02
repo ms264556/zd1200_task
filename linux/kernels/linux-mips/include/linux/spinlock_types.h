@@ -25,6 +25,10 @@ typedef struct {
 #ifdef CONFIG_DEBUG_SPINLOCK
 	unsigned int magic, owner_cpu;
 	void *owner;
+#if 1 /* V54_BSP */
+	const char *file[3] ;
+	uint32_t line[3] ;
+#endif
 #endif
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map dep_map;
@@ -41,6 +45,10 @@ typedef struct {
 #ifdef CONFIG_DEBUG_SPINLOCK
 	unsigned int magic, owner_cpu;
 	void *owner;
+#if 1 /* V54_BSP */
+	const char *file[3] ;
+	uint32_t line[3] ;
+#endif
 #endif
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map dep_map;
@@ -68,12 +76,16 @@ typedef struct {
 	(spinlock_t)	{	.raw_lock = __RAW_SPIN_LOCK_UNLOCKED,	\
 				.magic = SPINLOCK_MAGIC,		\
 				.owner = SPINLOCK_OWNER_INIT,		\
+				.file[0] = __FILE__,			\
+				.line[0] = __LINE__,                       \
 				.owner_cpu = -1,			\
 				SPIN_DEP_MAP_INIT(lockname) }
 #define __RW_LOCK_UNLOCKED(lockname)					\
 	(rwlock_t)	{	.raw_lock = __RAW_RW_LOCK_UNLOCKED,	\
 				.magic = RWLOCK_MAGIC,			\
 				.owner = SPINLOCK_OWNER_INIT,		\
+				.file[0] = __FILE__,			\
+				.line[0] = __LINE__,                       \
 				.owner_cpu = -1,			\
 				RW_DEP_MAP_INIT(lockname) }
 #else

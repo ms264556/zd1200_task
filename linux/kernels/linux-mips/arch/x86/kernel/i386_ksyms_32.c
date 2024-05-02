@@ -1,3 +1,4 @@
+#include <linux/init.h>
 #include <linux/module.h>
 
 #include <asm/checksum.h>
@@ -36,3 +37,6 @@ EXPORT_SYMBOL(strstr);
 
 EXPORT_SYMBOL(csum_partial);
 EXPORT_SYMBOL(empty_zero_page);
+
+/* for jardwifi to get command line */
+EXPORT_SYMBOL(saved_command_line);

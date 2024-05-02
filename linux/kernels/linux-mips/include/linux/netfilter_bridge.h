@@ -68,6 +68,7 @@ static inline unsigned int nf_bridge_encap_header_len(const struct sk_buff *skb)
 	}
 }
 
+#ifndef CONFIG_BRIDGE_VLAN
 /* This is called by the IP fragmenting code and it ensures there is
  * enough room for the encapsulating header (if there is one). */
 static inline unsigned int nf_bridge_pad(const struct sk_buff *skb)
@@ -76,6 +77,16 @@ static inline unsigned int nf_bridge_pad(const struct sk_buff *skb)
 		return nf_bridge_encap_header_len(skb);
 	return 0;
 }
+#else
+/* This is called by the IP fragmenting code and it ensures there is
+ * enough room for the encapsulating header (if there is one). */
+static inline unsigned int nf_bridge_pad(const struct sk_buff *skb)
+{
+	if (skb->nf_bridge)
+		return nf_bridge_encap_header_len(skb) + (skb->mac_len - ETH_HLEN);
+	return 0;
+}
+#endif
 
 struct bridge_skb_cb {
 	union {

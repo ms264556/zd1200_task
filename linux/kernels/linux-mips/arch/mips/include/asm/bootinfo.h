@@ -69,6 +69,24 @@
 #define MACH_DEXXON_GDIUM2F10  5
 #define MACH_LOONGSON_END      6
 
+#if defined(V54_BSP)
+/*
+ * Atheros ar531x
+ */
+#define MACH_ATHEROS_UNUSED     0
+#define MACH_ATHEROS_AP30       1       /* AP30 */
+#define MACH_ATHEROS_AP33       2       /* AP33 */
+#define MACH_ATHEROS_AP38       3       /* AP38 */
+#define MACH_ATHEROS_AP43       4       /* AP43 */
+#define MACH_ATHEROS_AP48       5       /* AP48 */
+#define MACH_ATHEROS_PB32       6       /* PB32 */
+
+/*
+ * Atheros ar7100
+ */
+#define MACH_ATHEROS_AP81       1
+#endif
+
 #define CL_SIZE			COMMAND_LINE_SIZE
 
 extern char *system_type;

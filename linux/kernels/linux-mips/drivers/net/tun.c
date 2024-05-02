@@ -72,47 +72,8 @@
 /* Uncomment to enable debugging */
 /* #define TUN_DEBUG 1 */
 
-#ifdef TUN_DEBUG
-static int debug;
-
-#define DBG  if(tun->debug)printk
-#define DBG1 if(debug==2)printk
-#else
-#define DBG( a... )
-#define DBG1( a... )
-#endif
-
-#define FLT_EXACT_COUNT 8
-struct tap_filter {
-	unsigned int    count;    /* Number of addrs. Zero means disabled */
-	u32             mask[2];  /* Mask of the hashed addrs */
-	unsigned char	addr[FLT_EXACT_COUNT][ETH_ALEN];
-};
-
-struct tun_file {
-	atomic_t count;
-	struct tun_struct *tun;
-	struct net *net;
-};
 
 struct tun_sock;
-
-struct tun_struct {
-	struct tun_file		*tfile;
-	unsigned int 		flags;
-	uid_t			owner;
-	gid_t			group;
-
-	struct net_device	*dev;
-	struct fasync_struct	*fasync;
-
-	struct tap_filter       txflt;
-	struct socket		socket;
-
-#ifdef TUN_DEBUG
-	int debug;
-#endif
-};
 
 struct tun_sock {
 	struct sock		sk;
@@ -352,7 +313,12 @@ static netdev_tx_t tun_net_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct tun_struct *tun = netdev_priv(dev);
 
-	DBG(KERN_INFO "%s: tun_net_xmit %d\n", tun->dev->name, skb->len);
+#ifdef RKS_TUBE_SUPPORT
+	if (tun->tube.func && tun->tube.func(dev, skb, tun->tube.opaque))
+		return 0;
+
+	DBG(KERN_INFO "%s: tun_net_xmit %d\n", dev->name, skb->len);
+#endif
 
 	/* Drop packet if interface is not attached */
 	if (!tun->tfile)
@@ -596,6 +562,10 @@ static __inline__ ssize_t tun_get_user(struct tun_struct *tun,
 	} else if (tun->flags & TUN_NOCHECKSUM)
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
+#ifdef RKS_TUBE_SUPPORT
+	skb->dev = tun->dev;
+#endif
+
 	switch (tun->flags & TUN_TYPE_MASK) {
 	case TUN_TUN_DEV:
 		if (tun->flags & TUN_NO_PI) {
@@ -615,7 +585,6 @@ static __inline__ ssize_t tun_get_user(struct tun_struct *tun,
 
 		skb_reset_mac_header(skb);
 		skb->protocol = pi.proto;
-		skb->dev = tun->dev;
 		break;
 	case TUN_TAP_DEV:
 		skb->protocol = eth_type_trans(skb, tun->dev);
@@ -654,6 +623,10 @@ static __inline__ ssize_t tun_get_user(struct tun_struct *tun,
 		skb_shinfo(skb)->gso_type |= SKB_GSO_DODGY;
 		skb_shinfo(skb)->gso_segs = 0;
 	}
+
+#ifdef RKS_TUBE_DEBUG
+	if (tun->tube && tun->tube(tun->dev, skb, NULL));
+#endif
 
 	netif_rx_ni(skb);
 
@@ -1458,6 +1431,23 @@ static const struct ethtool_ops tun_ethtool_ops = {
 	.set_rx_csum	= tun_set_rx_csum
 };
 
+#ifdef RKS_TUBE_SUPPORT
+void tun_tube_setup(struct net_device *dev, void *func, void *opaque)
+{
+	struct tun_struct *tun = netdev_priv(dev);
+
+	tun->tube.func = func;
+	tun->tube.opaque = opaque;
+}
+
+void tun_tube_clean(struct net_device *dev)
+{
+	struct tun_struct *tun = netdev_priv(dev);
+
+	tun->tube.func = NULL;
+	tun->tube.opaque = NULL;
+}
+#endif
 
 static int __init tun_init(void)
 {
@@ -1496,3 +1486,7 @@ MODULE_DESCRIPTION(DRV_DESCRIPTION);
 MODULE_AUTHOR(DRV_COPYRIGHT);
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_MISCDEV(TUN_MINOR);
+#ifdef RKS_TUBE_SUPPORT
+EXPORT_SYMBOL(tun_tube_setup);
+EXPORT_SYMBOL(tun_tube_clean);
+#endif

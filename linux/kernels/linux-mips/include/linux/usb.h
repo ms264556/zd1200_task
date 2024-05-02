@@ -880,6 +880,7 @@ struct usb_driver {
 	struct usbdrv_wrap drvwrap;
 	unsigned int no_dynamic_id:1;
 	unsigned int supports_autosuspend:1;
+	unsigned int disable_hub_initiated_lpm:1;
 	unsigned int soft_unbind:1;
 };
 #define	to_usb_driver(d) container_of(d, struct usb_driver, drvwrap.driver)
@@ -949,6 +950,18 @@ static inline int usb_register(struct usb_driver *driver)
 	return usb_register_driver(driver, THIS_MODULE, KBUILD_MODNAME);
 }
 extern void usb_deregister(struct usb_driver *);
+
+/**
+ * module_usb_driver() - Helper macro for registering a USB driver
+ * @__usb_driver: usb_driver struct
+ *
+ * Helper macro for USB drivers which do not do anything special in module
+ * init/exit. This eliminates a lot of boilerplate. Each module may only
+ * use this macro once, and calling it replaces module_init() and module_exit()
+ */
+#define module_usb_driver(__usb_driver) \
+	module_driver(__usb_driver, usb_register, \
+		       usb_deregister)
 
 extern int usb_register_device_driver(struct usb_device_driver *,
 			struct module *);
@@ -1575,6 +1588,20 @@ usb_maxpacket(struct usb_device *udev, int pipe, int is_out)
 
 /* ----------------------------------------------------------------------- */
 
+/* translate USB error codes to codes user space understands */
+static inline int usb_translate_errors(int error_code)
+{
+	switch (error_code) {
+	case 0:
+	case -ENOMEM:
+	case -ENODEV:
+	case -EOPNOTSUPP:
+		return error_code;
+	default:
+		return -EIO;
+	}
+}
+
 /* Events from the usb core */
 #define USB_DEVICE_ADD		0x0001
 #define USB_DEVICE_REMOVE	0x0002
@@ -1582,6 +1609,31 @@ usb_maxpacket(struct usb_device *udev, int pipe, int is_out)
 #define USB_BUS_REMOVE		0x0004
 extern void usb_register_notify(struct notifier_block *nb);
 extern void usb_unregister_notify(struct notifier_block *nb);
+
+
+/**
+  * USB_VENDOR_AND_INTERFACE_INFO - describe a specific usb vendor with a class of usb interfaces
+  * @vend: the 16 bit USB Vendor ID
+  * @cl: bInterfaceClass value
+  * @sc: bInterfaceSubClass value
+  * @pr: bInterfaceProtocol value
+  *
+  * This macro is used to create a struct usb_device_id that matches a
+  * specific vendor with a specific class of interfaces.
+  *
+  * This is especially useful when explicitly matching devices that have
+  * vendor specific bDeviceClass values, but standards-compliant interfaces.
+*/
+
+#define USB_VENDOR_AND_INTERFACE_INFO(vend, cl, sc, pr) \
+         .match_flags = USB_DEVICE_ID_MATCH_INT_INFO \
+                 | USB_DEVICE_ID_MATCH_VENDOR, \
+         .idVendor = (vend), \
+         .bInterfaceClass = (cl), \
+         .bInterfaceSubClass = (sc), \
+         .bInterfaceProtocol = (pr)
+
+
 
 #ifdef DEBUG
 #define dbg(format, arg...) printk(KERN_DEBUG "%s: " format "\n" , \

@@ -141,6 +141,11 @@ struct sock_common {
 #endif
 };
 
+#if 1 /* V54_BSP */
+#define V54_SOCK_OUT_IFINDEX 1
+#define V54_SOCK_IN_IFINDEX 1
+#endif
+
 /**
   *	struct sock - network layer representation of sockets
   *	@__sk_common: shared layout with inet_timewait_sock
@@ -301,6 +306,9 @@ struct sock {
   	int			(*sk_backlog_rcv)(struct sock *sk,
 						  struct sk_buff *skb);  
 	void                    (*sk_destruct)(struct sock *sk);
+#ifdef V54_SOCK_OUT_IFINDEX
+	int			sk_outifindex;
+#endif
 };
 
 /*
@@ -497,6 +505,12 @@ enum sock_flags {
 	SOCK_RCVTSTAMPNS, /* %SO_TIMESTAMPNS setting */
 	SOCK_LOCALROUTE, /* route locally only, %SO_DONTROUTE setting */
 	SOCK_QUEUE_SHRUNK, /* write queue has been shrunk recently */
+#ifdef V54_SOCK_IN_IFINDEX
+	SOCK_IN_IFINDEX, /* return ifindex input device*/
+#endif
+#ifdef V54_SOCK_OUT_IFINDEX
+	SOCK_OUT_IFINDEX, /* return ifindex output device*/
+#endif
 	SOCK_TIMESTAMPING_TX_HARDWARE,  /* %SOF_TIMESTAMPING_TX_HARDWARE */
 	SOCK_TIMESTAMPING_TX_SOFTWARE,  /* %SOF_TIMESTAMPING_TX_SOFTWARE */
 	SOCK_TIMESTAMPING_RX_HARDWARE,  /* %SOF_TIMESTAMPING_RX_HARDWARE */

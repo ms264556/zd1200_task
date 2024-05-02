@@ -312,6 +312,14 @@ extern int proc_dosoftlockup_thresh(struct ctl_table *table, int write,
 				    size_t *lenp, loff_t *ppos);
 extern unsigned int  softlockup_panic;
 extern int softlockup_thresh;
+
+#if defined(CONFIG_AR531X_WATCHDOG) || defined(CONFIG_BOOKE_WDT)
+// use SOFT_WATCHDOG for both AR531X and AR7100
+#define V54_SOFT_WATCHDOG 1
+#else
+#undef V54_SOFT_WATCHDOG
+#endif
+
 #else
 static inline void softlockup_tick(void)
 {
@@ -320,6 +328,23 @@ static inline void touch_softlockup_watchdog(void)
 {
 }
 static inline void touch_all_softlockup_watchdogs(void)
+{
+}
+#undef V54_SOFT_WATCHDOG
+#endif
+
+#ifdef V54_SOFT_WATCHDOG
+extern void touch_wdt_timestamp(void);
+extern void touch_hw_wdt_ts(void);
+extern void _soft_wdt_stop(int yes_no);
+#else
+static inline void touch_wdt_timestamp(void)
+{
+}
+static inline void touch_hw_wdt_ts(void)
+{
+}
+static inline void _soft_wdt_stop(int yes_no)
 {
 }
 #endif

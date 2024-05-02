@@ -1663,10 +1663,13 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 	/* The OOM killer will not help higher order allocs */
 	if (order > PAGE_ALLOC_COSTLY_ORDER && !(gfp_mask & __GFP_NOFAIL))
 		goto out;
-
+#if defined(NAR5520)
+	extern void v54_oom_killer(void);
+	v54_oom_killer();
+#else
 	/* Exhausted what can be done so it's blamo time */
 	out_of_memory(zonelist, gfp_mask, order);
-
+#endif
 out:
 	clear_zonelist_oom(zonelist, gfp_mask);
 	return page;

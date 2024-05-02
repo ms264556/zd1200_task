@@ -29,7 +29,11 @@ static int pause_on_oops;
 static int pause_on_oops_flag;
 static DEFINE_SPINLOCK(pause_on_oops_lock);
 
-int panic_timeout;
+int panic_timeout = 0;
+
+#if defined(NAR5520)
+extern int oops_occurred;
+#endif
 
 ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
 
@@ -44,6 +48,12 @@ static long no_blink(long time)
 long (*panic_blink)(long time);
 EXPORT_SYMBOL(panic_blink);
 
+#if defined(V54_BSP)
+//#endif
+#endif
+#if 1 /* V54_BSP */
+int machine_paniced = 0;
+#endif
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -58,6 +68,16 @@ NORET_TYPE void panic(const char * fmt, ...)
 	va_list args;
 	long i;
 
+#if 1 /* V54_BSP */
+  machine_paniced = 1;
+#endif
+
+
+#if defined(NAR5520)
+    if (oops_occurred)
+	return;
+#endif
+//#endif
 	/*
 	 * It's possible to come here directly from a panic-assertion and
 	 * not have preempt disabled. Some functions called from here want
@@ -115,6 +135,10 @@ NORET_TYPE void panic(const char * fmt, ...)
 		 */
 		emergency_restart();
 	}
+#if 1 /* V54_BSP */
+	printk(KERN_EMERG "Rebooting now ...\n\r");
+	emergency_restart();
+#endif
 #ifdef __sparc__
 	{
 		extern int stop_a_enabled;

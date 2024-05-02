@@ -20,6 +20,8 @@
  *		Andi Kleen	:	slabified it.
  *		Robert Olsson	:	Removed skb_head_pool
  *
+ * 	Copyright 2009-2010 Freescale Semiconductor, Inc.
+ *
  *	NOTE:
  *		The __skb_ routines should be called with interrupts
  *	disabled, or you better be *real* sure that the operation is atomic
@@ -70,8 +72,13 @@
 
 #include "kmap_skb.h"
 
+#ifdef CONFIG_GFAR_SKBUFF_RECYCLING
+extern int gfar_recycle_skb(struct sk_buff *skb);
+#endif
+
 static struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;
+static struct kmem_cache *skbuff_shared_cache __read_mostly;
 
 static void sock_pipe_buf_release(struct pipe_inode_info *pipe,
 				  struct pipe_buffer *buf)
@@ -185,10 +192,14 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 		goto out;
 
 	size = SKB_DATA_ALIGN(size);
-	data = kmalloc_node_track_caller(size + sizeof(struct skb_shared_info),
+	data = kmalloc_node_track_caller(size + sizeof(struct skb_shared_info_pointer),
 			gfp_mask, node);
 	if (!data)
 		goto nodata;
+
+	shinfo = kmem_cache_alloc(skbuff_shared_cache, gfp_mask);
+	if (!shinfo)
+		goto noshinfo;
 
 	/*
 	 * Only clear those fields we need to clear, not those that we will
@@ -209,7 +220,7 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 #endif
 
 	/* make sure we initialize shinfo sequentially */
-	shinfo = skb_shinfo(skb);
+	skb_shinfo(skb) = shinfo;
 	atomic_set(&shinfo->dataref, 1);
 	shinfo->nr_frags  = 0;
 	shinfo->gso_size = 0;
@@ -233,6 +244,8 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	}
 out:
 	return skb;
+noshinfo:
+	kfree(data);
 nodata:
 	kmem_cache_free(cache, skb);
 	skb = NULL;
@@ -350,6 +363,7 @@ static void skb_release_data(struct sk_buff *skb)
 		if (skb_has_frags(skb))
 			skb_drop_fraglist(skb);
 
+		kmem_cache_free(skbuff_shared_cache, skb_shinfo(skb));
 		kfree(skb->head);
 	}
 }
@@ -394,6 +408,9 @@ static void skb_release_head_state(struct sk_buff *skb)
 #ifdef CONFIG_XFRM
 	secpath_put(skb->sp);
 #endif
+#if 1 /* defined(V54_BSP) */
+	skb->input_dev = NULL;
+#endif
 	if (skb->destructor) {
 		WARN_ON(in_irq());
 		skb->destructor(skb);
@@ -432,6 +449,10 @@ static void skb_release_all(struct sk_buff *skb)
 
 void __kfree_skb(struct sk_buff *skb)
 {
+#ifdef CONFIG_GFAR_SKBUFF_RECYCLING
+	if (gfar_recycle_skb(skb))
+		return;
+#endif
 	skb_release_all(skb);
 	kfree_skbmem(skb);
 }
@@ -545,8 +566,14 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 	new->ipvs_property	= old->ipvs_property;
 #endif
 	new->protocol		= old->protocol;
+#ifdef CONFIG_GFAR_SKBUFF_RECYCLING
+	new->skb_owner		= NULL;
+#endif
 	new->mark		= old->mark;
 	new->iif		= old->iif;
+#if 1 /* V54_BSP */
+	new->input_dev		= old->input_dev;
+#endif
 	__nf_copy(new, old);
 #if defined(CONFIG_NETFILTER_XT_TARGET_TRACE) || \
     defined(CONFIG_NETFILTER_XT_TARGET_TRACE_MODULE)
@@ -559,6 +586,11 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 #endif
 #endif
 	new->vlan_tci		= old->vlan_tci;
+#ifdef CONFIG_BRIDGE_VLAN
+    new->tag_priority   = old->tag_priority;
+    new->tag_vid        = old->tag_vid;
+    new->mac_len        = old->mac_len;
+#endif
 
 	skb_copy_secmark(new, old);
 }
@@ -582,6 +614,10 @@ static struct sk_buff *__skb_clone(struct sk_buff *n, struct sk_buff *skb)
 	n->cloned = 1;
 	n->nohdr = 0;
 	n->destructor = NULL;
+#ifdef CONFIG_GFAR_SKBUFF_RECYCLING
+	n->skb_owner = NULL;
+	skb->skb_owner = NULL;
+#endif
 	C(tail);
 	C(end);
 	C(head);
@@ -799,6 +835,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 {
 	int i;
 	u8 *data;
+	struct skb_shared_info *shinfo;
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
 	int size = nhead + skb->end + ntail;
 #else
@@ -813,9 +850,13 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 
 	size = SKB_DATA_ALIGN(size);
 
-	data = kmalloc(size + sizeof(struct skb_shared_info), gfp_mask);
+	data = kmalloc(size + sizeof(struct skb_shared_info_pointer), gfp_mask);
 	if (!data)
 		goto nodata;
+
+	shinfo = kmem_cache_alloc(skbuff_shared_cache, gfp_mask);
+	if (!shinfo)
+		goto noshinfo;
 
 	/* Copy only real data... and, alas, header. This should be
 	 * optimized for the cases when header is void. */
@@ -824,7 +865,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 #else
 	memcpy(data + nhead, skb->head, skb->tail - skb->head);
 #endif
-	memcpy(data + size, skb_end_pointer(skb),
+	memcpy(shinfo, skb_shinfo(skb),
 	       sizeof(struct skb_shared_info));
 
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++)
@@ -845,6 +886,7 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 #else
 	skb->end      = skb->head + size;
 #endif
+	skb_shinfo(skb) = shinfo;
 	/* {transport,network,mac}_header and tail are relative to skb->head */
 	skb->tail	      += off;
 	skb->transport_header += off;
@@ -858,6 +900,8 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail,
 	atomic_set(&skb_shinfo(skb)->dataref, 1);
 	return 0;
 
+noshinfo:
+	kfree(data);
 nodata:
 	return -ENOMEM;
 }
@@ -2781,6 +2825,11 @@ void __init skb_init(void)
 						0,
 						SLAB_HWCACHE_ALIGN|SLAB_PANIC,
 						NULL);
+	skbuff_shared_cache = kmem_cache_create("skbuff_shared_cache",
+						sizeof(struct skb_shared_info),
+						0,
+						SLAB_HWCACHE_ALIGN|SLAB_PANIC,
+						NULL);
 }
 
 /**
@@ -3047,3 +3096,15 @@ void __skb_warn_lro_forwarding(const struct sk_buff *skb)
 			   " while LRO is enabled\n", skb->dev->name);
 }
 EXPORT_SYMBOL(__skb_warn_lro_forwarding);
+
+/**
+ *	skb_dump - dump buffer
+ *	@skb: buffer to use
+ *
+ *	This function dumps important field values and data of a buffer.
+ */
+void skb_dump(struct sk_buff *skb)
+{
+	__skb_dump(skb);
+}
+EXPORT_SYMBOL(skb_dump);

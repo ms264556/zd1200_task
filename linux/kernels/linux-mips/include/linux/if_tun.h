@@ -19,6 +19,58 @@
 #include <linux/types.h>
 #include <linux/if_ether.h>
 
+#ifdef __KERNEL__
+
+#ifdef TUN_DEBUG
+
+#define DBG  if(tun->debug)printk
+#define DBG1 if(debug==2)printk
+#else
+#define DBG( a... )
+#define DBG1( a... )
+#endif
+
+#ifdef RKS_TUBE_SUPPORT
+struct tube_hook {
+	int	(*func)(struct net_device *dev, struct sk_buff *skb, void *opaque);
+	void	*opaque;
+};
+#endif
+
+#define FLT_EXACT_COUNT 8
+struct tap_filter {
+	unsigned int    count;    /* Number of addrs. Zero means disabled */
+	u32             mask[2];  /* Mask of the hashed addrs */
+	unsigned char	addr[FLT_EXACT_COUNT][ETH_ALEN];
+};
+
+struct tun_file {
+	atomic_t count;
+	struct tun_struct *tun;
+	struct net *net;
+};
+
+struct tun_struct {
+	struct tun_file		*tfile;
+	unsigned int 		flags;
+	uid_t			owner;
+	gid_t			group;
+
+	struct net_device	*dev;
+	struct fasync_struct	*fasync;
+
+	struct tap_filter       txflt;
+	struct socket		socket;
+
+#ifdef TUN_DEBUG
+	int debug;
+#endif
+#ifdef RKS_TUBE_SUPPORT
+	struct tube_hook	tube;
+#endif
+};
+#endif /* __KERNEL__ */
+
 /* Read queue size */
 #define TUN_READQ_SIZE	500
 

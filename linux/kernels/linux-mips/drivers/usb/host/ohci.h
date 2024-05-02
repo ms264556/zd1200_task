@@ -545,6 +545,11 @@ static inline struct usb_hcd *ohci_to_hcd (const struct ohci_hcd *ohci)
 #define big_endian_mmio(ohci)	0		/* only little endian */
 #endif
 
+#if defined(CONFIG_MACH_AR7100)
+#define readl_be(addr)      __raw_readl(addr)
+#define writel_be(val, addr)    __raw_writel(val, addr)
+#endif
+
 /*
  * Big-endian read/write functions are arch-specific.
  * Other arches can be added if/when they're needed.

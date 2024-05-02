@@ -300,6 +300,46 @@ static inline void console_verbose(void)
 		console_loglevel = 15;
 }
 
+
+#ifdef V54_BSP
+#define HIMEM_OOPS_MAGIC    0x4F4F5053
+struct _himem_oops {
+    unsigned long   magic;
+    unsigned long   len;        /* length of data excluding oops_hdr */
+    unsigned long   used:1;
+    unsigned long   image_type:2;
+    unsigned long   image_index:4;
+    unsigned long   total_boot; /* total boot in himem */
+};
+extern void himem_tee_open(void);
+extern void himem_tee_close(void);
+extern void himem_tee_reset(void);
+
+extern unsigned long v54_himem_buf_region_start(int i);
+extern unsigned long v54_himem_buf_region_end(int i);
+
+// show_state is declared in linux/sched.h
+// however, linux/kernel.h is included by linux/sched.h
+// ahead of the declaration
+//extern void show_state(void);
+extern void show_state_filter(unsigned long state_filter);
+static inline void
+OOPS_SHOW_STATE(void)
+{
+    himem_tee_open();
+//    show_state();
+    show_state_filter(0);
+}
+
+#else
+//extern void show_state(void);
+extern void show_state_filter(unsigned long state_filter);
+//#define OOPS_SHOW_STATE()       show_state()
+#define OOPS_SHOW_STATE()       show_state_filter(0)
+
+#endif
+
+
 extern void bust_spinlocks(int yes);
 extern void wake_up_klogd(void);
 extern int oops_in_progress;		/* If set, an oops, panic(), BUG() or die() is in progress */

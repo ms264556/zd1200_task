@@ -655,8 +655,10 @@ static int usb_uevent(struct device *dev, struct kobj_uevent_env *env)
 		return -ENOMEM;
 #endif
 
-	/* per-device configurations are common */
-	if (add_uevent_var(env, "PRODUCT=%x/%x/%x",
+	/* per-device configurations are common. Ruckus: For easier
+	 * user space app parsing, 4 hex digits for Vendor/Product ID
+	 */
+	if (add_uevent_var(env, "PRODUCT=%04x/%04x/%x",
 			   le16_to_cpu(usb_dev->descriptor.idVendor),
 			   le16_to_cpu(usb_dev->descriptor.idProduct),
 			   le16_to_cpu(usb_dev->descriptor.bcdDevice)))

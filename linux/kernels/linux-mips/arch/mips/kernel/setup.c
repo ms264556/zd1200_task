@@ -476,6 +476,14 @@ static void __init arch_mem_init(char **cmdline_p)
 	pr_info("Determined physical RAM map:\n");
 	print_memory_map();
 
+#ifdef CONFIG_PROFILING  /* V54_BSP */
+	/*
+	 * Ruckus: Enable profiling in kernel. You can only do it this way,
+	 * since the cmdline options come from boot code.
+	 */
+	strlcat(arcs_cmdline, "profile=2", sizeof(command_line));
+#endif
+
 	strlcpy(command_line, arcs_cmdline, sizeof(command_line));
 	strlcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
 

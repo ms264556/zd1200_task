@@ -399,7 +399,114 @@ out_unlock:
 	icmp_xmit_unlock(sk);
 }
 
+#if 1 // V54_TUNNELMGR
+/*
+ *  ruckus version of icmp
+ */
+void rks_icmp_send(struct sk_buff *skb, int type, int code, __u32 mtu, __u32 tunnel_sip)
+{
+    __be16 proto;
+    __u16 ip_hlen = 0;
+    __u16 eth_hlen = 0;
+    __u8 data_buf[128];
+    struct iphdr *iph;
+    struct icmphdr *icmp;
+    struct iphdr *icmp_iph;
+    unsigned char smac[ETH_ALEN];   // destination eth addr
+    unsigned char dmac[ETH_ALEN];   // source ether addr
 
+#if 0
+    printk(KERN_DEBUG "\n %s: At start \n", __FUNCTION__);
+    int i = 0;
+    for (i = 0; i < 100; i++) {
+        if ( (i!=0) && ((i % 4) == 0))
+            printk(KERN_DEBUG " ");
+        printk(KERN_DEBUG "%02x", skb->data[i]);
+        if ((i % 16) == 15)
+            printk(KERN_DEBUG "\n");
+    }
+#endif
+
+    eth_hlen = ETH_HLEN;
+    memcpy(smac, eth_hdr(skb)->h_source, ETH_ALEN);
+    memcpy(dmac, eth_hdr(skb)->h_dest, ETH_ALEN);
+    proto = eth_hdr(skb)->h_proto;
+    if (proto == 0x8100) {
+        eth_hlen += 4;
+    }
+
+    iph = (struct iphdr *)skb->network_header;
+    ip_hlen = iph->ihl << 2;
+    // Add 8 bytes + IP header to be echo'ed to sender
+    memcpy(data_buf, skb->network_header, ip_hlen + 8);
+
+    if (!pskb_may_pull(skb, sizeof(struct iphdr) + skb->mac_len)) {
+        goto out;
+    }
+    icmp_iph = (struct iphdr *) skb->network_header;
+    icmp_iph->ihl = iph->ihl;
+    icmp_iph->version = iph->version;
+    icmp_iph->ttl = 127;
+    icmp_iph->id = iph->id;
+    icmp_iph->tos = iph->tos;
+    icmp_iph->frag_off = 0;
+    icmp_iph->daddr = icmp_iph->saddr;
+    icmp_iph->saddr = tunnel_sip;
+    icmp_iph->protocol = IPPROTO_ICMP;
+    icmp_iph->check = 0;
+
+#if 0
+	printk(KERN_DEBUG "\n %s: smac %x:%x:%x:%x:%x:%x dmac %x:%x:%x:%x:%x:%x sip %x dip %x",
+			__FUNCTION__, smac[0], smac[1], smac[2], smac[3], smac[4], smac[5],
+			dmac[0], dmac[1], dmac[2], dmac[3], dmac[4], dmac[5], tunnel_sip, icmp_iph->daddr);
+#endif
+
+    skb->len = 0;
+
+    memcpy(eth_hdr(skb)->h_dest, smac, ETH_ALEN);
+    memcpy(eth_hdr(skb)->h_source, dmac, ETH_ALEN);
+    skb->len += skb->mac_len;
+
+    skb->len += ip_hlen;
+
+    icmp = (struct icmphdr *) (((__u8 *) skb->data) + skb->mac_len + ip_hlen);
+    icmp->type = type;
+    icmp->code = code;
+    icmp->checksum = 0;
+    icmp->un.frag.mtu = mtu - eth_hlen - RKS_IP_GRE_HDR_LEN;
+    memcpy((((__u8 *) icmp) + 8), data_buf, ip_hlen + 8);
+    skb->len += ip_hlen + 8 + sizeof(struct icmphdr);
+
+#if 0
+    printk(KERN_DEBUG "\n %s: iph %p skb->nh.iph->addr %x skb->nh.iph.daddr %x", __FUNCTION__, iph, skb->nh.iph->saddr, skb->nh.iph->daddr);
+    printk(KERN_DEBUG "\n %s: mtu %d icmp_mtu %d eth_hlen %d", __FUNCTION__, mtu, icmp->un.frag.mtu, eth_hlen);
+#endif
+
+    icmp_iph->tot_len = skb->len - skb->mac_len;
+    icmp_iph->check = ip_compute_csum((unsigned char *) icmp_iph, ip_hlen);
+
+    icmp->checksum = ip_compute_csum((unsigned char *) icmp, icmp_iph->tot_len - ip_hlen);
+    skb->dev = skb->input_dev;
+    skb->input_dev = NULL;
+
+#if 0
+    printk(KERN_DEBUG "\n %s: before xmit ip_checksum %x icmp_checksum %x skb->dev %s \n", __FUNCTION__, icmp_iph->check, icmp->checksum, skb->dev->name);
+    for (i = 0; i < 100; i++) {
+        if ( (i!=0) && ((i % 4) == 0))
+            printk(KERN_DEBUG " ");
+        printk(KERN_DEBUG "%02x", skb->data[i]);
+        if ((i % 16) == 15)
+            printk(KERN_DEBUG "\n");
+    }
+#endif
+
+    dev_queue_xmit(skb);
+
+out:;
+}
+EXPORT_SYMBOL(rks_icmp_send);
+
+#endif // V54_TUNNELMGR
 /*
  *	Send an ICMP message in response to a situation
  *
@@ -645,7 +752,8 @@ out_unlock:
 out:;
 }
 
-
+int wsg_tunnel_mtu;
+char wsg_tunnel_dev[10];
 /*
  *	Handle ICMP_DEST_UNREACH, ICMP_TIME_EXCEED, and ICMP_QUENCH.
  */
@@ -688,9 +796,11 @@ static void icmp_unreach(struct sk_buff *skb)
 				LIMIT_NETDEBUG(KERN_INFO "ICMP: %pI4: fragmentation needed and DF set.\n",
 					       &iph->daddr);
 			} else {
-				info = ip_rt_frag_needed(net, iph,
-							 ntohs(icmph->un.frag.mtu),
-							 skb->dev);
+                wsg_tunnel_mtu = ntohs(icmph->un.frag.mtu);
+                strncpy(wsg_tunnel_dev, skb->dev->name, sizeof(skb->input_dev->name));
+                info = ip_rt_frag_needed(net, iph,
+                             ntohs(icmph->un.frag.mtu),
+                             skb->dev);
 				if (!info)
 					goto out;
 			}

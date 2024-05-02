@@ -137,6 +137,7 @@ int irq_set_affinity(unsigned int irq, const struct cpumask *cpumask)
 	spin_unlock_irqrestore(&desc->lock, flags);
 	return 0;
 }
+EXPORT_SYMBOL(irq_set_affinity);
 
 #ifndef CONFIG_AUTO_IRQ_AFFINITY
 /*
@@ -705,6 +706,14 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 			goto mismatch;
 #endif
 
+#if 1 //V54
+	if (new->flags & IRQF_DISABLED) {
+		pr_warning(
+		  "IRQ %d/%s: IRQF_DISABLED is not guaranteed on shared IRQs\n",
+			irq, new->name);
+	}
+#endif
+
 		/* add new interrupt at end of irq queue */
 		do {
 			old_ptr = &old->next;
@@ -1021,6 +1030,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 	struct irq_desc *desc;
 	int retval;
 
+#if 0 //V54: move it to __setup_irq() for the non-1st request irq warning...
 	/*
 	 * handle_IRQ_event() always ignores IRQF_DISABLED except for
 	 * the _first_ irqaction (sigh).  That can cause oopsing, but
@@ -1033,6 +1043,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		  "IRQ %d/%s: IRQF_DISABLED is not guaranteed on shared IRQs\n",
 			irq, devname);
 	}
+#endif /* if 0 */
 
 #ifdef CONFIG_LOCKDEP
 	/*

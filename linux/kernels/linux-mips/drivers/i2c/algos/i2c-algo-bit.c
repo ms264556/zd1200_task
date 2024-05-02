@@ -65,6 +65,7 @@ MODULE_PARM_DESC(i2c_debug,
 #define getsda(adap)		adap->getsda(adap->data)
 #define getscl(adap)		adap->getscl(adap->data)
 
+
 static inline void sdalo(struct i2c_algo_bit_data *adap)
 {
 	setsda(adap, 0);

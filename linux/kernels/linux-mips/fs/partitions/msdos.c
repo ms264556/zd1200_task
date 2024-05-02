@@ -417,6 +417,13 @@ static struct {
 	{0, NULL},
 };
  
+#if 1 /* V54_BSP */
+#ifdef ZD1100_MBR
+#define ZD_PART_SECTOR 1909055
+#else
+#define ZD_PART_SECTOR 3982101
+#endif
+#endif
 int msdos_partition(struct parsed_partitions *state, struct block_device *bdev)
 {
 	sector_t sector_size = bdev_logical_block_size(bdev) / 512;
@@ -426,6 +433,10 @@ int msdos_partition(struct parsed_partitions *state, struct block_device *bdev)
 	struct fat_boot_sector *fb;
 	int slot;
 
+#if 1 /* V54_BSP */
+	data = read_dev_sector(bdev, ZD_PART_SECTOR, &sect);
+        if (!data || !msdos_magic_present(data + 510)){
+#endif
 	data = read_dev_sector(bdev, 0, &sect);
 	if (!data)
 		return -1;
@@ -439,6 +450,9 @@ int msdos_partition(struct parsed_partitions *state, struct block_device *bdev)
 		printk( " [AIX]");
 		return 0;
 	}
+#if 1 /* V54_BSP */
+	}
+#endif
 
 	/*
 	 * Now that the 55aa signature is present, this is probably

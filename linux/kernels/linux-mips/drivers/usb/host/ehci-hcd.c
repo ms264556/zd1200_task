@@ -37,12 +37,22 @@
 #include <linux/debugfs.h>
 
 #include "../core/hcd.h"
+#if 0 // V54_BSP
+//#ifdef CONFIG_MACH_AR934x
+#include "../gadget/ath_defs.h"
+#elif defined(CONFIG_USB_EHCI_AR9130)
+#include "../gadget/ar9130_defs.h"
+#endif
 
 #include <asm/byteorder.h>
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/system.h>
 #include <asm/unaligned.h>
+
+#if defined(CONFIG_AR934x)
+#include "ar7100.h"
+#endif
 
 /*-------------------------------------------------------------------------*/
 
@@ -84,7 +94,8 @@ static const char	hcd_name [] = "ehci_hcd";
 #define EHCI_IAA_MSECS		10		/* arbitrary */
 #define EHCI_IO_JIFFIES		(HZ/10)		/* io watchdog > irq_thresh */
 #define EHCI_ASYNC_JIFFIES	(HZ/20)		/* async idle timeout */
-#define EHCI_SHRINK_FRAMES	5		/* async qh unlink delay */
+#define EHCI_SHRINK_JIFFIES    (DIV_ROUND_UP(HZ, 200) + 1)
+                               /* 200-ms async qh unlink delay */
 
 /* Initial IRQ latency:  faster than hw default */
 static int log2_irq_thresh = 0;		// 0 to 6
@@ -136,10 +147,7 @@ timer_action(struct ehci_hcd *ehci, enum ehci_timer_action action)
 			break;
 		/* case TIMER_ASYNC_SHRINK: */
 		default:
-			/* add a jiffie since we synch against the
-			 * 8 KHz uframe counter.
-			 */
-			t = DIV_ROUND_UP(EHCI_SHRINK_FRAMES * HZ, 1000) + 1;
+			t = EHCI_SHRINK_JIFFIES;
 			break;
 		}
 		mod_timer(&ehci->watchdog, t + jiffies);
@@ -249,6 +257,35 @@ static int ehci_reset (struct ehci_hcd *ehci)
 	command |= CMD_RESET;
 	dbg_cmd (ehci, "reset", command);
 	ehci_writel(ehci, command, &ehci->regs->command);
+
+#if defined(CONFIG_MACH_AR7240) || defined(CONFIG_MACH_HORNET)
+#define ath_usb_reg_wr		ar9130_reg_wr
+#define ath_usb_reg_rd		ar9130_reg_rd
+#define ATH_USB_USB_MODE	AR9130_USB_MODE
+
+	udelay(1000);
+	ath_usb_reg_wr(ATH_USB_USB_MODE,
+			(ath_usb_reg_rd(ATH_USB_USB_MODE) | 3));
+
+	printk("%s Intialize USB CONTROLLER in host mode: %x\n",
+			__func__, ath_usb_reg_rd(ATH_USB_USB_MODE));
+
+	udelay(1000);
+	writel((readl(&ehci->regs->port_status[0]) | (1 << 28) ), &ehci->regs->port_status[0]);
+	printk("%s Port Status %x \n", __func__, readl(&ehci->regs->port_status[0]));
+#endif
+
+#if defined(CONFIG_AR934x)
+	udelay(1000);
+	ar7240_reg_wr(AR7240_USB_MODE,
+		(ar7240_reg_rd(AR7240_USB_MODE) | 0x13));
+	printk("%s: Initialize USB CONTROLLER in host mode: %x\n",
+		__func__, ar7240_reg_rd(AR7240_USB_MODE));
+	udelay(1000);
+	writel((readl(&ehci->regs->port_status[0]) | (1 << 28)), &ehci->regs->port_status [0]);
+	printk("%s: Port Status %x\n", __func__, readl(&ehci->regs->port_status[0]));
+#endif
+
 	ehci_to_hcd(ehci)->state = HC_STATE_HALT;
 	ehci->next_statechange = jiffies;
 	retval = handshake (ehci, &ehci->regs->command,
@@ -687,8 +724,10 @@ static int ehci_run (struct usb_hcd *hcd)
 		temp >> 8, temp & 0xff,
 		ignore_oc ? ", overcurrent ignored" : "");
 
+#ifndef CONFIG_USB_OTG
 	ehci_writel(ehci, INTR_MASK,
 		    &ehci->regs->intr_enable); /* Turn On Interrupts */
+#endif
 
 	/* GRR this is run-once init(), being done every time the HC starts.
 	 * So long as they're part of class devices, we can't do it init()
@@ -766,6 +805,17 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 
 		/* kick root hub later */
 		pcd_status = status;
+
+#if defined(CONFIG_MACH_AR934x) || defined(CONFIG_AR934x)
+//#define ehci_readl readl
+#define USB_PHY_CTRL5 0xb8116c94
+		status = readl (&ehci->regs->port_status [0]);
+		if((ath_reg_rd(&ehci->regs->status) & STS_PCD) && (hcd->state != HC_STATE_SUSPENDED) && \
+			((1<<USB_PORT_FEAT_HIGHSPEED) == ehci_port_speed(ehci, status))) {
+	                ath_reg_wr (USB_PHY_CTRL5, (ath_reg_rd(USB_PHY_CTRL5)|((1<<17) | (1<<22) | (1<<23))) & (~((0x3<<18) | (0x1<<20))));
+	                ath_reg_wr (USB_PHY_CTRL5, (ath_reg_rd(USB_PHY_CTRL5)) & (~(1<<17)));
+	        }
+#endif
 
 		/* resume root hub? */
 		if (!(cmd & CMD_RUN))
@@ -1140,6 +1190,21 @@ MODULE_LICENSE ("GPL");
 #ifdef CONFIG_ARCH_AT91
 #include "ehci-atmel.c"
 #define	PLATFORM_DRIVER		ehci_atmel_driver
+#endif
+
+#ifdef CONFIG_USB_EHCI_AR9130
+#include "ehci-ar9130.c"
+#define PLATFORM_DRIVER		ehci_hcd_ar9130_driver
+#endif
+
+#ifdef CONFIG_USB_EHCI_ATH
+#include "ehci-ath.c"
+#define PLATFORM_DRIVER		ath_usb_ehci_hcd_driver
+#endif
+
+#ifdef CONFIG_USB_EHCI_AR7100
+#include "ehci-ar7100.c"
+#define PLATFORM_DRIVER		ehci_hcd_ar7100_driver
 #endif
 
 #if !defined(PCI_DRIVER) && !defined(PLATFORM_DRIVER) && \

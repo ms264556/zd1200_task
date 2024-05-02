@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2001-2004 by David Brownell
+ * Copyright (c) 2009-2010 Freescale Semiconductor, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -28,6 +29,36 @@
 
 /*-------------------------------------------------------------------------*/
 
+#include <linux/usb/otg.h>
+
+#ifdef CONFIG_USB_OTG
+static int ehci_start_port_reset(struct usb_hcd *hcd, unsigned port)
+{
+	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+	u32 status;
+
+	if (!port)
+		return -EINVAL;
+	port--;
+
+	/* start port reset before HNP protocol time out */
+	status = readl(&ehci->regs->port_status[port]);
+	if (!(status & PORT_CONNECT))
+		return -ENODEV;
+	/* khubd will finish the reset later */
+	if (ehci_is_TDI(ehci))
+		writel(PORT_RESET | (status & ~(PORT_CSC | PORT_PEC
+			| PORT_OCC)), &ehci->regs->port_status[port]);
+	else
+		writel(PORT_RESET, &ehci->regs->port_status[port]);
+
+	return 0;
+}
+#else
+static int ehci_start_port_reset(struct usb_hcd *hcd, unsigned port)
+{
+}
+#endif /* CONFIG_USB_OTG */
 #define	PORT_WAKE_BITS	(PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E)
 
 #ifdef	CONFIG_PM
@@ -921,6 +952,14 @@ static int ehci_hub_control (
 			if ((temp & PORT_PE) == 0
 					|| (temp & PORT_RESET) != 0)
 				goto error;
+#ifdef	CONFIG_USB_OTG
+			if (hcd->self.otg_port == (wIndex + 1)
+					&& hcd->self.b_hnp_enable)
+			{
+				static void start_hnp(struct ehci_hcd *ehci);
+				start_hnp(ehci);
+			} else
+#endif
 			ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
 			/* After above check the port must be connected.
 			 * Set appropriate bit thus could put phy into low power

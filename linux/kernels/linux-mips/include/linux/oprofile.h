@@ -185,4 +185,9 @@ int oprofile_add_data(struct op_entry *entry, unsigned long val);
 int oprofile_add_data64(struct op_entry *entry, u64 val);
 int oprofile_write_commit(struct op_entry *entry);
 
+//#define OP_NICE_HACK
+#ifdef OP_NICE_HACK
+extern void* op_custom;
+#endif
+
 #endif /* OPROFILE_H */

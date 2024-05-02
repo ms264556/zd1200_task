@@ -25,6 +25,9 @@ int panic_on_io_nmi;
 unsigned int code_bytes = 64;
 int kstack_depth_to_print = 3 * STACKSLOTS_PER_LINE;
 static int die_counter;
+#if defined(NAR5520)
+extern int oops_occurred;
+#endif
 
 void printk_address(unsigned long address, int reliable)
 {
@@ -192,6 +195,11 @@ static raw_spinlock_t die_lock = __RAW_SPIN_LOCK_UNLOCKED;
 static int die_owner = -1;
 static unsigned int die_nest_count;
 
+#ifdef V54_BSP
+extern void himem_tee_open(void);       /* defined in kernel/printk.c */
+extern void himem_tee_close(void);       /* defined in kernel/printk.c */
+#endif
+
 unsigned __kprobes long oops_begin(void)
 {
 	int cpu;
@@ -217,6 +225,12 @@ unsigned __kprobes long oops_begin(void)
 	die_owner = cpu;
 	console_verbose();
 	bust_spinlocks(1);
+#ifdef V54_BSP
+	himem_tee_open();
+#endif
+#ifdef V54_PROD_BUILD
+	printk("---> SW Version: %s <---\n", V54_PROD_BUILD);
+#endif
 	return flags;
 }
 
@@ -225,6 +239,9 @@ void __kprobes oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	if (regs && kexec_should_crash(current))
 		crash_kexec(regs);
 
+#ifdef V54_BSP
+	himem_tee_close();
+#endif /* V54_BSP */
 	bust_spinlocks(0);
 	die_owner = -1;
 	add_taint(TAINT_DIE);
@@ -237,8 +254,14 @@ void __kprobes oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 
 	if (!signr)
 		return;
-	if (in_interrupt())
+	if (in_interrupt()) {
+#if defined(NAR5520)
+		if (oops_occurred) {
+			mdelay(5000);
+		}
+#endif
 		panic("Fatal exception in interrupt");
+	}
 	if (panic_on_oops)
 		panic("Fatal exception");
 	do_exit(signr);

@@ -15,6 +15,8 @@
  *		Bjorn Ekwall. <bj0rn@blox.se>
  *              Pekka Riikonen <priikone@poseidon.pspt.fi>
  *
+ *      Copyright 2009 Freescale Semiconductor, Inc.
+ *
  *		This program is free software; you can redistribute it and/or
  *		modify it under the terms of the GNU General Public License
  *		as published by the Free Software Foundation; either version
@@ -63,6 +65,16 @@ struct wireless_dev;
 #define HAVE_FREE_NETDEV		/* free_netdev() */
 #define HAVE_NETDEV_PRIV		/* netdev_priv() */
 
+#ifdef __ARICENT_QMI
+/* hardware address assignment types */
+#define NET_ADDR_PERM		0	/* address is permanent (default) */
+#define NET_ADDR_RANDOM		1	/* address is generated randomly */
+#define NET_ADDR_STOLEN		2	/* address is stolen from other device */
+#define NET_ADDR_SET		3	/* address is set using
+					 * dev_set_mac_address() */
+#endif
+
+/* qdisc ->enqueue() return codes. */
 #define NET_XMIT_SUCCESS	0
 #define NET_XMIT_DROP		1	/* skb dropped			*/
 #define NET_XMIT_CN		2	/* congestion notification	*/
@@ -118,6 +130,20 @@ typedef enum netdev_tx netdev_tx_t;
 #define MAX_HEADER (LL_MAX_HEADER + 48)
 #endif
 
+#if 1 /* V54_BSP */
+/*
+* for AP, the needed max LWAPP tunnel header room is:
+*   118 bytes == mac header(32B) + IPv6 header(40B) + UDP header(8B) + LWAPP header(6B) + IEE802.11 header(24B) + LLC header(8B)
+* for ZD, the needed max LWAPP tunnel header room is:
+*   122 bytes == mac header(32B) + IPv6 header(40B) + UDP header(8B) + LWAPP header(6B) + IEE802.11 header(24B) + QoS header(4B)  + LLC header(8B)
+* note: : We can't use 18B(include vlan header) as max mac header length, instead, we need to align it to 16 bytes boundary,
+*             because this is what kernel does in ip_finish_output2 to judge whether skb header room is enough for mac header.
+*/
+#define LWAPP_TUNNEL_HEADER_ROOM 128
+/* reserve tail room for LWAPP tunnel possible encrypt padding bytes */
+#define LWAPP_TUNNEL_TAIL_ROOM   16
+#endif
+
 #endif  /*  __KERNEL__  */
 
 /*
@@ -156,6 +182,12 @@ struct net_device_stats
 	/* for cslip etc */
 	unsigned long	rx_compressed;
 	unsigned long	tx_compressed;
+#if 1 /* V54_BSP */
+	unsigned long	rx_multicast;	/* multicast packets received	*/
+	unsigned long	rx_broadcast;	/* broadcast packets received	*/
+	unsigned long	tx_multicast;	/* multicast packets transmitted	*/
+	unsigned long	tx_broadcast;	/* broadcast packets transmitted	*/
+#endif
 };
 
 
@@ -178,6 +210,11 @@ enum {
 struct neighbour;
 struct neigh_parms;
 struct sk_buff;
+
+#if 1 /* V54_BSP */
+#define NETDEV_TRAFFIC_CLASS_DEFAULT 0
+#define MAX_NETDEV_TRAFFIC_CLASSES   1
+#endif
 
 struct netif_rx_stats
 {
@@ -611,6 +648,10 @@ struct net_device_ops {
 						  int new_mtu);
 	int			(*ndo_neigh_setup)(struct net_device *dev,
 						   struct neigh_parms *);
+#ifdef CONFIG_NET_GIANFAR_FP
+	int			(*ndo_accept_fastpath)(struct net_device *,
+							   struct dst_entry *);
+#endif
 #define HAVE_TX_TIMEOUT
 	void			(*ndo_tx_timeout) (struct net_device *dev);
 
@@ -624,7 +665,7 @@ struct net_device_ops {
 						        unsigned short vid);
 #ifdef CONFIG_NET_POLL_CONTROLLER
 #define HAVE_NETDEV_POLL
-	void                    (*ndo_poll_controller)(struct net_device *dev);
+	void			(*ndo_poll_controller)(struct net_device *dev);
 #endif
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 	int			(*ndo_fcoe_enable)(struct net_device *dev);
@@ -678,6 +719,9 @@ struct net_device
 
 	unsigned char		if_port;	/* Selectable AUI, TP,..*/
 	unsigned char		dma;		/* DMA channel		*/
+#if 1 /* V54_BSP */
+	unsigned short		class_parm; /* Classification parameter */
+#endif
 
 	unsigned long		state;
 
@@ -708,6 +752,11 @@ struct net_device
 #define NETIF_F_FCOE_CRC	(1 << 24) /* FCoE CRC32 */
 #define NETIF_F_SCTP_CSUM	(1 << 25) /* SCTP checksum offload */
 #define NETIF_F_FCOE_MTU	(1 << 26) /* Supports max FCoE MTU, 2158 bytes*/
+
+#if 1 /* V54_BSP */
+#define NETIF_F_CLASSIFICATION	(1 << 27) /* Packets are subject to classification */
+#define NETIF_F_FRAGINNER	(1 << 28) /* Fragmentation inner payload e.g. GRE */
+#endif
 
 	/* Segmentation offload features */
 #define NETIF_F_GSO_SHIFT	16
@@ -742,6 +791,9 @@ struct net_device
 
 	struct net_device_stats	stats;
 
+#if 1 /* V54_BSP */
+	void			(*wireless_egress_classify)(struct sk_buff *skb, struct net_device *dev);
+#endif
 #ifdef CONFIG_WIRELESS_EXT
 	/* List of functions to handle Wireless Extensions (instead of ioctl).
 	 * See <net/iw_handler.h> for details. Jean II */
@@ -758,7 +810,7 @@ struct net_device
 
 	unsigned int		flags;	/* interface flags (a la BSD)	*/
 	unsigned short		gflags;
-        unsigned short          priv_flags; /* Like 'flags' but invisible to userspace. */
+	unsigned short		priv_flags; /* Like 'flags' but invisible to userspace. */
 	unsigned short		padded;	/* How much padding added by alloc_netdev() */
 
 	unsigned char		operstate; /* RFC2863 operstate */
@@ -781,8 +833,12 @@ struct net_device
 
 	/* Interface address info. */
 	unsigned char		perm_addr[MAX_ADDR_LEN]; /* permanent hw address */
+	#ifdef __ARICENT_QMI
+	unsigned char		addr_assign_type; /* hw address assignment type */
+	unsigned char		neigh_priv_len;
+	#endif
 	unsigned char		addr_len;	/* hardware address length	*/
-	unsigned short          dev_id;		/* for shared network cards */
+	unsigned short		dev_id;		/* for shared network cards */
 
 	struct netdev_hw_addr_list	uc;	/* Secondary unicast
 						   mac addresses */
@@ -799,10 +855,10 @@ struct net_device
 #ifdef CONFIG_NET_DSA
 	void			*dsa_ptr;	/* dsa specific data */
 #endif
-	void 			*atalk_ptr;	/* AppleTalk link 	*/
+	void			*atalk_ptr;	/* AppleTalk link 	*/
 	void			*ip_ptr;	/* IPv4 specific data	*/
-	void                    *dn_ptr;        /* DECnet specific data */
-	void                    *ip6_ptr;       /* IPv6 specific data */
+	void			*dn_ptr;	/* DECnet specific data */
+	void			*ip6_ptr;	/* IPv6 specific data */
 	void			*ec_ptr;	/* Econet specific data	*/
 	void			*ax25_ptr;	/* AX.25 specific data */
 	struct wireless_dev	*ieee80211_ptr;	/* IEEE 802.11 specific data,
@@ -887,6 +943,12 @@ struct net_device
 
 	/* bridge stuff */
 	struct net_bridge_port	*br_port;
+#ifdef CONFIG_NET_GIANFAR_FP
+#define NETDEV_FASTROUTE_HMASK 0xF
+	/* Semi-private data. Keep it at the end of device struct. */
+	rwlock_t		fastpath_lock;
+	struct dst_entry	*fastpath[NETDEV_FASTROUTE_HMASK+1];
+#endif
 	/* macvlan */
 	struct macvlan_port	*macvlan_port;
 	/* GARP */
@@ -901,7 +963,7 @@ struct net_device
 	const struct rtnl_link_ops *rtnl_link_ops;
 
 	/* VLAN feature mask */
-	unsigned long vlan_features;
+	unsigned long		vlan_features;
 
 	/* for setting kernel sock attribute on TCP connection setup */
 #define GSO_MAX_SIZE		65536
@@ -909,12 +971,47 @@ struct net_device
 
 #ifdef CONFIG_DCB
 	/* Data Center Bridging netlink ops */
-	struct dcbnl_rtnl_ops *dcbnl_ops;
+	struct dcbnl_rtnl_ops	*dcbnl_ops;
 #endif
 
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 	/* max exchange id for FCoE LRO by ddp */
 	unsigned int		fcoe_ddp_xid;
+#endif
+
+#if defined(CONFIG_8021X) || defined(CONFIG_8021X_MODULE)
+	struct mac_port		*mac_port;
+#endif
+#if 1 /* V54_BSP */
+	unsigned short		hotspot_vlan;
+	char			sta_info_extract:1,
+				dvc_plcy:1,
+				force_dhcp:1,
+				dns_spoof:1,
+				dns_cache:1,
+#if defined(CONFIG_AV) || defined(CONFIG_AV_MODULE)
+				av_enable:1,
+				unused:2;
+#else
+				unused:3;
+#endif
+	char			*opt82;
+
+#if 1 /* V54 */
+#if 0
+	void			*rks_netdev_ext; /* pointer to RKS private RKS extension struct */
+#else
+	/* refer to  linux/rks_policy.h  for usage */
+	/* 32bit word to be cast as _rks_policy_t defined in linux/rks_policy.h */
+	/* fwd_policy setting */
+	__u32			rks_policy;
+#endif
+#endif
+
+#if defined(CONFIG_BRIDGE_DNAT_HOOK) || defined(CONFIG_BRIDGE_DNAT_HOOK_MODULE)
+	struct wispr_config	*wispr_conf;
+	struct timer_list	*portal_ip_timer;
+#endif
 #endif
 };
 #define to_net_dev(d) container_of(d, struct net_device, dev)
@@ -1108,6 +1205,7 @@ extern void		__dev_remove_pack(struct packet_type *pt);
 
 extern struct net_device	*dev_get_by_flags(struct net *net, unsigned short flags,
 						  unsigned short mask);
+extern const char	*__dev_name(const struct net_device *dev);
 extern struct net_device	*dev_get_by_name(struct net *net, const char *name);
 extern struct net_device	*__dev_get_by_name(struct net *net, const char *name);
 extern int		dev_alloc_name(struct net_device *dev, const char *name);
@@ -1462,6 +1560,10 @@ extern void dev_kfree_skb_irq(struct sk_buff *skb);
 extern void dev_kfree_skb_any(struct sk_buff *skb);
 
 #define HAVE_NETIF_RX 1
+#if 1 /* V54_BSP */
+extern int		dev_get_backlog_qlen(void);
+extern int		dev_get_max_backlog(void);
+#endif
 extern int		netif_rx(struct sk_buff *skb);
 extern int		netif_rx_ni(struct sk_buff *skb);
 #define HAVE_NETIF_RECEIVE_SKB 1
@@ -1503,7 +1605,22 @@ extern int		dev_hard_start_xmit(struct sk_buff *skb,
 					    struct net_device *dev,
 					    struct netdev_queue *txq);
 
+#ifdef CONFIG_BRIDGE_VLAN
+extern int		br_vlan_dev_queue_xmit(struct sk_buff *skb, struct net_device *in_dev);
+extern int		br_vlan_dev_mcast_xmit(struct sk_buff *skb, struct net_device *out_dev);
+#endif
+#if defined(CONFIG_ETYPE_DEVICE) || defined(CONFIG_ETYPE_DEVICE_MODULE)
+typedef int (*NET_RX_Func)(struct sk_buff *skb, struct net_device *dev);
+// calling register_etype_handler with an NULL argument will
+// disable etype processing.
+extern void register_etype_handler(NET_RX_Func etype_handler);
+#define unregister_etype_handler()	register_etype_handler(NULL)
+#endif
+
 extern int		netdev_budget;
+#if defined(CONFIG_RFLOW) || defined(CONFIG_RFLOW_MODULE)
+extern int		net_rflow;
+#endif
 
 /* Called by rtnetlink.c:rtnl_unlock() */
 extern void netdev_run_todo(void);
@@ -1857,6 +1974,9 @@ extern int dev_addr_del_multiple(struct net_device *to_dev,
 				 struct net_device *from_dev,
 				 unsigned char addr_type);
 
+/* Function used for get device's owing bridge's net device */
+extern struct net_device *br_net_device(struct net_device *dev);
+
 /* Functions used for secondary unicast and multicast support */
 extern void		dev_set_rx_mode(struct net_device *dev);
 extern void		__dev_set_rx_mode(struct net_device *dev);
@@ -2015,6 +2135,75 @@ static inline u32 dev_ethtool_get_flags(struct net_device *dev)
 		return 0;
 	return dev->ethtool_ops->get_flags(dev);
 }
+
+#ifdef CONFIG_DEV_BROADCAST_STATS
+static inline int
+_IS_BROADCAST(unsigned char *dest)
+{
+	// check if broadcast/multicast
+	if ( dest[0] & 1 )
+		return 1;
+	return 0;
+}
+
+static inline int
+_IS_MULTICAST(unsigned char *dest, struct net_device *dev)
+{
+	// assumed that this is already a multicast/broadcast packet
+	// check to see if multicast
+#if 0
+	// this test has already been made
+	if ( ! (dest[0] & 1) ) {
+		return 0;
+	}
+#endif
+	if ( ! dev ) return 0;
+	if ( memcmp(dest, dev->broadcast, ETH_ALEN) ==  0  )
+		return 0;
+	return 1;
+}
+static inline void
+TX_BROADCAST_STATS(struct net_device_stats *stats, struct sk_buff *skb, int cnt)
+{
+	unsigned char *dest;
+	if ( ! skb ) return;
+	dest = eth_hdr(skb)->h_dest;
+	if ( ! dest ) return;
+
+	if ( ! _IS_BROADCAST(dest) ) {
+		return;
+	}
+	if ( _IS_MULTICAST(dest, skb->dev) ) {
+		stats->tx_multicast += cnt;
+	} else {
+		stats->tx_broadcast += cnt;
+	}
+	return;
+}
+
+static inline void
+RX_BROADCAST_STATS(struct net_device_stats *stats, struct sk_buff *skb)
+{
+	unsigned char *dest;
+	if ( ! skb ) return;
+	dest = eth_hdr(skb)->h_dest;
+	if ( ! dest ) return;
+
+	if ( ! _IS_BROADCAST(dest) ) {
+		return;
+	}
+	if ( _IS_MULTICAST(dest, skb->dev) ) {
+		stats->rx_multicast ++;
+	} else {
+		stats->rx_broadcast ++;
+	}
+	return;
+}
+#else
+#define TX_BROADCAST_STATS(args...)
+#define RX_BROADCAST_STATS(args...)
+#endif
+
 #endif /* __KERNEL__ */
 
 #endif	/* _LINUX_NETDEVICE_H */

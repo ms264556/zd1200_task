@@ -171,6 +171,12 @@ static int ct_seq_show(struct seq_file *s, void *v)
 		goto release;
 #endif
 
+#if defined(CONFIG_NETFILTER_XT_MATCH_LAYER7) || defined(CONFIG_NETFILTER_XT_MATCH_LAYER7_MODULE)
+	if(ct->layer7.app_proto &&
+           seq_printf(s, "l7proto=%s ", ct->layer7.app_proto))
+		return -ENOSPC;
+#endif
+
 	if (seq_printf(s, "use=%u\n", atomic_read(&ct->ct_general.use)))
 		goto release;
 
@@ -390,6 +396,16 @@ static ctl_table nf_ct_sysctl_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+#if 1 /* V54_BSP */
+    {
+        .ctl_name   = NET_IPV4_NF_CONNTRACK_MULTICAST,
+        .procname   = "ip_conntrack_multicast",
+        .data       = &ip_conntrack_multicast,
+        .maxlen     = sizeof(unsigned int),
+        .mode       = 0644,
+        .proc_handler   = &proc_dointvec_jiffies,
+    },
+#endif
 	{ .ctl_name = 0 }
 };
 
@@ -481,7 +497,7 @@ static int nf_conntrack_net_init(struct net *net)
 	ret = nf_conntrack_standalone_init_proc(net);
 	if (ret < 0)
 		goto out_proc;
-	net->ct.sysctl_checksum = 1;
+	net->ct.sysctl_checksum = 0;
 	net->ct.sysctl_log_invalid = 0;
 	ret = nf_conntrack_standalone_init_sysctl(net);
 	if (ret < 0)

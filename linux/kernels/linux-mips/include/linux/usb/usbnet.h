@@ -65,6 +65,9 @@ struct usbnet {
 #		define EVENT_STS_SPLIT	3
 #		define EVENT_LINK_RESET	4
 #		define EVENT_RX_PAUSED	5
+#		define EVENT_DEV_WAKING 6
+#		define EVENT_DEV_ASLEEP 7
+#		define EVENT_DEV_OPEN	8
 };
 
 static inline struct usb_driver *driver_of(struct usb_interface *intf)
@@ -109,6 +112,9 @@ struct driver_info {
 
 	/* for status polling */
 	void	(*status)(struct usbnet *, struct urb *);
+
+	/* (dis)activate runtime power management */
+	int	(*manage_power)(struct usbnet *, int);
 
 	/* link reset handling, called from defer_kevent */
 	int	(*link_reset)(struct usbnet *);

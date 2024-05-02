@@ -46,6 +46,11 @@ static int __init br_init(void)
 	if (err)
 		goto err_out;
 
+#ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
+	br_ipdb_init();
+	br_ipv6db_init();
+#endif
+
 	err = register_pernet_subsys(&br_net_ops);
 	if (err)
 		goto err_out1;
@@ -69,6 +74,7 @@ static int __init br_init(void)
 	br_fdb_test_addr_hook = br_fdb_test_addr;
 #endif
 
+
 	return 0;
 err_out4:
 	unregister_netdevice_notifier(&br_device_notifier);
@@ -88,6 +94,12 @@ static void __exit br_deinit(void)
 	stp_proto_unregister(&br_stp_proto);
 
 	br_netlink_fini();
+
+#ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
+	br_ipdb_fini();
+	br_ipv6db_fini();
+#endif
+
 	unregister_netdevice_notifier(&br_device_notifier);
 	brioctl_set(NULL);
 
@@ -103,6 +115,12 @@ static void __exit br_deinit(void)
 	br_handle_frame_hook = NULL;
 	br_fdb_fini();
 }
+
+
+#ifdef V54_BSP
+#include <linux/if_bridge.h>
+EXPORT_SYMBOL(register_br_db_update_hook);
+#endif
 
 EXPORT_SYMBOL(br_should_route_hook);
 
