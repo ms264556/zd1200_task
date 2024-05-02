@@ -520,7 +520,7 @@ static int __init brd_init(void)
 	struct brd_device *brd, *next;
 
 #if defined(FIX_RD_SIZE)
-#if defined(NAR5520)
+#if defined(NAR5520) || defined(ZD1200)
     // obsoleted 11/06/08
     // __rd_bytes from drivers/block/rd.c
     int __rd_size  = ( __rd_bytes / 1024 ) + 16; // make sure that we round-up

@@ -468,6 +468,34 @@ static const struct file_operations rt_cache_seq_fops = {
 	.release = seq_release_net,
 };
 
+extern int dst_dump_g_list(struct seq_file *p, void *v);
+static int rt_gc_list_open(struct inode *inode, struct file *file)
+{
+	char *buf;
+	struct seq_file *m;
+	int res, size;
+
+	size = 64 * 1024; //we only dump the first 1000 dst cache entries, so 64k is ok.
+	buf = kmalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	res = single_open(file, dst_dump_g_list, NULL);
+	if (!res) {
+		m = file->private_data;
+		m->buf = buf;
+		m->size = size;
+	} else
+		kfree(buf);
+	return res;
+}
+
+static const struct file_operations proc_rt_gc_list = {
+	.open		= rt_gc_list_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static void *rt_cpu_seq_start(struct seq_file *seq, loff_t *pos)
 {
@@ -619,6 +647,7 @@ static int __net_init ip_rt_do_proc_init(struct net *net)
 	if (!pde)
 		goto err3;
 #endif
+	proc_create("rt_gc_list", 0, net->proc_net, &proc_rt_gc_list);
 	return 0;
 
 #ifdef CONFIG_NET_CLS_ROUTE

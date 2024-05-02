@@ -111,3 +111,7 @@ obj-$(CONFIG_VLYNQ)		+= vlynq/
 obj-$(CONFIG_STAGING)		+= staging/
 obj-y				+= platform/
 obj-y				+= ieee802154/
+# V54_BSP
+obj-y		+= v54bsp/
+obj-y	+= rks_api/
+# end V54_BSP

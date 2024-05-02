@@ -39,12 +39,9 @@ EXPORT_SYMBOL(br_dnat_out_handler_hook);
 #endif
 
 
-/* acronym ula: upper layer address */
-/* cisco1: PVST+, cisco2: STP UplinkFast */
 const unsigned char bridge_ula_cisco1[6] = { 0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcd };
 const unsigned char bridge_ula_cisco2[6] = { 0x01, 0x00, 0x0c, 0xcd, 0xcd, 0xcd };
-
-static inline int is_bridge_ula(const unsigned char *dest)
+int is_bridge_ula(const unsigned char *dest)
 {
 	if (!memcmp(dest, br_group_address, ETH_ALEN) ||
 	    !memcmp(dest, bridge_ula_cisco1, ETH_ALEN) ||
@@ -53,6 +50,7 @@ static inline int is_bridge_ula(const unsigned char *dest)
 
 	return 0;
 }
+
 #endif
 
 
@@ -63,7 +61,7 @@ static inline int is_bridge_ula(const unsigned char *dest)
 
 /* TBD : Add counters when telling the caller to drop skbs              */
 
-static inline int should_deliver(const struct net_bridge_port *dport,
+int should_deliver(const struct net_bridge_port *dport,
 				 const struct sk_buff         *skb)
 {
 	struct net_bridge_port *sport;

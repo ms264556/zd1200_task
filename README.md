@@ -17,24 +17,12 @@ sudo apt-get install -y python-setuptools
 
 ## Building steps:
 
-1)	Untar zd1200_task.tar.gz file using  
-$ `tar -xvf zd1200_task.tar.gz`
+1)	Change the directory to buildroot  
+$ `cd buildroot`
 
-2)	Change the directory to zd1200_task  
-$ `cd zd1200_task`
-
-3) Change the directory to linux-mips  
-$ `cd linux/kernels/linux-mips`
-
-4)	apply the patch by using git apply  
-$ `git apply --reject --whitespace=fix  ../../../zd1200.patch`
-
-5)	Change the directory to buildroot  
-$ `cd ../../../buildroot`
-
-6) Give the build command in the buildroot directory  
+2) Give the build command in the buildroot directory  
 $ `sudo make PROFILE=zd1200 `
 
-7) While kernel is getting compiled, it asks for some configurations, press Enter for all
+3) While kernel is getting compiled, it asks for some configurations, press Enter for all
 
-8) It will be built successfully and ends with providing a version number
+4) It will be built successfully and ends with providing a version number

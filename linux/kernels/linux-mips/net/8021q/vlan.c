@@ -78,6 +78,10 @@ static struct vlan_group *__vlan_find_group(struct net_device *real_dev)
 	return NULL;
 }
 
+struct vlan_group *vlan_find_group(struct net_device *real_dev)
+{
+	return __vlan_find_group(real_dev);
+}
 /*  Find the protocol handler.  Assumes VID < VLAN_VID_MASK.
  *
  * Must be invoked with RCU read lock (no preempt)

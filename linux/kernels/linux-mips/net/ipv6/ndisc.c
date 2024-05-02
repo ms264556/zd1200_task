@@ -157,16 +157,7 @@ struct neigh_table nd_tbl = {
 	.gc_thresh3 =	1024,
 };
 
-/* ND options */
-struct ndisc_options {
-	struct nd_opt_hdr *nd_opt_array[__ND_OPT_ARRAY_MAX];
-#ifdef CONFIG_IPV6_ROUTE_INFO
-	struct nd_opt_hdr *nd_opts_ri;
-	struct nd_opt_hdr *nd_opts_ri_end;
-#endif
-	struct nd_opt_hdr *nd_useropts;
-	struct nd_opt_hdr *nd_useropts_end;
-};
+
 
 #define nd_opts_src_lladdr	nd_opt_array[ND_OPT_SOURCE_LL_ADDR]
 #define nd_opts_tgt_lladdr	nd_opt_array[ND_OPT_TARGET_LL_ADDR]
@@ -216,8 +207,7 @@ static u8 *ndisc_fill_addr_option(u8 *opt, int type, void *data, int data_len,
 		memset(opt, 0, space);
 	return opt + space;
 }
-
-static struct nd_opt_hdr *ndisc_next_option(struct nd_opt_hdr *cur,
+struct nd_opt_hdr *ndisc_next_option(struct nd_opt_hdr *cur,
 					    struct nd_opt_hdr *end)
 {
 	int type;
@@ -229,6 +219,8 @@ static struct nd_opt_hdr *ndisc_next_option(struct nd_opt_hdr *cur,
 	} while(cur < end && cur->nd_opt_type != type);
 	return (cur <= end && cur->nd_opt_type == type ? cur : NULL);
 }
+
+EXPORT_SYMBOL_GPL(ndisc_next_option);
 
 static inline int ndisc_is_useropt(struct nd_opt_hdr *opt)
 {
@@ -246,7 +238,7 @@ static struct nd_opt_hdr *ndisc_next_useropt(struct nd_opt_hdr *cur,
 	return (cur <= end && ndisc_is_useropt(cur) ? cur : NULL);
 }
 
-static struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
+struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
 						 struct ndisc_options *ndopts)
 {
 	struct nd_opt_hdr *nd_opt = (struct nd_opt_hdr *)opt;
@@ -309,6 +301,7 @@ static struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
 	}
 	return ndopts;
 }
+EXPORT_SYMBOL_GPL(ndisc_parse_options);
 
 static inline u8 *ndisc_opt_addr_data(struct nd_opt_hdr *p,
 				      struct net_device *dev)

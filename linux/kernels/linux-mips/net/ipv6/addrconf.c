@@ -2363,6 +2363,21 @@ static void addrconf_dev_config(struct net_device *dev)
 		addrconf_add_linklocal(idev, &addr);
 }
 
+int addrconf_set_lladdr(const char * iface)
+{
+	struct net_device * dev = dev_get_by_name(&init_net, iface);
+
+	if (!dev)
+		return -ENODEV;
+
+	rtnl_lock();
+	addrconf_dev_config(dev);
+	rtnl_unlock();
+
+	dev_put(dev);
+	return 0;
+}
+
 #if defined(CONFIG_IPV6_SIT) || defined(CONFIG_IPV6_SIT_MODULE)
 static void addrconf_sit_config(struct net_device *dev)
 {

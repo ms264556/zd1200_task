@@ -10,6 +10,7 @@ obj-$(CONFIG_HAS_DMA) += skb_dma_map.o
 
 obj-y		     += dev.o ethtool.o dev_mcast.o dst.o netevent.o \
 			neighbour.o rtnetlink.o utils.o link_watch.o filter.o
+obj-y		     += netif_rx_hook.o
 
 obj-$(CONFIG_XFRM) += flow.o
 obj-y += net-sysfs.o

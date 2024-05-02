@@ -269,6 +269,38 @@ int br_ipdb_insert(struct net_bridge *br, const unsigned int ipaddr,
 }
 EXPORT_SYMBOL(br_ipdb_insert);
 
+int br_ipdb_lookup(struct net_bridge *br,
+                   const unsigned int ipaddr,
+                   const unsigned int vlan,
+                   const unsigned char *macaddr,
+                   struct net_bridge_port *br_port,
+                   const unsigned int xid )
+{
+    struct hlist_head *head = &br->ip_hash[br_ip_hash(ipaddr)];
+    struct net_bridge_ipdb_entry *ipdb;
+    int rc = -EINVAL;
+
+    if (!is_valid_ether_addr(macaddr))
+        return -EINVAL;
+
+    if (ipaddr == 0 || ipaddr == 0xFFFFFFFF)
+        return -EINVAL;
+
+    if (br_port == NULL || br_port->dev == NULL)
+        return -EINVAL;
+
+    rcu_read_lock();
+    ipdb = ipdb_find(head, ipaddr, vlan);
+    if (likely(ipdb)) {
+        if (ipdb->xid == xid && ether_addr_equal(ipdb->mac_addr.addr, macaddr)) {
+            rc = 0;
+        }
+    }
+    rcu_read_unlock();
+
+    return rc;
+}
+EXPORT_SYMBOL(br_ipdb_lookup);
 
 static inline struct net_bridge_ipdb_entry *ipdb_find_entry(struct hlist_head *head, const unsigned char *macaddr,
                                                             const unsigned int ipaddr, const unsigned int vlan)
@@ -452,6 +484,25 @@ int br_ipdb_delete_by_mac(struct net_bridge *br, int ifidx, char *macaddr)
 
     return 0;
 }
+int br_ipdb_delete_by_mac_n_xid(struct net_bridge *br, int ifidx, char *macaddr, unsigned int xid)
+{
+    int i;
+
+    spin_lock_bh(&br->ip_hash_lock);
+    for (i = 0; i < BR_HASH_SIZE; i++) {
+        struct net_bridge_ipdb_entry *f;
+        struct hlist_node *h, *n;
+
+        hlist_for_each_entry_safe(f, h, n, &br->ip_hash[i], hlist) {
+            if (f->br_port->dev->ifindex == ifidx && ether_addr_equal(f->mac_addr.addr, macaddr) &&
+                f->xid == xid)
+                ipdb_delete(f);
+        }
+    }
+    spin_unlock_bh(&br->ip_hash_lock);
+    return 0;
+}
+EXPORT_SYMBOL(br_ipdb_delete_by_mac_n_xid);
 
 int br_ipdb_delete_by_port(struct net_bridge *br, int port)
 {

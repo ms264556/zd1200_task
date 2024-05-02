@@ -12,13 +12,14 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/netdevice.h>
 #include <linux/etherdevice.h>
-#include <linux/netfilter_bridge.h>
-#include <linux/jhash.h>
 #include <linux/if_arp.h>
+#include <linux/jhash.h>
 #include <linux/jiffies.h>
+#include <linux/netdevice.h>
+#include <linux/netfilter_bridge.h>
 #include <linux/version.h>
+#include <net/ipv6.h>
 #include "br_private.h"
 
 #ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
@@ -151,6 +152,22 @@ struct net_bridge_ipv6db_entry *__br_ipv6db_get(struct net_bridge *br,
     return NULL;
 }
 
+int br_ipv6db_del_entry(struct net_bridge *br, const struct in6_addr *ipv6addr, const unsigned int vlan)
+{
+	struct hlist_node *h;
+    struct net_bridge_ipv6db_entry *ipv6db;
+    hlist_for_each_entry_rcu(ipv6db,h, &br->ipv6_hash[br_ipv6_hash(ipv6addr)], hlist) {
+        if (ipv6_addr_equal(&ipv6db->ipv6addr, ipv6addr) && ipv6db->vlan == vlan) {
+            //Found the entry to delete
+            spin_lock_bh(&br->ipv6_hash_lock);
+            ipv6db_delete(ipv6db);
+            spin_unlock_bh(&br->ipv6_hash_lock);
+            return 1; //DELETED
+        }
+    }
+    return 0;
+}
+EXPORT_SYMBOL(br_ipv6db_del_entry);
 
 /* Interface used by ATM hook that keeps a ref count */
 struct net_bridge_ipv6db_entry *br_ipv6db_get(struct net_bridge *br,
@@ -193,6 +210,27 @@ static struct net_bridge_ipv6db_entry *ipv6db_create(struct hlist_head *head,
     return ipv6db;
 }
 
+int br_ipv6db_set_flags(struct net_bridge *br,
+                     const struct in6_addr *ipv6addr,
+                     unsigned int vlan,
+                     unsigned int flags)
+{
+    struct hlist_head *head = &br->ipv6_hash[br_ipv6_hash(ipv6addr)];
+    struct net_bridge_ipv6db_entry *ipv6db;
+    int rc = 0;
+    rcu_read_lock();
+    ipv6db = ipv6db_find(head, ipv6addr, vlan);
+    if (ipv6db) {
+        spin_lock_bh(&br->ipv6_hash_lock);
+        ipv6db->flags = flags;
+        spin_unlock_bh(&br->ipv6_hash_lock);
+    } else {
+        rc = ENOENT;
+    }
+    rcu_read_unlock();
+    return rc;
+}
+EXPORT_SYMBOL(br_ipv6db_set_flags);
 
 static int ipv6db_insert(struct net_bridge *br,
                          const unsigned int *ipv6addr,
@@ -360,6 +398,41 @@ int br_ipv6db_get_mac(struct net_bridge *br, unsigned int *ipv6addr,
 }
 EXPORT_SYMBOL(br_ipv6db_get_mac);
 
+int br_ipv6db_find_router_by_vlan(struct net_bridge *br, int vlan, unsigned char num_routers, struct ra_cache_info *rinfo)
+{
+    int i, found = 0;
+
+    int err = -ENOENT;
+
+    if(num_routers > 2)
+        return -ENOENT;
+
+    rcu_read_lock();
+    for (i = 0; i < BR_IPV6DB_HASH_SIZE; i++) {
+        struct net_bridge_ipv6db_entry *f;
+        struct hlist_node *h, *n;
+        hlist_for_each_entry_safe(f, h, n, &br->ipv6_hash[i], hlist) {
+            if ((f->flags & IPV6DB_FLAG_FROM_ROUTER) && (f->vlan == vlan) && f->ra_info) {
+                if(num_routers--) {
+                    rinfo->router_mac = f->mac_addr.addr;
+                    rinfo->router_ip6addr = &f->ipv6addr;
+                    rinfo->pref = f->ra_info->pref;
+                    rinfo->len_ra_opt = f->ra_info->len_ra_opt;
+                    rinfo->ra_opt = f->ra_info->ra_opt;
+                    found++; rinfo++;
+                    err = found;
+                } else {
+                    goto out_unlock;
+                }
+            }
+        }
+    }
+
+out_unlock:
+    rcu_read_unlock();
+    return err;
+}
+EXPORT_SYMBOL(br_ipv6db_find_router_by_vlan);
 
 int br_ipv6db_delete_by_mac(struct net_bridge *br, int ifidx, char *macaddr)
 {

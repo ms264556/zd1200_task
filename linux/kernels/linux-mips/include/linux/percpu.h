@@ -243,4 +243,15 @@ do {									\
 # define percpu_xor(var, val)		__percpu_generic_to_op(var, (val), ^=)
 #endif
 
+#if 1 /* RKS_KERNEL: back ported from linux-3.4 */
+
+#ifndef this_cpu_inc_return
+#define this_cpu_inc_return(x)      { percpu_add(x, 1); percpu_read(x); }
+#endif
+
+#ifndef this_cpu_ptr
+#define this_cpu_ptr(x)             per_cpu_ptr(x, smp_processor_id())
+#endif
+
+#endif /* RKS_KERNEL: back ported from linux-3.4 */
 #endif /* __LINUX_PERCPU_H */

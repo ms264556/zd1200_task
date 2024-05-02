@@ -215,33 +215,7 @@ void (*av_if_pack_hook)(struct packet_type *pt, int add)  = NULL;
 EXPORT_SYMBOL(av_if_pack_hook);
 #endif
 
-#if 1 /* V54_BSP */
-/**
- *	get_dev_stats	- get network device statistics struct
- *	                               not for read statistics data, but for write.
- *	@dev: device to get statistics from
- *
- *	Get network statistics from device. The device driver may provide
- *	its own method by setting dev->netdev_ops->get_stats; otherwise
- *	the internal statistics structure is used.
- */
-struct net_device_stats *get_dev_stats(struct net_device *dev)
-{
-	const struct net_device_ops *ops;
 
-	if (!dev)
-	    return NULL;
-
-	ops = dev->netdev_ops;
-    if (ops == NULL) {
-        return NULL;
-    }
-	if (ops->ndo_get_stats)
-		return ops->ndo_get_stats(dev);
-	else
-		return &dev->stats;
-}
-#endif
 
 static inline struct hlist_head *dev_name_hash(struct net *net, const char *name)
 {
@@ -1568,15 +1542,14 @@ void dev_kfree_skb_irq(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(dev_kfree_skb_irq);
 
-void dev_kfree_skb_any(struct sk_buff *skb)
+void _dev_kfree_skb_any(struct sk_buff *skb)
 {
 	if (in_irq() || irqs_disabled())
 		dev_kfree_skb_irq(skb);
 	else
-		dev_kfree_skb(skb);
+		consume_skb(skb);
 }
-EXPORT_SYMBOL(dev_kfree_skb_any);
-
+EXPORT_SYMBOL(_dev_kfree_skb_any);
 
 /**
  * netif_device_detach - mark device as removed
@@ -2358,6 +2331,18 @@ static inline int deliver_skb(struct sk_buff *skb,
 {
 	atomic_inc(&skb->users);
 	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
+}
+
+
+int rks_deliver_skb(struct sk_buff *skb,
+			      struct packet_type *pt_prev,
+			      struct net_device *orig_dev)
+{
+	return deliver_skb(skb, pt_prev, orig_dev);
+}
+struct list_head *rks_ptype_all(void)
+{
+	return &ptype_all;
 }
 
 #if defined(CONFIG_BRIDGE) || defined (CONFIG_BRIDGE_MODULE)

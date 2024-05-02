@@ -673,6 +673,36 @@ char *strstr(const char *s1, const char *s2)
 EXPORT_SYMBOL(strstr);
 #endif
 
+void *memmem(const void *haystack, size_t haystacklen,
+		     const void *needle, size_t needlelen)
+{
+	register const char *ph;
+	register const char *pn;
+	const char *plast;
+	size_t n;
+
+	if (needlelen == 0) {
+		return (void *) haystack;
+	}
+
+	if (haystacklen >= needlelen) {
+		ph = (const char *) haystack;
+		pn = (const char *) needle;
+		plast = ph + (haystacklen - needlelen);
+
+		do {
+			n = 0;
+			while (ph[n] == pn[n]) {
+				if (++n == needlelen) {
+					return (void *) ph;
+				}
+			}
+		} while (++ph <= plast);
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(memmem);
 #ifndef __HAVE_ARCH_MEMCHR
 /**
  * memchr - Find a character in an area of memory.

@@ -61,6 +61,7 @@ extern int			addrconf_del_ifaddr(struct net *net,
 						    void __user *arg);
 extern int			addrconf_set_dstaddr(struct net *net,
 						     void __user *arg);
+extern int          		addrconf_set_lladdr(const char * ifname);
 
 extern int			ipv6_chk_addr(struct net *net,
 					      struct in6_addr *addr,

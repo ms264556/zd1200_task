@@ -309,6 +309,10 @@ extern struct sk_buff * (*br_dnat_out_handler_hook)(struct sk_buff *);
 #if defined(CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE)
 extern int (*br_pif_filter_hook)(const struct sk_buff *, const struct net_bridge_port *);
 extern int (*br_pif_inspection_hook)(struct sk_buff *, unsigned int);
+
+
+extern int (*br_pif_if_ingress_hook)(struct sk_buff *, unsigned int);
+
 #endif
 
 extern int is_bridge_device(struct net_device *dev);

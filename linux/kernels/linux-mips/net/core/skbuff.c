@@ -465,7 +465,7 @@ EXPORT_SYMBOL(__kfree_skb);
  *	Drop a reference to the buffer and free it if the usage count has
  *	hit zero.
  */
-void kfree_skb(struct sk_buff *skb)
+void original_kfree_skb(struct sk_buff *skb)
 {
 	if (unlikely(!skb))
 		return;
@@ -476,7 +476,7 @@ void kfree_skb(struct sk_buff *skb)
 	trace_kfree_skb(skb, __builtin_return_address(0));
 	__kfree_skb(skb);
 }
-EXPORT_SYMBOL(kfree_skb);
+EXPORT_SYMBOL(original_kfree_skb);
 
 /**
  *	consume_skb - free an skbuff

@@ -610,7 +610,8 @@ int br_set_port_mode(struct net_bridge *br, int ifindex, int mode)
 
 #if defined (CONFIG_SOURCE_MAC_GUARD) || \
 	defined(CONFIG_CI_WHITELIST) || \
-	defined(CONFIG_ANTI_SPOOF)
+	defined(CONFIG_ANTI_SPOOF) || \
+	defined(V54_BSP)
 int br_set_port_ci_state(struct net_bridge * br,int ifidx ,int state)
 {
 	struct net_device * dev;

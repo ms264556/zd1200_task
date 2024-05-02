@@ -20,6 +20,8 @@
 #include <linux/sched.h>
 
 #include <net/dst.h>
+#include <net/route.h>
+#include <net/ip6_fib.h>
 
 /*
  * Theory of operations:
@@ -32,7 +34,7 @@
  * 3) This list is guarded by a mutex,
  *    so that the gc_task and dst_dev_event() can be synchronized.
  */
-#if RT_CACHE_DEBUG >= 2
+#if RT_CACHE_DEBUG >= 0
 static atomic_t			 dst_total = ATOMIC_INIT(0);
 #endif
 
@@ -61,6 +63,44 @@ static DEFINE_MUTEX(dst_gc_mutex);
  */
 static struct dst_entry         *dst_busy_list;
 
+int dst_dump_g_list(struct seq_file *p, void *v)
+{
+	struct dst_entry * dst, **dstp;
+	int count = 0;
+
+	mutex_lock(&dst_gc_mutex);
+	dstp = &dst_busy_list;
+	seq_printf(p, "@%08lx dst_total=%d dst_busy_list=&%p,*%p\n"
+	                            "dst         neigh    refcnt     src_ip          dst_ip\n",
+                 jiffies, atomic_read(&dst_total), &dst_busy_list, dst_busy_list);
+	while ((dst = *dstp) != NULL && count < 1000) {
+		if (!dst->ops) {
+		    seq_printf(p,
+					"%p(%d) %p %-6d\n",
+					dst, dst->obsolete, dst->neighbour,
+					atomic_read(&dst->__refcnt)
+					);
+		} else if (dst->ops->family == AF_INET) {
+		    struct rtable *rth = (struct rtable *)dst;
+					    seq_printf(p,
+					"%p(%d) %p %-6d %pI4 %pI4\n",
+					dst, dst->obsolete, dst->neighbour,
+					atomic_read(&dst->__refcnt), &rth->rt_src, &rth->rt_dst
+					);
+		} else if (dst->ops->family == AF_INET6) {
+		   struct rt6_info *rt = (struct rt6_info *)dst;
+		    seq_printf(p,
+					"%p(%d) %p %-6d %pi6 %pi6\n",
+					dst, dst->obsolete, dst->neighbour,
+					atomic_read(&dst->__refcnt),  &rt->rt6i_src.addr,  &rt->rt6i_dst.addr
+					);
+		}
+		dstp = &dst->next;
+		count++;
+	}
+	mutex_unlock(&dst_gc_mutex);
+	return 0;
+}
 static void dst_gc_task(struct work_struct *work)
 {
 	int    delayed = 0;

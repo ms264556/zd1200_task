@@ -31,6 +31,7 @@
 #include <linux/rcupdate.h>
 #include <linux/dmaengine.h>
 #include <linux/hrtimer.h>
+#include <ruckus/rks_pkt_trace.h>
 
 /* Don't change this without changing skb_csum_unnecessary! */
 #define CHECKSUM_NONE 0
@@ -414,6 +415,8 @@ struct sk_buff {
 	sk_buff_data_t		transport_header;
 	sk_buff_data_t		network_header;
 	sk_buff_data_t		mac_header;
+	char				*pkt_trace_log;
+
 	/* These elements must be at the end, see alloc_skb() for details.  */
 	sk_buff_data_t		tail;
 	sk_buff_data_t		end;
@@ -454,7 +457,15 @@ static inline struct rtable *skb_rtable(const struct sk_buff *skb)
 	return (struct rtable *)skb_dst(skb);
 }
 
-extern void kfree_skb(struct sk_buff *skb);
+
+extern void original_kfree_skb(struct sk_buff *skb);
+#define kfree_skb(skb) \
+    do {								\
+        if (unlikely(pkt_trace_enable) && likely(skb) && unlikely((skb)->pkt_trace_log)) \
+            __PKT_TRACE_LOG(skb, "invoke kfree_skb\n"); \
+        original_kfree_skb(skb); \
+    } while(0)
+
 extern void consume_skb(struct sk_buff *skb);
 extern void	       __kfree_skb(struct sk_buff *skb);
 extern struct sk_buff *__alloc_skb(unsigned int size,

@@ -84,6 +84,22 @@ struct nd_opt_hdr {
 	__u8		nd_opt_len;
 } __attribute__((__packed__));
 
+struct ndisc_options {
+    struct nd_opt_hdr *nd_opt_array[__ND_OPT_ARRAY_MAX];
+#ifdef CONFIG_IPV6_ROUTE_INFO
+    struct nd_opt_hdr *nd_opts_ri;
+    struct nd_opt_hdr *nd_opts_ri_end;
+#endif
+    struct nd_opt_hdr *nd_useropts;
+    struct nd_opt_hdr *nd_useropts_end;
+};
+
+#define nd_opts_src_lladdr  nd_opt_array[ND_OPT_SOURCE_LL_ADDR]
+#define nd_opts_tgt_lladdr  nd_opt_array[ND_OPT_TARGET_LL_ADDR]
+#define nd_opts_pi      nd_opt_array[ND_OPT_PREFIX_INFO]
+#define nd_opts_pi_end      nd_opt_array[__ND_OPT_PREFIX_INFO_END]
+#define nd_opts_rh      nd_opt_array[ND_OPT_REDIRECT_HDR]
+#define nd_opts_mtu     nd_opt_array[ND_OPT_MTU]
 
 extern int			ndisc_init(void);
 

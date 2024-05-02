@@ -17,13 +17,10 @@
 #include <linux/if_bridge.h>
 #include <net/route.h>
 
-#ifdef CONFIG_BRIDGE_VLAN
-#define BR_FDB_VLAN 1
-#define BR_DEFAULT_VLAN	1
-#define BR_ALL_VLAN 0
-#else
-#undef BR_FDB_VLAN
-#endif
+#define BR_FDB_VLAN
+
+#include "br_rks_private.h"
+
 
 
 #define BR_HASH_BITS 8
@@ -38,6 +35,7 @@
 
 /* Path to usermode spanning tree program */
 #define BR_STP_PROG	"/sbin/bridge-stp"
+#define BR_PACKET_MARK_L2UF    0xaa
 
 #if 1 /* V54_BSP */
 #define MAC_FMT "%02x:%02x:%02x:%02x:%02x:%02x"
@@ -49,16 +47,16 @@
 //#define IPV6_ALEN    16
 #endif
 
+
+
+
+
+
 typedef struct bridge_id bridge_id;
 typedef struct mac_addr mac_addr;
 typedef __u16 port_id;
 
-#ifdef RKS_TUBE_SUPPORT
-struct tube_hook {
-	int	(*func)(struct net_device *dev, struct sk_buff *skb, void *opaque);
-	void	*opaque;
-};
-#endif
+
 
 struct bridge_id
 {
@@ -66,56 +64,43 @@ struct bridge_id
 	unsigned char	addr[6];
 };
 
-struct mac_addr
+
+struct ra_cache_info
 {
-	unsigned char	addr[6];
+    unsigned char   *router_mac;
+    struct in6_addr *router_ip6addr;
+    unsigned char   pref;
+    unsigned short  len_ra_opt;
+    unsigned char   *ra_opt;
 };
 
-#if 1 /* V54_BSP */
-/*
- * linux/if_arp.h's struct arphdr stops at ar_op
- */
-struct arp_pkt
+#define IPV6DB_FLAG_FROM_ROUTER    (1 << 0)
+#define IPV6DB_FLAG_ADDR_PROBE     (1 << 1)
+#define IPV6DB_FLAG_ADDR_REACHABLE (1 << 2)
+#define IPV6DB_FLAG_ADDR_FROM_RUDB (1 << 3)
+#define IPV6DB_FLAG_DAD_DELETE     (1 << 4)
+#define RA_OPT_MAX_BUF_SIZE  536
+
+struct ra_cached_info
 {
-	unsigned short	ar_hrd;		/* format of hardware address	*/
-	unsigned short	ar_pro;		/* format of protocol address	*/
-	unsigned char	ar_hln;		/* length of hardware address	*/
-	unsigned char	ar_pln;		/* length of protocol address	*/
-	unsigned short	ar_op;		/* ARP opcode (command)		*/
-	unsigned char	ar_sha[6];	/* sender hardware address	*/
-	unsigned int	ar_sip;		/* sender IP address		*/
-	unsigned char	ar_tha[6];	/* target hardware address	*/
-	unsigned int	ar_tip;		/* target IP address		*/
-} __attribute__ ((packed));
-#endif
-
-
-#ifdef CONFIG_BRIDGE_LOOP_GUARD
-/*
- * net_bridge->hostonly could be triggered by mac change detection
- * if net_bridge->hostonly is set,
- * forwarding will be temporarily disabled.
- * All traffic to/from the attached bridge ports will be passed up the stack.
- *
- * -- Cisco term: "port move" --
- */
-#define FLAP_THRESHOLD			20
-#define LOOP_DETECT_WINDOW		(3*HZ / 100)	// 30 ms
-#define LOOP_HOLD_JIFFIES		(HZ * 10)	// 10 seconds
-
-
-struct net_bridge_mac_change
-{
-	unsigned long			track_window;	// end time of detect window
-	int				flap_cnt;	// change count within detect window
+    unsigned char  pref;
+    unsigned char  rsvd;
+    unsigned short len_ra_opt;
+    unsigned char  ra_opt[0];
 };
+
+
+
 
 extern int _br_loop_hold;
 #define BR_SET_LOOP_HOLD(val)		do {_br_loop_hold = val;} while(0)
 #define BR_GET_LOOP_HOLD()		(_br_loop_hold)
-#endif
+
+
+
 
 #if 1 /* V54_BSP */
+
 struct net_bridge_ipdb_entry
 {
 	struct hlist_node		hlist;
@@ -126,6 +111,7 @@ struct net_bridge_ipdb_entry
 	unsigned int			ipaddr;
 	unsigned int			vlan;
 	mac_addr			mac_addr;
+    unsigned int            xid;
 };
 
 struct net_bridge_ipv6db_entry
@@ -138,6 +124,8 @@ struct net_bridge_ipv6db_entry
 	unsigned int			ipv6addr[4];
 	unsigned int			vlan;
 	mac_addr			mac_addr;
+	unsigned int            flags;
+    struct ra_cached_info *ra_info;
 };
 #endif
 
@@ -151,22 +139,13 @@ struct net_bridge_fdb_entry
 	mac_addr			addr;
 	unsigned char			is_local;
 	unsigned char			is_static;
-#ifdef BR_FDB_VLAN
-	unsigned int			vlan_id;   /* track vlan id */
+#ifdef CONFIG_BRIDGE_VLAN
+	unsigned int			vlan_id; /* track vlan id */
 #endif
 #ifdef CONFIG_BRIDGE_LOOP_GUARD
 	struct net_bridge_mac_change	mac_track;
 #endif
 };
-
-#ifdef CONFIG_BRIDGE_VLAN
-struct net_bridge_port_vlan
-{
-	int				untagged;
-	u8				filter[4096/8];
-};
-
-#endif
 
 struct net_bridge_port
 {
@@ -195,31 +174,41 @@ struct net_bridge_port
 
 	unsigned long 			flags;
 #define BR_HAIRPIN_MODE		0x00000001
+#define BR_DVLAN_PORT_MODE	0x00000002
+
+#define BR_VLAN_FORK_BR_MODE	0x00000004
+
+
 
 #ifdef CONFIG_BRIDGE_VLAN
 	struct net_bridge_port_vlan	vlan;
 #endif
-
 #ifdef CONFIG_BRIDGE_PORT_MODE
 	u32				port_mode; //packet forwarding mode for port, e.g. allow hostonly traffic.
 	u8				port_ci_state;//init/learning/isolation
 #endif
-#if 1 /* V54_BSP */
-	u8				stp_forward_drop;
-	u8				eapol_passthru; // bridge eapol frame
-	u8				unused0;
-	u8				unused1;
+#if 1//def RKS_KERNEL
+	u8              stp_forward_drop;
+	u8              l2uf_forwarding_drop;
 #endif
-#ifdef CONFIG_BRIDGE_MESH_PKT_FORWARDING_FILTER
-	u32				is_disable_learning;
-	u32				is_pff;
-#endif
-#ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
-	u32				pif_iftype;
-	u32				pif_ifmode;
-	u32				pif_learning;
-#endif
+
+	u32             pif_iftype;
+	u32	            pif_ifmode;
+	u32             pif_learning;
+	u32             pif_ipv6type;
+    u16             pif_ra_throttle_count;
+    u16             pif_ra_throttle_interval;
+
+
 };
+
+#if 1 /* V54_BSP */
+
+static inline struct net_bridge_port *br_port_get_rcu(const struct net_device *dev)
+{
+	return dev ? rcu_dereference(dev->br_port) : NULL;
+}
+#endif
 
 struct net_bridge
 {
@@ -316,6 +305,8 @@ struct net_bridge
 	struct hlist_head		ipv6_hash[BR_HASH_SIZE];
 	struct list_head		ipv6_age_list;
 	struct timer_list		ipv6db_gc_timer;
+
+	struct timer_list       ipv6_ra_throttle_timer;
 #endif
 };
 
@@ -338,22 +329,19 @@ extern int br_fdb_init(void);
 extern void br_fdb_fini(void);
 extern void br_fdb_flush(struct net_bridge *br);
 extern void br_fdb_changeaddr(struct net_bridge_port *p,
-#ifdef  BR_FDB_VLAN
-			      const unsigned int vlan_id,
+#ifdef CONFIG_BRIDGE_VLAN
+			      unsigned int vlan_id,
 #endif
 			      const unsigned char *newaddr);
 #if 1 /* yun.wu, 2010-12-03 */
 extern void br_fdb_changeaddr_br(struct net_bridge *br, const unsigned char *newaddr);
 #endif
 extern void br_fdb_cleanup(unsigned long arg);
-#if 1 /* V54_BSP */
-extern void br_fdb_clear(struct net_bridge *br);
-#endif
 extern void br_fdb_delete_by_port(struct net_bridge *br,
 				  const struct net_bridge_port *p, int do_all);
 extern struct net_bridge_fdb_entry *__br_fdb_get(struct net_bridge *br,
-#ifdef BR_FDB_VLAN
-						 const unsigned int vlan_id,
+#ifdef CONFIG_BRIDGE_VLAN
+						 unsigned int vlan_id,
 #endif
 						 const unsigned char *addr);
 extern int br_fdb_test_addr(struct net_device *dev, unsigned char *addr);
@@ -361,19 +349,19 @@ extern int br_fdb_fillbuf(struct net_bridge *br, void *buf,
 			  unsigned long count, unsigned long off);
 extern int br_fdb_insert(struct net_bridge *br,
 			 struct net_bridge_port *source,
-#ifdef  BR_FDB_VLAN
-			 const unsigned int vlan_id,
+#ifdef CONFIG_BRIDGE_VLAN
+			 unsigned int vlan_id,
 #endif
 			 const unsigned char *addr,
 			 int is_local );
+
+int br_fdb_update(struct net_bridge_port *source, const struct sk_buff *skb);
 
 #if 1 /* V54_BSP */
 #define BR_FDB_UPDATE_OK		0
 #define BR_FDB_UPDATE_DROP		1
 #define BR_FDB_UPDATE_UP_ONLY		2
 #endif
-
-extern int br_fdb_update(struct net_bridge_port *source, const struct sk_buff *skb);
 
 /* br_forward.c */
 extern void br_deliver(const struct net_bridge_port *to,
@@ -394,6 +382,7 @@ extern int br_add_if(struct net_bridge *br,
 		     struct net_device *dev);
 extern int br_del_if(struct net_bridge *br,
 		     struct net_device *dev);
+extern void br_bond_send_gratuitous_arp(struct net_bridge *br, struct net_device *dev);
 extern int br_min_mtu(const struct net_bridge *br);
 extern void br_features_recompute(struct net_bridge *br);
 #if defined(CONFIG_BRIDGE_BR_MODE) || defined(CONFIG_BRIDGE_LOOP_GUARD)
@@ -494,50 +483,9 @@ extern void br_sysfs_delbr(struct net_device *dev);
 #define br_sysfs_delbr(dev)		do { } while(0)
 #endif /* CONFIG_SYSFS */
 
-#ifdef CONFIG_BRIDGE_VLAN
-#include <linux/if_vlan.h>
-
-static inline int br_vlan_filter(const struct sk_buff *skb,
-				 const struct net_bridge_port_vlan *vlan)
-{
-	return !(vlan->filter[skb->tag_vid / 8] & (1 << (skb->tag_vid & 7)));
-}
-
-/* br_fdb.c */
-// callback function declaration
 typedef	int (*_br_vlan_func)(struct net_bridge_fdb_entry *dst, struct sk_buff *skb, int vlan_id);
 extern int br_fdb_vlan_exec(struct net_bridge_port *br_port,
 		struct sk_buff *skb, _br_vlan_func my_func);
-
-/* br_vlan.c */
-extern void br_vlan_pull_8021q_header(struct sk_buff *skb);
-
-extern int br_vlan_input_frame(struct sk_buff *skb,
-			       struct net_bridge_port_vlan *vlan);
-extern int br_vlan_output_frame(struct sk_buff **pskb, unsigned int untagged);
-extern void br_vlan_init(struct net_bridge_port_vlan *vlan);
-extern int br_vlan_set_untagged(struct net_bridge *br,
-				unsigned int port, unsigned int vid);
-extern int br_vlan_set_tagged(struct net_bridge *br,
-			      unsigned int port, unsigned int vid);
-extern int br_vlan_set_filter(struct net_bridge *br,
-			      unsigned int cmd, unsigned int port,
-			      unsigned int vid1, unsigned int vid2);
-extern int br_vlan_get_untagged(struct sk_buff *skb);
-extern int br_vlan_get_info(struct net_bridge *br,
-			    void *user_mem, unsigned long port);
-extern int br_vlan_pass_frame_up(struct sk_buff **pskb, unsigned int untagged);
-
-#define LIMIT_PRINTK(fmt, args...)       if (net_ratelimit()) { printk(fmt, ## args) ;}
-#else
-#define LIMIT_PRINTK(...)
-
-#define br_vlan_filter(skb, vlan)		(0)
-#define br_vlan_input_frame(skb, vlan)		(0)
-#define br_vlan_output_frame(pskb, untagged)	(0)
-#define br_vlan_init(vlan)			do { } while(0)
-#endif /* CONFIG_BRIDGE_VLAN */
-
 #ifdef CONFIG_BRIDGE_PACKET_INSPECTION_FILTER_MODULE
 extern void br_ipdb_init(void);
 extern void br_ipdb_fini(void);
@@ -579,8 +527,14 @@ extern int br_ipv6db_get_mac(struct net_bridge *br, unsigned int *ipaddr,
 
 extern int br_ipv6db_fillbuf(struct net_bridge *br, void *buf,
 			     unsigned long count, unsigned long off);
-
 #endif
 
-
+#ifndef ETH_ALEN
+#define ETH_ALEN 6
+#endif
+static inline int
+ether_addr_equal(char *mac1 , char *mac2)
+{
+    return(memcmp(mac2, mac1, ETH_ALEN) == 0);
+}
 #endif

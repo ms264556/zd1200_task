@@ -777,33 +777,8 @@ void free_proc_entry(struct proc_dir_entry *de)
 	kfree(de);
 }
 
-/*
- * Remove a /proc entry and free it if it's not currently in use.
- */
-void remove_proc_entry(const char *name, struct proc_dir_entry *parent)
+void __remove_proc_entry(struct proc_dir_entry *de, struct proc_dir_entry *parent)
 {
-	struct proc_dir_entry **p;
-	struct proc_dir_entry *de = NULL;
-	const char *fn = name;
-	int len;
-
-	if (xlate_proc_name(name, &parent, &fn) != 0)
-		return;
-	len = strlen(fn);
-
-	spin_lock(&proc_subdir_lock);
-	for (p = &parent->subdir; *p; p=&(*p)->next ) {
-		if (proc_match(len, fn, *p)) {
-			de = *p;
-			*p = de->next;
-			de->next = NULL;
-			break;
-		}
-	}
-	spin_unlock(&proc_subdir_lock);
-	if (!de)
-		return;
-
 	spin_lock(&de->pde_unload_lock);
 	/*
 	 * Stop accepting new callers into module. If you're
@@ -848,3 +823,84 @@ continue_removing:
 	if (atomic_dec_and_test(&de->count))
 		free_proc_entry(de);
 }
+/*
+ * Remove a /proc entry and free it if it's not currently in use.
+ */
+void remove_proc_entry(const char *name, struct proc_dir_entry *parent)
+{
+	struct proc_dir_entry **p;
+	struct proc_dir_entry *de = NULL;
+	const char *fn = name;
+	int len;
+
+	if (xlate_proc_name(name, &parent, &fn) != 0)
+		return;
+	len = strlen(fn);
+
+	spin_lock(&proc_subdir_lock);
+	for (p = &parent->subdir; *p; p=&(*p)->next ) {
+		if (proc_match(len, fn, *p)) {
+			de = *p;
+			*p = de->next;
+			de->next = NULL;
+			break;
+		}
+	}
+	spin_unlock(&proc_subdir_lock);
+	if (!de)
+		return;
+
+	__remove_proc_entry(de, parent);
+}
+int remove_proc_subtree(const char *name, struct proc_dir_entry *parent)
+{
+	struct proc_dir_entry **p;
+	struct proc_dir_entry *root = NULL, *de, *prev;
+	const char *fn = name;
+	int len;
+
+	if (xlate_proc_name(name, &parent, &fn) != 0)
+		return -ENOENT;
+	len = strlen(fn);
+
+	spin_lock(&proc_subdir_lock);
+	for (p = &parent->subdir; *p; p=&(*p)->next ) {
+		if (proc_match(len, fn, *p)) {
+			root = *p;
+			*p = root->next;
+			root->next = NULL;
+			break;
+		}
+	}
+	spin_unlock(&proc_subdir_lock);
+	if (!root)
+		return -ENOENT;
+
+	spin_lock(&proc_subdir_lock);
+	while (1) {
+		prev = NULL;
+		de = root;
+		while (de->subdir) {
+			prev = de;
+			de = de->subdir;
+		}
+		while (de->next) {
+			prev = de;
+			de = de->next;
+		}
+
+		if (NULL != prev) {
+			prev->subdir = NULL;
+			prev->next   = NULL;
+		}
+
+		__remove_proc_entry(de, de->parent);
+
+		if (de == root) {
+			break;
+		}
+	}
+	spin_unlock(&proc_subdir_lock);
+	return 0;
+}
+EXPORT_SYMBOL(remove_proc_subtree);

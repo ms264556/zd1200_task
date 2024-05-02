@@ -92,6 +92,13 @@ struct rtable
 	struct inet_peer	*peer; /* long-living peer info */
 };
 
+/* RKS_KERNEL: back ported from linux-3.4 */
+static inline __be32 rt_nexthop(const struct rtable *rt, __be32 daddr)
+{
+	if (rt->rt_gateway)
+		return rt->rt_gateway;
+	return daddr;
+}
 struct ip_rt_acct
 {
 	__u32 	o_bytes;

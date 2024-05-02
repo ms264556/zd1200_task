@@ -147,5 +147,10 @@ static inline int ipv6_unicast_destination(struct sk_buff *skb)
 	return rt->rt6i_flags & RTF_LOCAL;
 }
 
+static inline struct in6_addr *rt6_nexthop(struct rt6_info *rt)
+{
+	return &rt->rt6i_gateway;
+}
+
 #endif
 #endif

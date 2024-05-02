@@ -904,7 +904,6 @@ void dot1x_ioctl_set(int (*hook)(unsigned int, void __user *))
 EXPORT_SYMBOL(dot1x_ioctl_set);
 #endif
 
-#if defined(CONFIG_RKS_IOCTL) || defined(CONFIG_RKS_IOCTL_MODULE)
 #include <ruckus/rks_ioctl.h>
 static DECLARE_MUTEX(rks_ioctl_mutex);
 static int (*rks_ioctl_hook)(void __user *arg) = NULL;
@@ -916,7 +915,6 @@ void rks_ioctl_set(int (*hook)(void __user *))
 	up(&rks_ioctl_mutex);
 }
 EXPORT_SYMBOL(rks_ioctl_set);
-#endif
 
 static DEFINE_MUTEX(dlci_ioctl_mutex);
 static int (*dlci_ioctl_hook) (unsigned int, void __user *) = NULL;

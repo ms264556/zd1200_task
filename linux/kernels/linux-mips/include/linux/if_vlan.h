@@ -67,7 +67,10 @@ static inline struct vlan_ethhdr *vlan_eth_hdr(const struct sk_buff *skb)
 	return (struct vlan_ethhdr *)skb_mac_header(skb);
 }
 
-#define VLAN_VID_MASK	0xfff
+#define VLAN_PRIO_MASK		0xe000
+#define VLAN_PRIO_SHIFT		13
+#define VLAN_CFI_MASK		0x1000
+#define VLAN_VID_MASK		0x0fff
 
 /* found in socket.c */
 extern void vlan_ioctl_set(int (*hook)(struct net *, void __user *));
@@ -114,6 +117,7 @@ static inline void vlan_group_set_device(struct vlan_group *vg,
 #if 1 /* V54_BSP */
 int has_vlan_device(struct sk_buff *skb, struct net_device *dev);
 #endif
+extern struct vlan_group *vlan_find_group(struct net_device *real_dev);
 
 #if defined(CONFIG_VLAN_8021Q) || defined(CONFIG_VLAN_8021Q_MODULE)
 extern struct net_device *vlan_dev_real_dev(const struct net_device *dev);

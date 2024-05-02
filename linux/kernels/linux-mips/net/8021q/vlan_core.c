@@ -83,6 +83,30 @@ u16 vlan_dev_vlan_id(const struct net_device *dev)
 }
 EXPORT_SYMBOL(vlan_dev_vlan_id);
 
+u16 vlan_dev_flags(const struct net_device *dev)
+{
+	return vlan_dev_info(dev)->flags;
+}
+EXPORT_SYMBOL(vlan_dev_flags);
+
+struct net_device* vlan_dev_from_real_dev(struct sk_buff *skb)
+{
+        struct net_device *vlan_dev = NULL;
+
+        if(unlikely(NULL == skb) || unlikely(NULL == (skb->dev)))
+            return NULL;
+#if defined(CONFIG_RKS_PARSE)
+        if(!(skb->pkt_info->l2_flgs & L2_HAS_VLAN))
+            return NULL;
+#endif
+
+        rcu_read_lock();
+        vlan_dev = __find_vlan_dev(skb->dev, skb->tag_vid);
+        rcu_read_unlock();
+
+        return vlan_dev;
+}
+EXPORT_SYMBOL(vlan_dev_from_real_dev);
 static int vlan_gro_common(struct napi_struct *napi, struct vlan_group *grp,
 			   unsigned int vlan_tci, struct sk_buff *skb)
 {

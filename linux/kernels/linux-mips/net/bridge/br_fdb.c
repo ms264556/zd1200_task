@@ -271,6 +271,31 @@ void br_fdb_delete_by_port(struct net_bridge *br,
 }
 
 /* No locking or refcounting, assumes caller has no preempt (rcu_read_lock) */
+struct net_bridge_fdb_entry *__br_fdb_get_no_check_dst_brport(struct net_bridge *br,
+#ifdef BR_FDB_VLAN
+					  unsigned int vlan_id,
+#endif
+					  const unsigned char *addr)
+{
+	struct hlist_node *h;
+	struct net_bridge_fdb_entry *fdb;
+
+	hlist_for_each_entry_rcu(fdb, h, &br->hash[br_mac_hash(addr)], hlist) {
+#ifdef BR_FDB_VLAN
+		if (vlan_id > 0 &&
+		    (fdb->vlan_id == vlan_id || fdb->is_local || fdb->is_static))
+#endif
+		if (!compare_ether_addr(fdb->addr.addr, addr)) {
+			if (unlikely(has_expired(br, fdb)))
+				break;
+			return fdb;
+		}
+	}
+
+	return NULL;
+}
+
+/* No locking or refcounting, assumes caller has no preempt (rcu_read_lock) */
 struct net_bridge_fdb_entry *__br_fdb_get(struct net_bridge *br,
 #ifdef BR_FDB_VLAN
 					  const unsigned int vlan_id,
@@ -393,6 +418,30 @@ int br_fdb_fillbuf(struct net_bridge *br, void *buf,
 	return num;
 }
 
+void br_fdb_foreach(struct net_bridge *br,
+	void (*callback)(struct net_bridge_fdb_entry *f, void *arg1, void *arg2, void *arg3, void *arg4),
+	void *arg1, void *arg2, void *arg3, void *arg4)
+{
+	int i;
+	struct hlist_node *h;
+	struct net_bridge_fdb_entry *f;
+
+	rcu_read_lock();
+	for (i = 0; i < BR_HASH_SIZE; i++) {
+		hlist_for_each_entry_rcu(f, h, &br->hash[i], hlist) {
+			if (has_expired(br, f))
+				continue;
+
+			if (!f->dst)
+				continue;
+
+			callback(f, arg1, arg2, arg3, arg4);
+		}
+	}
+	rcu_read_unlock();
+
+	return;
+}
 static inline struct net_bridge_fdb_entry *fdb_find(struct hlist_head *head,
 #ifdef BR_FDB_VLAN
 						    const unsigned int vlan_id,
@@ -786,4 +835,38 @@ br_fdb_vlan_exec(struct net_bridge_port *br_port,
 #undef NOT_YET_DONE
 #undef SET_DONE
 }
+static int fdb_delete_by_addr(struct net_bridge *br, const u8 *addr, u16 vlan)
+{
+	struct hlist_head *head = &br->hash[br_mac_hash(addr)];
+	struct net_bridge_fdb_entry *fdb = NULL;
+        int err = 0;
+
+	fdb = fdb_find(head,
+#ifdef BR_FDB_VLAN
+                    vlan,
+#endif
+                    addr);
+	if (!fdb) {
+		err = -ENOENT;
+        } else {
+	    fdb_delete(fdb);
+        }
+	return err;
+}
+static int __br_fdb_delete(struct net_bridge_port *p,
+        const unsigned char *addr, u16 vid)
+{
+	int err = 0;
+
+	spin_lock_bh(&p->br->hash_lock);
+	err = fdb_delete_by_addr(p->br, addr, vid);
+	spin_unlock_bh(&p->br->hash_lock);
+
+	return err;
+}
+int rks_br_fdb_delete_by_mac(struct net_bridge_port *p, const unsigned char *addr, u16 vid)
+{
+	return __br_fdb_delete(p, addr, vid);
+}
+EXPORT_SYMBOL(rks_br_fdb_delete_by_mac);
 #endif

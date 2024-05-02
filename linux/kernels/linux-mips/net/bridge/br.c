@@ -117,12 +117,7 @@ static void __exit br_deinit(void)
 }
 
 
-#ifdef V54_BSP
-#include <linux/if_bridge.h>
-EXPORT_SYMBOL(register_br_db_update_hook);
-#endif
 
-EXPORT_SYMBOL(br_should_route_hook);
 
 module_init(br_init)
 module_exit(br_deinit)

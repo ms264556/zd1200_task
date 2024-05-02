@@ -679,6 +679,13 @@ struct net_device_ops {
 #endif
 };
 
+struct ratelimit_cfg {
+    unsigned long      mcast_token_count;
+    unsigned long long mcast_timestamp;
+    unsigned long      mcast_rl_val;
+    unsigned long      allowed_pkts;
+    unsigned long      dropped_pkts;
+};
 /*
  *	The DEVICE structure.
  *	Actually, this whole structure is a big mistake.  It mixes I/O
@@ -995,9 +1002,17 @@ struct net_device
 #else
 				unused:3;
 #endif
+	char            rks_mcast_rl:1;
+	char            rks_mcast_ul:1;
+	char            rks_mcast_dl:1;
+	struct ratelimit_cfg rks_mcast_rl_ul;
+	struct ratelimit_cfg rks_mcast_rl_dl;
+	char 		reserved:4;
+	unsigned char  	port_type;
 	char			*opt82;
 
 #if 1 /* V54 */
+	u16                 wlan_id;
 #if 0
 	void			*rks_netdev_ext; /* pointer to RKS private RKS extension struct */
 #else
@@ -1557,7 +1572,17 @@ extern void dev_kfree_skb_irq(struct sk_buff *skb);
  * from either hardware interrupt or other context, with hardware interrupts
  * either disabled or enabled.
  */
+#if defined(RKS_PKT_TRACE)
+extern void _dev_kfree_skb_any(struct sk_buff *skb);
+#define dev_kfree_skb_any(skb) \
+    do {								\
+        if (unlikely(pkt_trace_enable) && likely(skb) && unlikely((skb)->pkt_trace_log)) \
+            __PKT_TRACE_LOG(skb, "invoke dev_kfree_skb_any\n"); \
+        _dev_kfree_skb_any(skb); \
+    } while(0)
+#else
 extern void dev_kfree_skb_any(struct sk_buff *skb);
+#endif
 
 #define HAVE_NETIF_RX 1
 #if 1 /* V54_BSP */
@@ -2061,6 +2086,13 @@ static inline void netif_set_gso_max_size(struct net_device *dev,
 	dev->gso_max_size = size;
 }
 
+
+/* Copied from linux-3.4 */
+static inline bool netif_is_bond_slave(struct net_device *dev)
+{
+	return dev->flags & IFF_SLAVE && dev->priv_flags & IFF_BONDING;
+}
+
 static inline void skb_bond_set_mac_by_master(struct sk_buff *skb,
 					      struct net_device *master)
 {
@@ -2204,6 +2236,22 @@ RX_BROADCAST_STATS(struct net_device_stats *stats, struct sk_buff *skb)
 #define RX_BROADCAST_STATS(args...)
 #endif
 
+static inline struct net_device_stats *get_dev_stats(struct net_device *dev)
+{
+	const struct net_device_ops *ops;
+
+	if (!dev)
+	    return NULL;
+
+	ops = dev->netdev_ops;
+	if (ops == NULL) {
+		return NULL;
+	}
+	if (ops->ndo_get_stats)
+		return ops->ndo_get_stats(dev);
+	else
+		return &dev->stats;
+}
 #endif /* __KERNEL__ */
 
 #endif	/* _LINUX_NETDEVICE_H */

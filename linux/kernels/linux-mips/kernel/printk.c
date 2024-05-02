@@ -35,6 +35,10 @@
 #include <linux/kexec.h>
 #include <linux/time.h>
 
+#ifdef V54_BSP
+#include "v54_himem.h"
+#endif
+
 #include <asm/uaccess.h>
 #if defined(CONFIG_PPC)
 #include <asm/cacheflush.h>
@@ -88,16 +92,56 @@ void nar5520_save_oops(void);
 
 /* send a copy of printk output to reserved himem area */
 
+unsigned long v54_himem_buf_start(void);
+unsigned long v54_himem_oops_end(void);
 
 static int _tee_himem = 0;
+#define HIMEM_OOPS_START     (v54_himem_buf_start())
+#define HIMEM_OOPS_END       (v54_himem_oops_end())
+#define HIMEM_OOPS_DATA_START     (v54_himem_buf_start() + sizeof(struct _himem_oops))
 static unsigned long _himem_loc = 0;
 static struct _himem_oops *oops_hdr = NULL;
+static inline void
+_copy_to_himem(char * buf, int len)
+{
+    if ( _tee_himem == 0 ) return;
+    if ( _himem_loc == 0 ) {
+        // initialized when first called.
+        _himem_loc = HIMEM_OOPS_DATA_START;
+    }
+    if ( (_himem_loc + len ) >= HIMEM_OOPS_END )  return;
+    memcpy((void *)_himem_loc, (void *)buf, len);
+    _himem_loc += len;
+    // in case himem_tee_close() was not called.
+    oops_hdr->len = _himem_loc - HIMEM_OOPS_DATA_START;
+}
 
 static ssize_t (*_himem_logger) (const char *buf, int len) = NULL;
 void printk_register_himem_logger( ssize_t (*f)(const char *, int) ) {
   _himem_logger = f;
 }
 
+void
+himem_tee_reset(void)
+{
+    extern void v54_himem_oops_init(void);      /* in driver/v54bsp/v54_himem.c */
+
+    _tee_himem = 0;
+    _himem_loc = HIMEM_OOPS_DATA_START;
+    oops_hdr = (struct _himem_oops *)HIMEM_OOPS_START;
+    oops_hdr->magic = HIMEM_OOPS_MAGIC;
+    oops_hdr->used = 0;
+    oops_hdr->len = 0;  /* length of data excluding oops_hdr */
+    // initialized current boot info
+    v54_himem_oops_init();
+    return;
+}
+
+
+/* Ruckus software version */
+extern char sw_version_str[128];
+extern char *get_sw_version(void);
+extern int get_sw_version_len(void);
 
 void
 himem_tee_open(void)
@@ -116,6 +160,7 @@ himem_tee_open(void)
 #endif
     if ( _tee_himem < 1 || oops_hdr == NULL ) {
         // only reset if not already opened.
+        himem_tee_reset();
         oops_hdr->used = 1;
         _tee_himem = 1;
         console_loglevel = DEFAULT_CONSOLE_LOGLEVEL ;	// reset to print on console
@@ -134,17 +179,40 @@ himem_tee_open(void)
 #endif
     }
 #endif
+
 #if 0
 printk("%s: oops_hdr(%p): used=%d len=%d magic=%x ... _tee_himem=%d\n", __FUNCTION__,
         oops_hdr, (int) oops_hdr->used, oops_hdr->len, oops_hdr->magic, _tee_himem);
 #endif
     _tee_himem = 1;
 }
+
+void
+himem_tee_close(void)
+{
+#if defined(NAR5520)
+    if (oops_occurred)
+        return;
+#endif
+    if ( oops_hdr != NULL ) {
+        oops_hdr->len = _himem_loc - HIMEM_OOPS_DATA_START;
+        oops_hdr->used = 1;
+    }
+    _tee_himem = 0;
+
+#if defined(NAR5520)
+    nar5520_save_oops();
+#endif
+
+    return;
+}
+
 unsigned long
 himem_get_loc(void)
 {
     return _himem_loc;
 }
+EXPORT_SYMBOL(himem_tee_reset);
 #endif
 /*
  * console_sem protects the console_drivers list, and also
